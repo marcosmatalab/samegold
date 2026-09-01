@@ -86,6 +86,18 @@ check: install ## fail if the documents and the evidence disagree
 refute: install ## run every claim with a seed of your choosing: make refute SEED=12345
 	$(BIN)/samegold refute --seed $(SEED) --profile ci
 
+.PHONY: report
+report: install ## render the close as one self-contained HTML page
+	$(BIN)/samegold report --out close-report.html
+
+.PHONY: ci-local
+ci-local: install ## exactly what the fast workflow runs, in the order it runs it
+	$(BIN)/pytest tests/fast -q
+	$(BIN)/ruff check src tests
+	$(BIN)/ruff format --check src tests
+	$(BIN)/mypy
+	$(BIN)/samegold check
+
 .PHONY: doctor
 doctor: install ## what is installed and what each lane needs
 	$(BIN)/samegold doctor

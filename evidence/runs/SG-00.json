@@ -4,13 +4,13 @@
     "adrs": 9,
     "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
     "fast_lane_green": true,
-    "fast_lane_seconds": 37.1,
-    "markdown_documents": 16,
-    "python_modules": 47,
-    "source_lines": 7339,
-    "test_lines": 2124,
+    "fast_lane_seconds": 41.4,
+    "markdown_documents": 17,
+    "python_modules": 50,
+    "source_lines": 7570,
+    "test_lines": 2210,
     "tests_delta": 6,
-    "tests_fast": 288,
+    "tests_fast": 304,
     "tests_spark": 10
   },
   "ci_commit_sha": null,
@@ -26,11 +26,11 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "a48eb8fbebb006ef6f7c6f874a48e0ae",
+  "hash": "0b16c8941df16f347509bd3396646a83",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "b7c1dce48bc9177ef60e25dee600eff1",
+  "prev": "a48eb8fbebb006ef6f7c6f874a48e0ae",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -39,25 +39,25 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 288,
-      "trials": 288,
+      "successes": 304,
+      "trials": 304,
       "wilson95": [
-        0.986837,
+        0.987521,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "951f83d5eb28d032e76713c46ee394fa3f94f349",
-      "duration_s": 39.259,
+      "commit_sha": "7414fe98cbaf38183f59cba8bd4899fcb05d64e9",
+      "duration_s": 44.044,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        13171287564976922362
+        12179186928514851977
       ],
-      "started_at": "2026-09-01T18:39:10+00:00"
+      "started_at": "2026-09-01T19:00:49+00:00"
     }
   }
 }

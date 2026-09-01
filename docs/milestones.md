@@ -15,13 +15,14 @@ the ones already done carry their measured cost.
 | M7 | SCD2 as a pure function with a property test, plus the thin Delta MERGE over it | done | 8 |
 | M8 | cost lab on real Delta tables: compaction, clustering at two file sizes, partitioning, delete cost | done | 10 |
 | M9 | governance: anonymisation, column classification, exposure check, retention purge | done | 8 |
+| M9b | consumption layer and freshness alerting: `samegold report`, `serve/freshness.py`, the post-mortem | done | 4 |
 | M10 | Delta on Spark green: `MERGE`, CDF, `OPTIMIZE`, time travel, the delta CI job | next | 10 |
 | M11 | Spark Declarative Pipelines running locally and on Databricks | next | 10 |
 | M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | | 18 |
 | M13 | grants and masks deployed, with a drift test comparing deployed to declared | | 8 |
 | M14 | the duplicate-escape measurement: stateful streaming dedup versus the stateless dedup at the gold boundary | | 8 |
 | M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |
-| M16 | operational documentation: runbook, the post-mortem of the restatement incident, on-call notes | | 6 |
+| M16 | runbook, on-call notes, and the alert for a restatement larger than a declared threshold (the post-mortem itself is written: `docs/postmortem-2026-03-06.md`) | | 5 |
 
 Remaining: about 64 hours.
 

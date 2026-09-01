@@ -25,6 +25,7 @@ figure by hand breaks a test rather than improving a README.
 ```bash
 git clone https://github.com/marcosmatalab/samegold && cd samegold
 make demo      # ~10 s, no account, no credentials, no JVM
+make report    # one self-contained HTML page: the close, its versions, what moved
 make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->288<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->37.1<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
@@ -220,5 +221,6 @@ of a refutation run: neither is a statement about the data.
 - `EXAM_MAP.md` — the Databricks Data Engineer Professional guide (3 July 2026), objective by objective
 - `docs/adr/` — the decisions, with what was given up
 - `docs/limits.md` — what this repository could not verify, and why
+- `docs/postmortem-2026-03-06.md` — the month that closed twice, written up as an incident
 
 Apache-2.0.
