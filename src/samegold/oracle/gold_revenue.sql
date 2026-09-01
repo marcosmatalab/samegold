@@ -152,7 +152,17 @@ effective AS (
 return_candidates AS (
     SELECT d.order_id, d.sku, d.qty AS return_qty,
            d.event_ts AS return_ts,
-           e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
+           e.sale_ts, e.unit_price_cents, e.qty AS sold_qty,
+           -- CUMULATIVE, not per event. Comparing each return against the quantity sold let
+           -- three returns of three units each be accepted against one sale of three: gross
+           -- 3000, refunds 9000, net MINUS 6000, and returns_rejected_count zero. Both
+           -- engines agreed on it, so the parity claim was blind, and the generator never
+           -- emits a second return for a line, so no seed reached it. The window is ordered
+           -- by (return_ts, event_id), which is the same total order the Spark side uses.
+           SUM(d.qty) OVER (PARTITION BY d.order_id, d.sku
+                            ORDER BY d.event_ts, d.event_id
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+               AS returned_including_this
     FROM dedup d
     LEFT JOIN effective e ON e.order_id = d.order_id AND e.sku = d.sku
     WHERE d.event_type = 'return_registered' AND d.qty IS NOT NULL AND d.qty > 0
@@ -164,7 +174,7 @@ returns_classified AS (
                WHEN sale_ts IS NULL THEN 'return_without_order'
                WHEN return_ts < sale_ts THEN 'return_outside_window'
                WHEN epoch(return_ts) - epoch(sale_ts) > 45 * 86400 THEN 'return_outside_window'
-               WHEN return_qty > sold_qty THEN 'return_exceeds_sold_qty'
+               WHEN returned_including_this > sold_qty THEN 'return_exceeds_sold_qty'
                ELSE 'accepted'
            END AS return_reason
     FROM return_candidates

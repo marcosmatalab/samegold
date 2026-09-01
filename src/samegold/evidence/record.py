@@ -71,9 +71,19 @@ def artifact_digest(paths: list[Path]) -> str:
     """
     hasher = hashlib.blake2b(digest_size=16)
     for path in sorted(paths):
-        if path.is_file():
-            hasher.update(path.name.encode())
-            hasher.update(path.read_bytes())
+        if not path.is_file():
+            continue
+        # LENGTH-FRAMED, and the path rather than the basename. Concatenating name and
+        # contents with no framing collides: ("ab.py", b"c") and ("a.py", b"bc") hash
+        # identically, which is the same mistake verify/digest.py documents at length about
+        # its own encoding. Using only the basename made two files with one name in different
+        # packages indistinguishable.
+        name = str(path).encode()
+        body = path.read_bytes()
+        hasher.update(f"{len(name)}:".encode())
+        hasher.update(name)
+        hasher.update(f"{len(body)}:".encode())
+        hasher.update(body)
     return hasher.hexdigest()
 
 

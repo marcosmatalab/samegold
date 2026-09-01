@@ -2,8 +2,8 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "813a82b2dd458b9c7a4f55119e43451a4a8fef44",
-    "records_verified": 51,
+    "commit_sha": "2dceae30b4946bfaa6197d95ee817093f2a63eb0",
+    "records_verified": 61,
     "seed_source": "commit"
   },
   "ci_commit_sha": null,
@@ -19,38 +19,40 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "c6a00655433be5fa07d3b915e985f4eb",
+  "hash": "fe54066da07364311a0b3126b14de6e2",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "a008d993905da8d3ca91fd8475a510df",
+  "prev": "17855595c7de2411fb3fc027ed67f7e8",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "51 records verified against commit 813a82b2dd45",
+    "note": "61 records verified against commit 2dceae30b494",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 51,
-      "trials": 51,
+      "successes": 61,
+      "trials": 61,
       "wilson95": [
-        0.929953,
+        0.940756,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "813a82b2dd458b9c7a4f55119e43451a4a8fef44",
-      "duration_s": 0.14,
+      "commit_sha": "2dceae30b4946bfaa6197d95ee817093f2a63eb0",
+      "duration_s": 0.285,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        9814500919715828233
+        4057328345335668803
       ],
-      "started_at": "2026-09-01T21:35:16+00:00"
+      "started_at": "2026-09-01T22:01:53+00:00",
+      "tree_dirty": true,
+      "tree_sha": "dd3fdf0ec0c2f9c725a90c049a9676dcdb3af86f"
     }
   }
 }

@@ -317,8 +317,28 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
         "sku",
         F.col("qty").alias("return_qty"),
         _ts("event_ts").alias("return_ts"),
+        F.col("event_id").alias("return_event_id"),
     )
     joined = candidates.join(lines, ["order_id", "sku"], "left")
+    # The rule is CUMULATIVE, and it was not. Comparing each return against the quantity sold
+    # lets three returns of three units each be accepted against one sale of three: the close
+    # then reported gross 3000, refunds 9000, net MINUS 6000, and returns_rejected_count zero.
+    # Both engines agreed, so the parity claim could not see it; the generator never emits a
+    # second return for a line, so no seed could; and the one invariant that does catch it
+    # (returns_never_exceed_sales) only ever runs on generated data. It is the most expensive
+    # bug found in eight review rounds and it was found by writing three records by hand.
+    #
+    # The running total is ordered by (return_ts, order of arrival), so the returns that fit
+    # inside the sold quantity are accepted and the ones that overflow it are refused, which
+    # is what a returns desk does. The order is total: the tie-break is the return's own
+    # event_id, and the reference SQL orders the same way.
+    from pyspark.sql import Window as _Window
+
+    running = F.sum("return_qty").over(
+        _Window.partitionBy("order_id", "sku")
+        .orderBy(F.col("return_ts").asc_nulls_last(), F.col("return_event_id").asc_nulls_last())
+        .rowsBetween(_Window.unboundedPreceding, _Window.currentRow)
+    )
     reason = (
         F.when(F.col("sale_ts").isNull(), F.lit("return_without_order"))
         .when(F.col("return_ts") < F.col("sale_ts"), F.lit("return_outside_window"))
@@ -338,11 +358,21 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
             > RETURN_WINDOW_DAYS * 86400,
             F.lit("return_outside_window"),
         )
-        .when(F.col("return_qty") > F.col("qty"), F.lit("return_exceeds_sold_qty"))
+        .when(F.col("_returned_including_this") > F.col("qty"), F.lit("return_exceeds_sold_qty"))
         .otherwise(F.lit(ACCEPTED))
     )
-    return joined.withColumn("return_reason", reason).select(
-        "order_id", "sku", "return_qty", "return_ts", "sale_ts", "unit_price_cents", "return_reason"
+    return (
+        joined.withColumn("_returned_including_this", running)
+        .withColumn("return_reason", reason)
+        .select(
+            "order_id",
+            "sku",
+            "return_qty",
+            "return_ts",
+            "sale_ts",
+            "unit_price_cents",
+            "return_reason",
+        )
     )
 
 
@@ -422,7 +452,17 @@ def dim_customer_scd2(silver_df: DataFrame) -> DataFrame:
 
     F = _f()
     base = silver_df.where(
-        (F.col("event_type") == "customer_upserted") & F.col("customer_id").isNotNull()
+        (F.col("event_type") == "customer_upserted")
+        # ACCEPTED. This was the last consumer of silver reading quarantined records, in the
+        # same file whose effective_lines docstring says "a quarantined record must not change
+        # a number; that is what the word means". A customer_upserted whose event_ts the
+        # producer wrote as something that is not a timestamp entered the dimension as a row
+        # with valid_from NULL - violating the target table's own NOT NULL - carrying the
+        # attributes of a record the pipeline had refused, while the DuckDB reference dropped
+        # it. It survived because the eleven-shape adversarial matrix compared the REVENUE
+        # close and the dimension was only ever compared on generated data.
+        & (F.col("quarantine_reason") == ACCEPTED)
+        & F.col("customer_id").isNotNull()
     ).select(
         "customer_id",
         _ts("event_ts").alias("valid_from"),
@@ -515,7 +555,12 @@ def revenue_versions(snapshots: list[tuple[str, DataFrame]]) -> DataFrame:
     # Ordered by the INSTANT the close happened at, not by the text of the timestamp. Two
     # closes written with different UTC offsets sort one way as strings and the other way as
     # instants, and the version numbers would then follow the spelling.
-    ordered = Window.partitionBy("accounting_month").orderBy(F.col("as_of").cast("timestamp"))
+    # A TOTAL order: the instant, then the text of the timestamp. Two closes at the identical
+    # instant, spelled differently, would otherwise be numbered by whichever the shuffle put
+    # first, while the Python twin's `sorted` is stable and would number them by input order.
+    ordered = Window.partitionBy("accounting_month").orderBy(
+        F.col("as_of").cast("timestamp"), F.col("as_of")
+    )
     changed = (
         closed.withColumn("_fp", fingerprint)
         .withColumn("_previous", F.lag("_fp").over(ordered))

@@ -195,3 +195,47 @@ def scd2_apply(
     a materialised dimension is not, and the difference is a lost interval.
     """
     return scd2_from_versions([*current, *batch], attributes)
+
+
+def collapse_versions(
+    versions: Sequence[Mapping[str, Any]],
+    attributes: Sequence[str] = ("segment", "country"),
+) -> list[dict[str, Any]]:
+    """The two collapses a Type 2 source series is subject to, as one pure function.
+
+    Extracted from the generator's ledger because a test that re-implements the code it is
+    protecting protects nothing: the first version of this rule lived inline in
+    ``generator/events.py`` and its regression test copied the loop into the test body,
+    asserted on its own copy, and passed against the buggy implementation when a review
+    reverted it.
+
+    The two rules, in order, and the order is the bug:
+
+      * versions sharing a ``valid_from`` are one fact arriving twice; the one with the
+        greatest ``event_id`` wins, which is the same tie-break ``scd2_from_versions`` uses
+        and is what makes the result a function of the SET rather than of the caller's order.
+        Without it "the last one wins" means "whichever the caller passed last";
+      * ADJACENT versions with identical attributes are one version. A Type 2 dimension
+        records changes, not heartbeats.
+
+    Doing both in a single pass replaces the previous entry in place for the first rule and
+    then never compares the replacement with its NEW predecessor: A(t1,X), B(t2,Y), C(t2,X)
+    comes out as [A(X), C(X)], an adjacent identical pair surviving the collapse the loop is
+    performing. Two passes cannot have that bug.
+    """
+    ordered = sorted(
+        versions,
+        key=lambda v: (instant_of(str(v["valid_from"])), str(v.get("event_id", ""))),
+    )
+    deduped: list[dict[str, Any]] = []
+    for version in ordered:
+        if deduped and deduped[-1]["valid_from"] == version["valid_from"]:
+            deduped[-1] = dict(version)
+        else:
+            deduped.append(dict(version))
+    collapsed: list[dict[str, Any]] = []
+    for version in deduped:
+        if collapsed and all(collapsed[-1][name] == version[name] for name in attributes):
+            continue
+        collapsed.append(version)
+    return collapsed

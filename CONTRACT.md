@@ -33,7 +33,7 @@ clock-like column allowed downstream and it is excluded from every digest.
    them measured it with a function that truncates to whole seconds.)
 4. **A return is imputed to the month of the SALE**, not of the return. This is the rule that
    makes a closed month reopen, and therefore the reason gold is bitemporal.
-5. **A return cannot exceed the effective quantity** of its line.
+5. **The returns of a line cannot exceed its effective quantity, in total.** The rule is cumulative: the second return of a two-unit line is refused if the first already took both units. Per-return it is not a rule at all, because three returns of three units each pass it against one sale of three.
 6. **A close is a version.** At each close, `revenue_by_month` records what was known at that
    instant. Later arrivals never rewrite a version; they add one, with `restated_at` and a
    reason.
@@ -65,7 +65,7 @@ nothing can emit, and refuses an implementation that can emit one that is not he
 | `unknown_currency` | a currency other than EUR |
 | `return_without_order` | a return whose `(order_id, sku)` matches no accepted sale |
 | `return_outside_window` | a return before the sale, or more than 45 days after it |
-| `return_exceeds_sold_qty` | a return for more units than the line's effective quantity |
+| `return_exceeds_sold_qty` | a return that takes the line's CUMULATIVE returned quantity past its effective quantity |
 
 There is deliberately **no** `duplicate_event_id`. A duplicate is not quarantined, it is
 deduplicated, and it is counted through its own term in the conservation identity; giving it

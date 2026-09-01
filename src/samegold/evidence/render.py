@@ -228,11 +228,35 @@ def check_readme(path: Path, latest: dict[str, dict[str, Any]]) -> list[RenderDr
     # So: a claim id in any form, outside the generated block and outside an anchor, on a
     # line that also states a RESULT - a percentage or a fraction, which is how every figure
     # in these documents is written. A year or a library version is neither.
-    generated = text.split(BEGIN, 1)[-1].split(END, 1)[0] if BEGIN in text and END in text else ""
+    # The generated block, as a SET OF LINES. It used to be compared with `line in generated`,
+    # a substring test against the whole block, so every blank line and any prose line that
+    # happened to be a substring of a generated row was skipped.
+    generated_lines = set()
+    if BEGIN in text and END in text:
+        generated_lines = set(text.split(BEGIN, 1)[-1].split(END, 1)[0].splitlines())
     claim_id_pattern = re.compile(r"\bSG-\d\d\b")
-    result_pattern = re.compile(r"\d+(?:[.,]\d+)?\s?%|\b\d+\s?/\s?\d+\b")
-    for number, line in enumerate(text.splitlines(), start=1):
-        if generated and line in generated:
+    # Every shape a RESULT is written in in these documents. The previous version matched a
+    # percentage and a fraction only, and a review listed six figures it walked straight past,
+    # including "killed 48 of 49 generated mutants" and "moved 662 481,62 EUR" - the second of
+    # which is the exact figure class the post-mortem carries and that domain/money.py exists
+    # for. A year and a library version still do not match, which is the reason the pattern
+    # enumerates shapes instead of matching any number.
+    # `(?<![\w-])` on every alternative, because the claim id ITSELF ends in digits: without
+    # it, "SG-03 runs the reference on DuckDB 1.5" matched "03 runs" and the check reported a
+    # hand-typed result in a sentence that states none.
+    number = r"(?<![\w-])\d+"
+    result_pattern = re.compile(
+        rf"""
+          {number}(?:[.,]\d+)?\s?%                # 78.25%, 6,37 %
+        | {number}\s?/\s?\d+\b                   # 48/49
+        | {number}\s+(?:of|out\s+of)\s+\d+\b     # 48 of 49, 5 out of 5
+        | {number}(?:\s\d{{3}})+,\d{{2}}\b         # 662 481,62
+        | {number}\s+(?:tests?|mutants?|seeds?|files?|records?|months?|runs?|rows?|events?)\b
+        """,
+        re.VERBOSE,
+    )
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if line in generated_lines:
             continue
         outside = TOKEN.sub("", line)
         if not claim_id_pattern.search(outside):
@@ -241,7 +265,7 @@ def check_readme(path: Path, latest: dict[str, dict[str, Any]]) -> list[RenderDr
             drifts.append(
                 RenderDrift(
                     "hardcoded",
-                    f"{path.name}:{number} states the result {found.group(0)!r} beside a "
+                    f"{path.name}:{line_number} states the result {found.group(0)!r} beside "
                     f"claim id without an anchor; render it with <!--sg:...--> so it cannot "
                     f"go stale",
                 )

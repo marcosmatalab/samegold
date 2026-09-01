@@ -159,7 +159,10 @@ def _validate(payload: dict[str, Any], *, historical: bool = False) -> None:
     if not historical and (len(tree) != 40 or any(ch not in "0123456789abcdef" for ch in tree)):
         raise EvidenceRejected(
             f"{payload.get('claim_id')}: the record does not name the git tree it ran on "
-            f"({tree!r}). A commit anchors the seeds; only the tree anchors the code."
+            f"({tree!r}). A commit anchors the seeds; only the tree anchors the code. "
+            f"Everything in this repository runs from a downloaded tarball; publishing "
+            f"evidence from one does not, because a number whose provenance is 'some files, "
+            f"somewhere' is not evidence."
         )
     if source == "override":
         # An override run is a refutation, not evidence. It is written to a separate log and

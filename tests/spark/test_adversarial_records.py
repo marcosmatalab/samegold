@@ -89,11 +89,43 @@ def _duckdb_close(bronze: Path) -> list[tuple[Any, ...]]:
     ]
 
 
+def _spark_dimension(spark: Any, bronze: Path) -> list[tuple[Any, ...]]:
+    from samegold.pipelines.transform import dim_customer_scd2
+
+    events = silver(as_of_cut(read_bronze(spark, str(bronze)), AS_OF))
+    return sorted(tuple(row) for row in dim_customer_scd2(events).collect())
+
+
+def _duckdb_dimension(bronze: Path) -> list[tuple[Any, ...]]:
+    from samegold.oracle.duckdb_gold import scd2_as_of
+
+    return sorted(
+        (
+            str(row["customer_id"]),
+            None if row["valid_from"] is None else str(row["valid_from"]),
+            None if row["valid_to"] is None else str(row["valid_to"]),
+            row["segment"],
+            row["country"],
+            bool(row["is_current"]),
+        )
+        for row in scd2_as_of(bronze, AS_OF_DT)
+    )
+
+
 def _both_agree(spark: Any, tmp_path: Path, rows: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    """Compare BOTH gold tables, not only the close.
+
+    The dimension used to be compared in exactly one place, on generated data, which is data
+    that by contract contains none of the shapes this file is about. A record shape that
+    diverges in the dimension and agrees in the close was therefore invisible - and there was
+    one: the Spark dimension read quarantined records and the reference did not.
+    """
     bronze = _write(tmp_path, rows)
     spark_rows = sorted(_spark_close(spark, bronze))
     duckdb_rows = sorted(_duckdb_close(bronze))
-    assert spark_rows == duckdb_rows, f"Spark {spark_rows} != DuckDB {duckdb_rows}"
+    assert spark_rows == duckdb_rows, f"close: Spark {spark_rows} != DuckDB {duckdb_rows}"
+    spark_dim, duckdb_dim = _spark_dimension(spark, bronze), _duckdb_dimension(bronze)
+    assert spark_dim == duckdb_dim, f"dimension: Spark {spark_dim} != DuckDB {duckdb_dim}"
     return spark_rows
 
 
@@ -363,3 +395,37 @@ def test_the_databricks_rules_and_the_oss_case_agree_record_by_record(spark, tmp
         if row["oss"] != row["databricks"]
     ]
     assert not disagreements, f"the two derivations disagree on {disagreements}"
+
+
+def test_a_quarantined_customer_upsert_does_not_reach_the_dimension(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """It entered gold with valid_from NULL, violating the target table's own NOT NULL.
+
+    Three upserts for one customer, the middle one with an unreadable event_ts. The Spark
+    dimension carried its attributes into a fourth row; the reference had dropped the record
+    in `arrived`. Every other consumer of silver filtered on the quarantine reason and this
+    one did not.
+    """
+    base = {
+        "event_type": "customer_upserted",
+        "arrival_ts": "2026-01-01T00:05:00+00:00",
+        "customer_id": "C1",
+    }
+    rows: list[dict[str, Any]] = [
+        dict(
+            base,
+            event_id="cu-0",
+            event_ts="2026-01-01T00:00:00+00:00",
+            segment="retail",
+            country="ES",
+        ),
+        dict(base, event_id="cu-1", event_ts="not-a-timestamp", segment="vip", country="PT"),
+        dict(
+            base, event_id="cu-2", event_ts="2026-03-01T00:00:00+00:00", segment="pro", country="FR"
+        ),
+    ]
+    bronze = _write(tmp_path, rows)
+    dimension = _spark_dimension(spark, bronze)
+    assert dimension == _duckdb_dimension(bronze)
+    assert all(row[1] is not None for row in dimension), (
+        f"a NULL valid_from reached gold: {dimension}"
+    )

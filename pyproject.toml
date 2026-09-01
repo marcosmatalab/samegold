@@ -52,6 +52,7 @@ packages = ["src/samegold"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--strict-markers"
 markers = [
   "spark: needs a local JVM + pyspark (slow, ~25s session startup)",
   "delta: needs Maven Central reachable to resolve the Delta jars",
