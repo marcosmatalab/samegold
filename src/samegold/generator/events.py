@@ -654,6 +654,56 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "arrival_ts": close0 + dt.timedelta(hours=1),
         }
 
+        # 9. An AMENDMENT that arrives after the close of the month its line belongs to. This
+        #    is the only shape that can tell "the quantity known at the close" apart from
+        #    "the final quantity", and without it specification mutant SPEC-06 survives at
+        #    the small profile while dying at the large one - a mutation score that depends
+        #    on how much data you happened to generate is a score that measures the data.
+        boundary_seq += 1
+        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
+        sale_ts = close0 - dt.timedelta(days=3)
+        events.append(
+            (
+                sale_ts + dt.timedelta(minutes=5),
+                {
+                    "event_id": f"op-{oid}-{sku}",
+                    "event_type": "order_placed",
+                    "event_ts": sale_ts.isoformat(),
+                    "order_id": oid,
+                    "customer_id": customers[0],
+                    "sku": sku,
+                    "qty": 2,
+                    "unit_price_cents": 20000,
+                    "currency": CURRENCY,
+                    "boundary": "amendment_after_close",
+                },
+            )
+        )
+        amend_ts = sale_ts + dt.timedelta(hours=6)
+        events.append(
+            (
+                close0 + dt.timedelta(hours=2),
+                {
+                    "event_id": f"am-{oid}-{sku}",
+                    "event_type": "order_line_amended",
+                    "event_ts": amend_ts.isoformat(),
+                    "order_id": oid,
+                    "sku": sku,
+                    "new_qty": 7,
+                    "boundary": "amendment_after_close",
+                },
+            )
+        )
+        facts[(oid, sku)] = {
+            "customer_id": customers[0],
+            "qty0": 2,
+            "qty": 7,
+            "unit_price_cents": 20000,
+            "sale_ts": sale_ts,
+            "arrival_ts": sale_ts + dt.timedelta(minutes=5),
+            "amend_arrival": close0 + dt.timedelta(hours=2),
+        }
+
     # ---- the ledger ------------------------------------------------------------------
     for close in closes:
         gross: dict[str, int] = defaultdict(int)

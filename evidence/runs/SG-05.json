@@ -2,9 +2,9 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "02359ffb9a06e9597661f821f3a133b4",
-      "51e7d4304c32fb40f6b3b77eac02b18d",
-      "aaebda344ed9180556b018dff889b568"
+      "4d35c1c210d1a6094a6478e47af4ca90",
+      "17a3218ac6d24684263ae5f1ced2d720",
+      "85c2e2f2a1fcfbe011427283770b16ed"
     ]
   },
   "ci_run_url": null,
@@ -38,18 +38,18 @@
       ]
     },
     "runs": {
-      "commit_sha": "0000000000000000000000000000000000000000",
-      "duration_s": 3.029,
+      "commit_sha": "f2659a2b7a52614edb6a840cca570e8e78a8970c",
+      "duration_s": 3.098,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_source": "commit",
       "seeds": [
-        6306057512486550428,
-        11081438750210744903,
-        8931506726842317495
+        7995485805647050887,
+        2573048243140483106,
+        17228328960560184736
       ],
-      "started_at": "2026-09-01T14:25:29+00:00"
+      "started_at": "2026-09-01T14:44:25+00:00"
     }
   }
 }

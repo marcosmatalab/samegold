@@ -68,7 +68,7 @@ check: install ## fail if the documents and the evidence disagree
 
 .PHONY: refute
 refute: install ## run every claim with a seed of your choosing: make refute SEED=12345
-	$(BIN)/samegold refute --seed $(SEED) --profile fast
+	$(BIN)/samegold refute --seed $(SEED) --profile ci
 
 .PHONY: doctor
 doctor: install ## what is installed and what each lane needs

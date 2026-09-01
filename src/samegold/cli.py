@@ -232,7 +232,12 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     java = shutil.which("java")
     if java:
         out = subprocess.run([java, "-version"], capture_output=True, text=True, check=False)
-        first = (out.stderr or out.stdout).splitlines()[0] if (out.stderr or out.stdout) else "?"
+        # Some environments prepend a JAVA_TOOL_OPTIONS banner that is longer than the
+        # version itself; the first line that mentions "version" is the one worth printing.
+        lines = [
+            line for line in (out.stderr or out.stdout).splitlines() if "version" in line.lower()
+        ]
+        first = lines[0] if lines else "unknown"
         print(f"java              {first}")
     else:
         print("java              absent    (needed only by the Spark lane)")
@@ -284,7 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     rf = sub.add_parser("refute", help="run every claim with a seed of your choosing")
     rf.add_argument("--seed", required=True)
-    rf.add_argument("--profile", choices=sorted(PROFILES), default="fast")
+    rf.add_argument("--profile", choices=sorted(PROFILES), default="ci")
     rf.add_argument("--work", default=None)
     rf.set_defaults(func=cmd_refute)
 
