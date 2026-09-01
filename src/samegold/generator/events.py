@@ -234,6 +234,10 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # facts[(order_id, sku)] = dict with qty, price, sale_ts, arrival_ts of the sale
     facts: dict[tuple[str, str], dict[str, Any]] = {}
     returns: list[dict[str, Any]] = []
+    # Returns the contract refuses but that still belong to a month: outside the 45-day
+    # window, or for more units than were sold. They are reported in gold, so a rule that
+    # silently widens or narrows changes a published number instead of vanishing.
+    rejected_returns: list[dict[str, Any]] = []
     order_seq = 0
 
     for day in range(profile.days):
@@ -276,26 +280,47 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     "arrival_ts": arrival,
                 }
 
-                # amendment: changes the effective quantity before shipment
-                if rng.random() < profile.amend_rate:
-                    new_qty = max(1, qty + rng.choice([-1, 1, 2]))
-                    amend_ts = sale_ts + dt.timedelta(hours=rng.randrange(1, 48))
+                # Amendments: up to three per line, each replacing the effective quantity.
+                # More than one on purpose. With a single amendment per line the tie-break in
+                # "last amendment wins" is never exercised, and a mutation campaign reported
+                # the ORDER BY of that window as an equivalent mutant - it was not equivalent,
+                # it was untested. All of them land within 72 hours of the sale, which keeps
+                # them ahead of any return (returns start on day 5) and keeps the validity of
+                # a return decidable against a settled quantity.
+                amendments: list[dict[str, Any]] = []
+                current_qty = qty
+                for k in range(3):
+                    if rng.random() >= profile.amend_rate:
+                        break
+                    current_qty = max(1, current_qty + rng.choice([-1, 1, 2]))
+                    amend_ts = sale_ts + dt.timedelta(
+                        hours=12 * k + rng.randrange(1, 13), minutes=rng.randrange(0, 60)
+                    )
                     amend_arrival = amend_ts + _delay(rng, profile)
                     events.append(
                         (
                             amend_arrival,
                             {
-                                "event_id": f"am-{order_id}-{sku}",
+                                "event_id": f"am-{order_id}-{sku}-{k}",
                                 "event_type": "order_line_amended",
                                 "event_ts": amend_ts.isoformat(),
                                 "order_id": order_id,
                                 "sku": sku,
-                                "new_qty": new_qty,
+                                "new_qty": current_qty,
                             },
                         )
                     )
-                    facts[(order_id, sku)]["qty"] = new_qty
-                    facts[(order_id, sku)]["amend_arrival"] = amend_arrival
+                    amendments.append(
+                        {
+                            "event_id": f"am-{order_id}-{sku}-{k}",
+                            "event_ts": amend_ts,
+                            "arrival_ts": amend_arrival,
+                            "qty": current_qty,
+                        }
+                    )
+                if amendments:
+                    facts[(order_id, sku)]["qty"] = current_qty
+                    facts[(order_id, sku)]["amendments"] = amendments
 
                 # return: the interesting one
                 if rng.random() < profile.return_rate:
@@ -341,6 +366,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                             else QuarantineReason.RETURN_EXCEEDS_SOLD_QTY
                         )
                         quarantine_counts[str(reason)] += 1
+                        rejected_returns.append(
+                            {"sale_ts": sale_ts, "arrival_ts": r_arrival, "reason": str(reason)}
+                        )
 
     # ---- noise: duplicates and corrupt records --------------------------------------
     originals = list(events)
@@ -437,8 +465,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # reached the boundary they moved (a zero quantity, a free line, a return exactly on the
     # 45th day, an event arriving exactly at the close instant). A generator that never
     # produces a boundary cannot detect a mistake at that boundary, and the mutation score
-    # was measuring the generator, not the pipeline. See docs/adr/0006 and the README note
-    # on how the score went from 0.71 to its published value.
+    # was measuring the generator, not the pipeline. See
+    # docs/adr/0006-mutants-are-generated-not-planted.md and the README note on how the score
+    # moved once the boundaries existed.
     boundary_seq = 0
 
     def _boundary_order(sale_ts: dt.datetime, qty: int, price: int, tag: str) -> tuple[str, str]:
@@ -539,6 +568,13 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         )
     )
     quarantine_counts[str(QuarantineReason.RETURN_OUTSIDE_WINDOW)] += 1
+    rejected_returns.append(
+        {
+            "sale_ts": mid,
+            "arrival_ts": r_ts + dt.timedelta(minutes=5),
+            "reason": str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
+        }
+    )
     # 5. A return at the very instant of the sale: inside, by contract (>=, not >).
     oid, sku = _boundary_order(mid, qty=1, price=7700, tag="return_at_sale_instant")
     events.append(
@@ -701,7 +737,79 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 20000,
             "sale_ts": sale_ts,
             "arrival_ts": sale_ts + dt.timedelta(minutes=5),
-            "amend_arrival": close0 + dt.timedelta(hours=2),
+            "amendments": [
+                {
+                    "event_id": f"am-{oid}-{sku}-0",
+                    "event_ts": amend_ts,
+                    "arrival_ts": close0 + dt.timedelta(hours=2),
+                    "qty": 7,
+                }
+            ],
+        }
+
+        # 10. Two amendments for the same line at the SAME event time, with different
+        #     quantities. Only the tie-break on event_id decides which one wins, and until
+        #     this case existed a mutant that flipped exactly that tie-break survived the
+        #     whole campaign. A tie-break nothing exercises is a coin toss with a comment.
+        boundary_seq += 1
+        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
+        sale_ts = base_ts + dt.timedelta(days=1, hours=10)
+        tie_ts = sale_ts + dt.timedelta(hours=6)
+        events.append(
+            (
+                sale_ts + dt.timedelta(minutes=3),
+                {
+                    "event_id": f"op-{oid}-{sku}",
+                    "event_type": "order_placed",
+                    "event_ts": sale_ts.isoformat(),
+                    "order_id": oid,
+                    "customer_id": customers[0],
+                    "sku": sku,
+                    "qty": 1,
+                    "unit_price_cents": 30000,
+                    "currency": CURRENCY,
+                    "boundary": "amendment_tie",
+                },
+            )
+        )
+        for suffix, tie_qty in (("a", 3), ("b", 9)):
+            events.append(
+                (
+                    tie_ts + dt.timedelta(minutes=4),
+                    {
+                        "event_id": f"am-{oid}-{sku}-{suffix}",
+                        "event_type": "order_line_amended",
+                        "event_ts": tie_ts.isoformat(),
+                        "order_id": oid,
+                        "sku": sku,
+                        "new_qty": tie_qty,
+                        "boundary": "amendment_tie",
+                    },
+                )
+            )
+        # The contract says the last amendment wins, ordered by event time and then by event
+        # id descending, so "am-...-b" (9 units) is the effective quantity.
+        facts[(oid, sku)] = {
+            "customer_id": customers[0],
+            "qty0": 1,
+            "qty": 9,
+            "unit_price_cents": 30000,
+            "sale_ts": sale_ts,
+            "arrival_ts": sale_ts + dt.timedelta(minutes=3),
+            "amendments": [
+                {
+                    "event_id": f"am-{oid}-{sku}-a",
+                    "event_ts": tie_ts,
+                    "arrival_ts": tie_ts + dt.timedelta(minutes=4),
+                    "qty": 3,
+                },
+                {
+                    "event_id": f"am-{oid}-{sku}-b",
+                    "event_ts": tie_ts,
+                    "arrival_ts": tie_ts + dt.timedelta(minutes=4),
+                    "qty": 9,
+                },
+            ],
         }
 
     # ---- the ledger ------------------------------------------------------------------
@@ -710,6 +818,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         refunds: dict[str, int] = defaultdict(int)
         line_count: dict[str, int] = defaultdict(int)
         return_count: dict[str, int] = defaultdict(int)
+        rejected_count: dict[str, int] = defaultdict(int)
         for (_oid, _sku), f in facts.items():
             if f["arrival_ts"] > close:
                 continue  # the sale itself is not known yet at this close
@@ -717,10 +826,18 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             # amendment has not arrived, the original quantity is what finance saw, and the
             # late amendment becomes a restatement. Using the final quantity here would
             # quietly assume perfect foresight and would hide half of the restatements.
-            known_amendment: dt.datetime | None = f.get("amend_arrival")
+            # The quantity known at this close: the latest amendment (by event time) among
+            # those that had ARRIVED by the close. An amendment still in flight has not
+            # happened as far as finance is concerned, and it becomes a restatement later.
+            arrived_amendments = [a for a in f.get("amendments", []) if a["arrival_ts"] <= close]
+            # Latest by (event_ts, event_id). The event_id half is not decoration: two
+            # amendments can share an event time, and without a deterministic tie-break the
+            # answer depends on the order rows happen to be read in. A mutation that flipped
+            # exactly this tie-break survived the campaign until the generator started
+            # producing the case (boundary case 10).
             qty = (
-                int(f["qty"])
-                if known_amendment is not None and known_amendment <= close
+                int(max(arrived_amendments, key=lambda a: (a["event_ts"], a["event_id"]))["qty"])
+                if arrived_amendments
                 else int(f["qty0"])
             )
             month = accounting_month(f["sale_ts"])
@@ -731,6 +848,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 month = accounting_month(r["sale_ts"])
                 refunds[month] += int(r["qty"]) * int(r["unit_price_cents"])
                 return_count[month] += 1
+        for r in rejected_returns:
+            if r["arrival_ts"] <= close:
+                rejected_count[accounting_month(r["sale_ts"])] += 1
         for month in sorted(set(gross) | set(refunds)):
             g, rr = gross[month], refunds[month]
             ledger.revenue[(month, close.isoformat())] = {
@@ -739,6 +859,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 "net_cents": g - rr,
                 "line_count": line_count[month],
                 "return_count": return_count[month],
+                "returns_rejected_count": rejected_count[month],
             }
 
     # ---- write files ------------------------------------------------------------------

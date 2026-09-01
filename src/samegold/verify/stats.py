@@ -57,5 +57,8 @@ def cohen_kappa(both: int, only_a: int, only_b: int, neither: int) -> float:
     pa1, pb1 = (both + only_a) / n, (both + only_b) / n
     pe = pa1 * pb1 + (1 - pa1) * (1 - pb1)
     if pe == 1.0:
-        return 1.0
+        # Undefined, not perfect. Two witnesses that both killed everything (or both killed
+        # nothing) have no variation to agree about, and returning 1.0 would report "one
+        # witness wearing two hats" for a pair that has told us nothing at all.
+        return float("nan")
     return (po - pe) / (1 - pe)

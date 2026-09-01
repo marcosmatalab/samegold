@@ -1,0 +1,65 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "dimension_rows": 265,
+    "identifiers_left_in_the_log": [],
+    "leaks_in_masked_dimension": 0,
+    "leaks_in_raw_dimension": 1,
+    "purge": {
+      "cutoff": "2026-02-04",
+      "files_removed_by_vacuum": 1,
+      "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
+      "rows_deleted": 243,
+      "version_after": 3,
+      "version_before": 0
+    }
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-08",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "hash": "fd4da76e1fc608b87e374ca52d14af6f",
+  "not_claimed": [
+    "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
+    "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
+  ],
+  "prev": "630518575dac844d48505fdb1690687b",
+  "runtime": "oss-local",
+  "title": "no direct identifier reaches gold, and a purge really purges",
+  "verdict": {
+    "claim_id": "SG-08",
+    "note": "masking, exposure check and purge",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 6,
+      "trials": 6,
+      "wilson95": [
+        0.609666,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
+      "duration_s": 0.636,
+      "n": 1,
+      "profile": "ci",
+      "runtime": "oss-local",
+      "seed_purpose": "privacy",
+      "seed_source": "commit",
+      "seeds": [
+        1693148617681004966
+      ],
+      "started_at": "2026-09-01T17:45:31+00:00"
+    }
+  }
+}

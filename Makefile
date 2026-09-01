@@ -51,12 +51,25 @@ delta: install-spark ## the full Spark + Delta lane (needs Maven Central)
 	$(BIN)/pytest tests/spark tests/delta -q
 
 .PHONY: faults
-faults: install-spark ## the crash campaign (kills the writer at each structural point)
-	SAMEGOLD_STORAGE=parquet $(BIN)/python -m samegold.faults.campaign --repetitions 3
+faults: install-spark ## the crash campaign, with its negative control (about 8 minutes)
+	SAMEGOLD_STORAGE=parquet $(BIN)/samegold evidence --claims SG-07 --repetitions 10
+
+.PHONY: cost
+cost: install ## the layout experiments: compaction, clustering, partitioning, delete cost
+	$(BIN)/samegold evidence --claims SG-09
+
+.PHONY: privacy
+privacy: install ## masking, the exposure check and a retention purge that really purges
+	$(BIN)/samegold evidence --claims SG-08
 
 .PHONY: evidence
-evidence: install ## run every claim and append to evidence/history.jsonl
+evidence: install ## run every claim except the crash campaign (which needs a JVM)
 	$(BIN)/samegold evidence --profile $(PROFILE)
+
+.PHONY: evidence-full
+evidence-full: install-spark ## every claim including SG-07; about fifteen minutes
+	$(BIN)/samegold evidence --profile $(PROFILE)
+	SAMEGOLD_STORAGE=parquet $(BIN)/samegold evidence --claims SG-07 --repetitions 10
 
 .PHONY: readme
 readme: install ## render README.md and CLAIMS.md from the evidence

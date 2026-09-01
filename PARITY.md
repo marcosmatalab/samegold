@@ -26,7 +26,7 @@ transferred.
 |---|---|---|---|
 | Spark Declarative Pipelines | yes, Apache Spark 4.2 (`spark-pipelines run`) | yes, Lakeflow | the spec file is `spark-pipeline.yml`; the OSS CLI has `init`, `run`, `dry-run` |
 | expectations / data quality in the pipeline | **no** - not in the OSS SDP | yes | the OSS lane enforces the same rules as a `CASE` in `transform.quarantine_reason()` |
-| AUTO CDC / SCD Type 2 as a primitive | **no** | yes, including bitemporal tracking | the OSS lane writes the `MERGE` by hand, which is what the exam asks you to be able to do anyway |
+| AUTO CDC | **partial**: Spark 4.2 added declarative SCD **Type 1** upserts to open-source SDP; **Type 2 is Databricks-only** | yes, Type 1 and Type 2, with bitemporal tracking | the OSS lane builds Type 2 from the source versions and writes the `MERGE` by hand, which is what the exam asks you to be able to do anyway |
 | pipeline event log | **no** | yes | the OSS lane records its own metrics into the evidence store |
 | Delta Lake | 4.4.0 OSS | managed by Unity Catalog | `io.delta:delta-spark_4.2_2.13:4.4.0` |
 | liquid clustering | `CLUSTER BY` yes | `CLUSTER BY AUTO` also | automatic clustering needs predictive optimization, which is Databricks-only |
@@ -39,18 +39,22 @@ transferred.
 | bundles (Declarative Automation Bundles, formerly Asset Bundles) | n/a | yes, deployed from the CI runner with a PAT | Free Edition restricts outbound traffic, so deploying *from inside* the workspace is unreliable; deploy from outside |
 | continuous streaming | yes, locally | **no** - time-based triggers are rejected on serverless (`INFINITE_STREAMING_TRIGGER_NOT_SUPPORTED`); one active pipeline per type, and quota exhaustion stops compute for the day | everything is designed around `Trigger.AvailableNow` plus a scheduled job |
 | killing the process mid-write | yes | **no** - serverless gives you no process to kill | the whole crash campaign lives in the OSS lane, and that is stated rather than implied |
+| Delta through a second implementation | yes: delta-rs 1.6.3 reads and writes the same tables, and the cost lab and the purge run on it | n/a | multi-engine interoperability is what the format is for, and it is also how the Delta-protocol claims get executed on a machine with no route to Maven |
 
 ## Claim by claim
 
 | claim | verified in | not verified in |
 |---|---|---|
-| SG-01 two implementations agree | OSS | Databricks: the reference cannot run there |
+| SG-00 repository facts | OSS | |
+| SG-01 two implementations agree on the versioned close | OSS | Databricks: the reference cannot run there |
 | SG-02 re-delivery is a no-op | OSS | Databricks: same input, different ingestion semantics; a separate run is needed |
-| SG-03 mutation campaign | OSS | Databricks: mutating a deployed pipeline is not a thing you should do to a workspace |
+| SG-03 mutation campaign | OSS | Databricks: mutating a deployed pipeline is not something to do to a workspace |
 | SG-04 a closed month moves | OSS | reproduced on Databricks as a dashboard, as illustration, not as evidence |
 | SG-05 invariants | both | |
-| SG-06 seed provenance | OSS | |
-| SG-07 crash campaign | OSS | Databricks: no process to kill, by design |
+| SG-06 evidence chain and seed provenance | OSS | |
+| SG-07 crash campaign | OSS | Databricks: serverless gives you no process to kill, by design |
+| SG-08 masking, exposure check, retention purge | OSS | Databricks: row filters and column masks are declared there, and unenforceable without account groups |
+| SG-09 cost lab | OSS (delta-rs) | Databricks: the same experiments would be more interesting with predictive optimization and `CLUSTER BY AUTO`, and neither exists outside it |
 
 ## Cost
 

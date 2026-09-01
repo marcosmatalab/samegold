@@ -1,32 +1,33 @@
 # Milestones
 
-Where the repository is and what each remaining step buys. Hours are the author's estimate at
-the point of writing; the ones already done carry their measured cost.
+Where the repository is and what each remaining step buys. Hours are the author's estimate;
+the ones already done carry their measured cost.
 
 | id | milestone | state | hours |
 |---|---|---|---|
-| M0 | domain, contract, seeded generator with a by-construction ledger | done | 14 |
+| M0 | domain, contract, seeded generator with a by-construction ledger and ten boundary cases | done | 16 |
 | M1 | DuckDB reference, canonical digest, typed verdicts, invariants | done | 12 |
-| M2 | mutation engine (SQL AST + Python AST), specification mutants, witness matrix, equivalence classification | done | 16 |
-| M3 | evidence store, README rendering, drift gate, `demo` in under 10 s | done | 8 |
-| M4 | Spark implementation, agreement with the reference at every close, shuffle-independence | done | 10 |
-| M5 | crash campaign on the silver stage with structural points | done | 10 |
-| M6 | Delta lane: SCD2 by `MERGE`, CDF, time travel, `OPTIMIZE`, the delta CI job green | next | 14 |
-| M7 | Spark Declarative Pipelines: the same transformations as a declarative pipeline, running locally and on Databricks | next | 10 |
-| M8 | cost lab: file sizing, liquid clustering, deletion vectors, partition pruning, each measured before and after with repetitions and intervals | | 16 |
-| M9 | Databricks Free Edition lane: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | | 18 |
-| M10 | governance as code: declared grants, row filters and column masks, plus a drift test | | 10 |
-| M11 | duplicate-escape measurement: stateful streaming dedup versus stateless dedup at the gold boundary, with the escape rate published | | 8 |
-| M12 | Delta Sharing (open-source server) and a consumer notebook | | 6 |
-| M13 | operational documentation: runbook, post-mortem of the restatement incident, on-call notes | | 6 |
+| M2 | mutation engine (SQL and Python AST), specification mutants, witness matrix, equivalence classification with assumption probes | done | 20 |
+| M3 | evidence store with a hash chain and seed derivation, README rendering, drift gate, `demo` under 10 s | done | 12 |
+| M4 | Spark implementation, agreement with the reference over the whole version history, shuffle and order independence | done | 12 |
+| M5 | crash campaign with structural points and a negative control | done | 12 |
+| M6 | bitemporal close: versions, `restated_at`, restatement reasons, in both implementations | done | 8 |
+| M7 | SCD2 as a pure function with a property test, plus the thin Delta MERGE over it | done | 8 |
+| M8 | cost lab on real Delta tables: compaction, clustering at two file sizes, partitioning, delete cost | done | 10 |
+| M9 | governance: anonymisation, column classification, exposure check, retention purge | done | 8 |
+| M10 | Delta on Spark green: `MERGE`, CDF, `OPTIMIZE`, time travel, the delta CI job | next | 10 |
+| M11 | Spark Declarative Pipelines running locally and on Databricks | next | 10 |
+| M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | | 18 |
+| M13 | grants and masks deployed, with a drift test comparing deployed to declared | | 8 |
+| M14 | the duplicate-escape measurement: stateful streaming dedup versus the stateless dedup at the gold boundary | | 8 |
+| M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |
+| M16 | operational documentation: runbook, the post-mortem of the restatement incident, on-call notes | | 6 |
 
-Total remaining: about 88 hours.
+Remaining: about 64 hours.
 
 ## Order and why
 
-M6 before M7 because a declarative pipeline that writes Parquet instead of Delta is a
-different program, and finding that out after M7 would waste M7. M8 before M9 because a cost
-experiment is worth more on a machine whose configuration is known than on a serverless
-workspace whose sizing is invisible. M9 before M10 because a grant cannot drift before it has
-been deployed once. M11 last of the measurement milestones because it is the only one whose
+M10 before M11 because a declarative pipeline that writes Parquet instead of Delta is a
+different program, and finding that out after M11 would waste M11. M12 before M13 because a
+grant cannot drift before it has been deployed once. M14 late because it is the only one whose
 result may be uncomfortable, and it should not be able to delay the rest.

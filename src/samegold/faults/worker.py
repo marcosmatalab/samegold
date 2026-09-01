@@ -12,6 +12,7 @@ which is the property the crash points are there to falsify.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ from pathlib import Path
 from samegold.faults.barrier import CrashBarrier
 from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
 from samegold.pipelines.session import StorageMode, build_session
-from samegold.pipelines.transform import silver
+from samegold.pipelines.transform import classify
 
 
 def run(bronze: Path, out: Path, files_per_trigger: int = 40) -> int:
@@ -36,16 +37,20 @@ def run(bronze: Path, out: Path, files_per_trigger: int = 40) -> int:
         .load(str(bronze))
     )
 
+    # The writer is a knob, and the knob is the negative control. "overwrite" is idempotent
+    # by construction: a batch owns its own directory and rewrites it, so replaying it after a
+    # crash cannot double the rows. "append" is the hopeful version that most pipelines
+    # actually ship. The campaign runs the harness against BOTH, and a harness that cannot
+    # tell them apart is not measuring anything - which is exactly what an adversarial review
+    # demonstrated against the first version of this file.
+    write_mode = os.environ.get("SAMEGOLD_WRITER", "overwrite")
+
     def write_batch(batch_df, batch_id: int) -> None:  # type: ignore[no-untyped-def]
         barrier.reach("before_batch_write", batch_id)
         target = silver_path / f"batch_id={batch_id}"
-        # Idempotent by construction: a batch owns its own directory and overwrites it, so
-        # replaying a batch after a crash cannot append the same rows twice. The alternative
-        # (append mode) is the version that fails at the after_batch_write point, which is
-        # why that point exists.
         (
-            silver(batch_df)
-            .write.mode("overwrite")
+            classify(batch_df)
+            .write.mode(write_mode)
             .format(str(StorageMode.from_env()))
             .save(str(target))
         )

@@ -23,7 +23,8 @@ ALLOWED: dict[str, set[str]] = {
     "generator": {"domain"},
     "oracle": {"domain"},
     "mutation": {"domain", "verify", "oracle"},
-    "evidence": {"verify"},
+    # evidence recomputes seeds to validate a record, which is the whole point of the gate.
+    "evidence": {"verify", "generator"},
     # faults drives the real pipeline (it has to be the same program) and reads the result
     # back with a different engine, which is why it may reach for pipelines and for duckdb.
     "faults": {"domain", "verify", "evidence", "pipelines", "generator"},
@@ -32,6 +33,9 @@ ALLOWED: dict[str, set[str]] = {
     "ingest": {"domain", "pipelines"},
     "pipelines": {"domain", "verify", "ingest"},
     "cost": {"domain", "verify", "evidence"},
+    # governance masks rows on their way into gold and purges Delta tables, so it needs the
+    # contract and delta-rs and nothing else.
+    "governance": {"domain"},
 }
 
 # Third-party imports that are only allowed inside certain packages.
@@ -39,7 +43,7 @@ HEAVY = {
     "pyspark": {"pipelines", "faults", "cost", "ingest"},
     "delta": {"pipelines", "faults", "cost", "ingest"},
     "duckdb": {"oracle", "mutation", "faults"},
-    "deltalake": {"oracle", "faults", "cost"},
+    "deltalake": {"oracle", "faults", "cost", "governance"},
     "sqlglot": {"mutation"},
 }
 
@@ -79,6 +83,12 @@ def test_layering(package: str, path: Path) -> None:
 
 @pytest.mark.parametrize(("package", "path"), _modules(), ids=lambda v: str(v))
 def test_heavy_dependencies_stay_in_their_lane(package: str, path: Path) -> None:
+    if package == "":
+        # cli.py and claims.py are the composition root: their job is to reach into every
+        # lane. They import the heavy dependencies INSIDE the functions that need them, which
+        # is what keeps the fast lane free of a JVM, and tests/fast/test_architecture.py's
+        # last test is the one that checks that property directly.
+        return
     for name in _imports(path):
         root = name.split(".")[0]
         if root in HEAVY and package not in HEAVY[root] and path.name != "record.py":

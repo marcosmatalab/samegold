@@ -102,7 +102,7 @@ class Event:
 
 # Column sets that must never take part in a digest, because their value depends on the
 # wall clock, on the physical layout, or on the engine. Enforced by verify/digest.py and
-# by tests/fast/test_digest_projection.py, not by convention.
+# by tests/fast/test_digest.py, not by convention.
 NON_DETERMINISTIC_COLUMNS: frozenset[str] = frozenset(
     {
         "arrival_ts",

@@ -33,5 +33,5 @@ jobs:
           ruff check src tests
           ruff format --check src tests
           mypy
-      - name: documents match the evidence
+      - name: the evidence chain verifies and the documents match it
         run: samegold check

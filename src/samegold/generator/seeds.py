@@ -3,8 +3,14 @@
 The attack this defends against is the obvious one: an author who can pick seeds can pick
 the seeds under which the harness is green. Deriving them from the commit SHA means that
 choosing a favourable seed requires changing the code, which changes the SHA, which changes
-the seed. The evidence gate (evidence/store.py) rejects any run whose seeds do not match
-the SHA recorded in the same evidence record.
+the seed.
+
+The rule is enforced, not merely stated: ``EvidenceStore.append`` recomputes the seeds from
+the commit and the purpose recorded in the record and refuses to write it when they differ,
+and ``verify_chain`` re-checks every record already in the history. An earlier version of
+this docstring claimed that gate existed before it did, and an adversarial review wrote two
+records by hand with chosen seeds and a fabricated CI link; both are rejected now, and the
+test that reproduces the attack is tests/fast/test_evidence_gate.py.
 
 ``SAMEGOLD_SEED_OVERRIDE`` exists for one purpose only: letting a third party run
 ``make refute SEED=...`` with a seed the author never saw. Runs made with an override are

@@ -1,0 +1,63 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "adrs": 9,
+    "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
+    "fast_lane_green": true,
+    "fast_lane_seconds": 36.5,
+    "markdown_documents": 16,
+    "python_modules": 47,
+    "source_lines": 7317,
+    "test_lines": 2104,
+    "tests_delta": 6,
+    "tests_fast": 287,
+    "tests_spark": 10
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-00",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "hash": "12c2f6f0b8bae703d3229397daadc545",
+  "not_claimed": [
+    "that line counts measure anything about quality"
+  ],
+  "prev": "b2d4ff1f7941abe5b080a82e9f4a162c",
+  "runtime": "oss-local",
+  "title": "what this repository contains, counted",
+  "verdict": {
+    "claim_id": "SG-00",
+    "note": "fast lane green",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 287,
+      "trials": 287,
+      "wilson95": [
+        0.986792,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
+      "duration_s": 38.555,
+      "n": 1,
+      "profile": "n/a",
+      "runtime": "oss-local",
+      "seed_purpose": "facts",
+      "seed_source": "commit",
+      "seeds": [
+        3295405562698603098
+      ],
+      "started_at": "2026-09-01T17:46:28+00:00"
+    }
+  }
+}

@@ -71,7 +71,7 @@ def build_session(
         # Adaptive execution changes the number of output files between runs. It stays ON
         # because turning it off to make a digest stable would be tuning the experiment to
         # fit the claim; instead the digest is taken over a projection with a total order,
-        # which is insensitive to it. See docs/adr/0005.
+        # which is insensitive to it. See docs/adr/0005-adaptive-execution-stays-on.md.
         .config("spark.sql.adaptive.enabled", "true")
     )
     if mode is StorageMode.DELTA:

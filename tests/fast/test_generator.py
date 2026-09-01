@@ -37,7 +37,7 @@ def test_different_seeds_produce_different_data(tmp_path: Path) -> None:
 def test_every_boundary_case_is_present(tmp_path: Path) -> None:
     """The mutation campaign is only as good as the boundaries the data reaches.
 
-    These nine tags were added *because* mutants survived without them; asserting their
+    These ten tags were added *because* mutants survived without them; asserting their
     presence keeps a future refactor from quietly removing them and inflating the score.
     """
     generate(tmp_path / "g", seed=99, profile=FAST)
@@ -56,6 +56,7 @@ def test_every_boundary_case_is_present(tmp_path: Path) -> None:
         "arrives_at_close_instant",
         "arrives_after_close",
         "amendment_after_close",
+        "amendment_tie",
     }
 
 

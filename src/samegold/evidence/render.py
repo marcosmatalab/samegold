@@ -4,8 +4,9 @@ Two mechanisms, both enforced in the fast lane:
 
   * a generated block between ``<!-- samegold:begin claims -->`` and ``<!-- samegold:end
     claims -->``, rebuilt from ``evidence/history.jsonl``;
-  * inline tokens of the form ``[[sg:C1.rate]]`` anywhere in any markdown file, replaced by
-    the value from the record for that claim.
+  * inline anchors of the form ``<!--sg:SG-01.rate-->value<!--/sg-->`` anywhere in any
+    markdown file: the value between the comments is replaced from the record for that claim,
+    and the comments survive so the next render can update it again.
 
 What makes this more than tidiness: the renderer refuses to print a number at all when the
 record behind it is weak. A record produced outside CI is printed with "(local run, not
@@ -61,7 +62,12 @@ def _value_for(record: dict[str, Any], field: str) -> str:
     if field == "point":
         return "n/a" if not rate else f"{rate['point']:.2%}"
     if field.startswith("artifact."):
-        return str(record.get("artifacts", {}).get(field.split(".", 1)[1], "n/a"))
+        value = record.get("artifacts", {}).get(field.split(".", 1)[1], "n/a")
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        if isinstance(value, int):
+            return f"{value:,}".replace(",", " ")
+        return str(value)
     raise KeyError(f"unknown evidence field {field!r}")
 
 

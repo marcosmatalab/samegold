@@ -25,7 +25,7 @@ from __future__ import annotations
 import ast
 import copy
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import sqlglot
 from sqlglot import exp
@@ -42,6 +42,7 @@ class Mutant:
     original: str
     mutated: str
     source: str
+    context: str = "final"
     equivalent_reason: str | None = None
 
     def to_json(self) -> dict[str, Any]:
@@ -50,6 +51,7 @@ class Mutant:
             "kind": self.kind,
             "operator": self.operator,
             "location": self.location,
+            "context": self.context,
             "original": self.original,
             "mutated": self.mutated,
             "equivalent_reason": self.equivalent_reason,
@@ -69,6 +71,24 @@ _CMP_SWAP: dict[type[exp.Expression], type[exp.Expression]] = {
 _JOIN_SWAP = {"LEFT": "INNER", "FULL": "LEFT", "INNER": "LEFT", "": "LEFT"}
 
 
+def _cte_of(node: exp.Expression) -> str:
+    """The name of the CTE a node belongs to, or "final" for the outermost SELECT.
+
+    Equivalence is judged per CTE, never per operator: flipping an ORDER BY in the final
+    presentation clause is genuinely equivalent, and flipping the same operator inside the
+    deduplication window decides WHICH ROW SURVIVES. An earlier version of the equivalence
+    table matched on the operator alone and, through that single wildcard, quietly classified
+    four row-selecting mutants as harmless. An adversarial review found all four.
+    """
+    current: Any = node
+    while current is not None:
+        if isinstance(current, exp.CTE):
+            alias = current.alias
+            return str(alias) if alias else "cte"
+        current = current.parent
+    return "final"
+
+
 def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
     """Every single-edit mutation of a SQL statement, in a stable order.
 
@@ -77,11 +97,14 @@ def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
     """
     tree = sqlglot.parse_one(sql, read=dialect)
     mutants: list[Mutant] = []
-    nodes = list(tree.walk())
+    # sqlglot types walk() as an iterator of its own `Expr` alias, which mypy will not unify
+    # with `Expression` even though every element is one. One cast at the boundary is honest;
+    # scattering `type: ignore` over the call sites is not.
+    nodes = cast("list[exp.Expression]", list(tree.walk()))
 
     def emit(operator: str, index: int, mutate: Any, location: str, before: str) -> None:
         clone = tree.copy()
-        target = list(clone.walk())[index]
+        target = cast("list[exp.Expression]", list(clone.walk()))[index]
         replacement = mutate(target)
         if replacement is None:
             return
@@ -96,11 +119,19 @@ def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
                 original=before[:120],
                 mutated=after[:120],
                 source=clone.sql(dialect=dialect, pretty=True),
+                context=_cte_of(nodes[index]),
             )
         )
 
     for index, node in enumerate(nodes):
         cls = type(node)
+        if _is_function_argument(node):
+            # A named argument of a table function - read_json(format = 'newline_delimited') -
+            # parses as an equality. Mutating it produces `format <> 'newline_delimited'`,
+            # which is a binder error, not a fault in the business logic. Counting those as
+            # kills inflated the score with eight mutants that only proved the SQL parser
+            # works; an adversarial review found all eight.
+            continue
         if cls in _CMP_SWAP:
             emit(
                 f"cmp:{cls.__name__}->{_CMP_SWAP[cls].__name__}",
@@ -124,6 +155,19 @@ def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
                 _swap_join,
                 f"join#{index}",
                 node.sql(dialect=dialect)[:120],
+            )
+        elif (
+            isinstance(node, exp.Literal)
+            and node.is_number
+            and not _is_in_function(node)
+            and not _is_ordinal_position(node)
+        ):
+            emit(
+                "number:+1",
+                index,
+                _bump_number,
+                f"number#{index}",
+                node.sql(dialect=dialect),
             )
         elif isinstance(node, exp.Sum):
             emit(
@@ -152,6 +196,60 @@ def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
     return mutants
 
 
+def _is_function_argument(node: exp.Expression) -> bool:
+    """True when the node is a named argument of a table function such as read_json.
+
+    Deliberately narrow: only a direct child of an ``Anonymous`` function call. An earlier,
+    wider version also walked up through CASE and aggregate nodes (both are Func subclasses
+    in sqlglot) and silently removed a third of the mutants, including every comparison
+    inside the return-window CASE. A mutation operator that quietly generates less is worse
+    than one that generates noise, because the score goes up either way.
+    """
+    return isinstance(node, exp.EQ) and isinstance(node.parent, exp.Anonymous)
+
+
+def _is_in_function(node: exp.Expression) -> bool:
+    """True when a literal is an argument of a function call (read_json's options, md5's
+    separator). Bumping those produces a binder error, not a fault in the business logic."""
+    return isinstance(node.parent, exp.Anonymous | exp.Kwarg)
+
+
+def _is_ordinal_position(node: exp.Expression) -> bool:
+    """True for the `1` in `GROUP BY 1` or `ORDER BY 1`.
+
+    Bumping it produces `GROUP BY 2`, which DuckDB rejects with "GROUP BY clause cannot
+    contain aggregates". That is the SQL parser refusing a syntactically invalid query, and
+    counting it as a kill credits the harness with three detections it did not make. The
+    campaign claimed exactly that until an adversarial review reproduced the three.
+    """
+    parent = node.parent
+    if parent is None:
+        return False
+    if isinstance(parent, exp.Group | exp.Order):
+        return True
+    grandparent = parent.parent
+    return isinstance(parent, exp.Ordered) and isinstance(grandparent, exp.Order)
+
+
+def _bump_number(node: exp.Expression) -> exp.Expression | None:
+    """45 * 86400 becomes 46 * 86400, and row_number() = 1 becomes = 2.
+
+    This family replaced the interval family when the return window moved from
+    `INTERVAL 45 DAY` to a comparison in seconds. Without it, the whole class of
+    window-boundary mistakes would have stopped being tested the moment the SQL changed, and
+    the score would have gone UP.
+    """
+    if not isinstance(node, exp.Literal) or not node.is_number:
+        return None
+    text = str(node.this)
+    try:
+        bumped = str(int(text) + 1)
+    except ValueError:
+        return None
+    literal: exp.Expression = exp.Literal(this=bumped, is_string=False)
+    return literal
+
+
 def _bump_interval(node: exp.Expression) -> exp.Expression | None:
     """INTERVAL 45 DAY -> INTERVAL 46 DAY.
 
@@ -173,7 +271,7 @@ def _bump_interval(node: exp.Expression) -> exp.Expression | None:
 
 
 def _swap_join(node: exp.Expression) -> exp.Expression | None:
-    clone = node.copy()
+    clone: Any = node.copy()
     side = (clone.args.get("side") or "").upper()
     kind = (clone.args.get("kind") or "").upper()
     current = side or kind
@@ -186,7 +284,8 @@ def _swap_join(node: exp.Expression) -> exp.Expression | None:
     else:
         clone.set("side", new)
         clone.set("kind", None)
-    return clone
+    swapped: exp.Expression = clone
+    return swapped
 
 
 def _flip_order(node: exp.Expression) -> exp.Expression:

@@ -10,11 +10,29 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
+from samegold.domain.bitemporal import versions_from_snapshots
+
 _SQL_PATH = Path(__file__).with_name("gold_revenue.sql")
 _SCD2_PATH = Path(__file__).with_name("gold_scd2.sql")
+
+
+def _connect() -> duckdb.DuckDBPyConnection:
+    """A connection whose session timezone is pinned to UTC.
+
+    Not a detail. DuckDB resolves TIMESTAMPTZ rendering and interval arithmetic against the
+    session timezone, which defaults to the machine's. Leaving it unset means the close is
+    computed differently on a developer laptop in Madrid than on a CI runner in UTC, and the
+    difference only appears across a daylight-saving boundary, which is to say once or twice
+    a year and never in the demo. Every explicit conversion to the accounting timezone is
+    written out in the SQL instead.
+    """
+    con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
+    return con
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,26 +43,28 @@ class RevenueRow:
     net_cents: int
     line_count: int
     return_count: int
+    returns_rejected_count: int
 
 
 def revenue_by_month_as_of(bronze_dir: Path, as_of: dt.datetime) -> list[RevenueRow]:
     """gold.revenue_by_month as it would have been reported at ``as_of``."""
     glob = str(Path(bronze_dir) / "**" / "*.json")
     sql = _SQL_PATH.read_text(encoding="utf-8")
-    con = duckdb.connect()
+    con = _connect()
     try:
         rows = con.execute(sql, {"glob": glob, "as_of": as_of.isoformat()}).fetchall()
     finally:
         con.close()
     return [
-        RevenueRow(str(r[0]), int(r[1]), int(r[2]), int(r[3]), int(r[4]), int(r[5])) for r in rows
+        RevenueRow(str(r[0]), int(r[1]), int(r[2]), int(r[3]), int(r[4]), int(r[5]), int(r[6]))
+        for r in rows
     ]
 
 
 def scd2_as_of(bronze_dir: Path, as_of: dt.datetime) -> list[dict[str, object]]:
     """gold.dim_customer_scd2 as it would have stood at ``as_of``."""
     glob = str(Path(bronze_dir) / "**" / "*.json")
-    con = duckdb.connect()
+    con = _connect()
     try:
         rows = con.execute(
             _SCD2_PATH.read_text(encoding="utf-8"),
@@ -65,11 +85,41 @@ def scd2_as_of(bronze_dir: Path, as_of: dt.datetime) -> list[dict[str, object]]:
     ]
 
 
+def revenue_versions(bronze_dir: Path, closes: list[dt.datetime]) -> list[dict[str, Any]]:
+    """The versioned close table: one row per (accounting_month, close_version).
+
+    This is the real shape of gold. Until an adversarial review pointed it out, the projection
+    used for digests declared a ``close_version`` column that no implementation produced: the
+    tests injected a literal zero. A column that only exists in the test is not a column.
+    """
+    snapshots = [
+        (
+            close.isoformat(),
+            {
+                row.accounting_month: {
+                    "gross_cents": row.gross_cents,
+                    "returns_cents": row.returns_cents,
+                    "net_cents": row.net_cents,
+                    "line_count": row.line_count,
+                    "return_count": row.return_count,
+                    "returns_rejected_count": row.returns_rejected_count,
+                }
+                for row in revenue_by_month_as_of(bronze_dir, close)
+            },
+        )
+        for close in closes
+    ]
+    return versions_from_snapshots(snapshots)
+
+
 class DuckDBWitness:
     """Named wrapper so the witness matrix can talk about witnesses uniformly."""
 
     name = "duckdb"
     independence = "engine"  # different engine, same author, same contract
+
+    def versions(self, bronze_dir: Path, closes: list[dt.datetime]) -> list[dict[str, Any]]:
+        return revenue_versions(bronze_dir, closes)
 
     def scd2(self, bronze_dir: Path, as_of: dt.datetime) -> list[dict[str, object]]:
         return scd2_as_of(bronze_dir, as_of)
@@ -82,6 +132,7 @@ class DuckDBWitness:
                 "net_cents": r.net_cents,
                 "line_count": r.line_count,
                 "return_count": r.return_count,
+                "returns_rejected_count": r.returns_rejected_count,
             }
             for r in revenue_by_month_as_of(bronze_dir, as_of)
         }
@@ -143,7 +194,7 @@ def reference_counts(bronze_dir: Path) -> dict[str, int]:
     for path in sorted(bronze_dir.rglob("*.json")):
         with path.open("rb") as handle:
             raw_lines += sum(1 for line in handle if line.strip())
-    con = duckdb.connect()
+    con = _connect()
     try:
         row = con.execute(_COUNTS_SQL, {"glob": str(bronze_dir / "**" / "*.json")}).fetchone()
     finally:

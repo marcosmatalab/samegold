@@ -30,6 +30,7 @@ def test_a_runset_must_name_one_seed_per_run() -> None:
             seeds=(1, 2),
             commit_sha="a" * 40,
             seed_source="commit",
+            seed_purpose="witness",
             profile="fast",
             started_at="x",
             duration_s=0.0,
@@ -68,4 +69,14 @@ def test_rendered_rate_carries_the_interval() -> None:
 def test_kappa_is_one_for_perfect_agreement_and_zero_for_chance() -> None:
     assert cohen_kappa(both=10, only_a=0, only_b=0, neither=10) == pytest.approx(1.0)
     assert cohen_kappa(both=25, only_a=25, only_b=25, neither=25) == pytest.approx(0.0)
-    assert not math.isnan(cohen_kappa(both=1, only_a=0, only_b=0, neither=0))
+
+
+def test_kappa_is_undefined_when_there_is_nothing_to_agree_about() -> None:
+    """Two witnesses that both killed everything, or both killed nothing, have no variation.
+
+    The first version returned 1.0 there, which reported a pair that had told us nothing as
+    perfect agreement - and the witness matrix uses exactly that number to warn about "one
+    witness wearing two hats".
+    """
+    assert math.isnan(cohen_kappa(both=0, only_a=0, only_b=0, neither=10))
+    assert math.isnan(cohen_kappa(both=10, only_a=0, only_b=0, neither=0))

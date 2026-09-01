@@ -1,0 +1,188 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "file_counts_identical_across_runs": true,
+    "files_removed_by_compaction_pct": 92.5,
+    "measurements": {
+      "COST-01": {
+        "after": {
+          "bytes_not_skippable": 2239612,
+          "bytes_total": 2239612,
+          "files_not_skippable": 3,
+          "files_total": 3
+        },
+        "before": {
+          "bytes_not_skippable": 5640062,
+          "bytes_total": 5640062,
+          "files_not_skippable": 40,
+          "files_total": 40
+        },
+        "bytes_not_skippable_change_pct": -60.29,
+        "files_removed_pct": 92.5,
+        "optimize": {
+          "numFilesAdded": 3,
+          "numFilesRemoved": 40
+        }
+      },
+      "COST-02": {
+        "large_files": {
+          "clustered": {
+            "bytes_not_skippable": 2736641,
+            "bytes_total": 2736641,
+            "files_not_skippable": 2,
+            "files_total": 2
+          },
+          "share_clustered": 1.0,
+          "share_unclustered": 1.0,
+          "target_size_bytes": 2000000,
+          "unclustered": {
+            "bytes_not_skippable": 2260761,
+            "bytes_total": 2260761,
+            "files_not_skippable": 3,
+            "files_total": 3
+          }
+        },
+        "small_files": {
+          "clustered": {
+            "bytes_not_skippable": 844207,
+            "bytes_total": 3881783,
+            "files_not_skippable": 17,
+            "files_total": 79
+          },
+          "share_clustered": 0.2175,
+          "share_unclustered": 1.0,
+          "target_size_bytes": 125000,
+          "unclustered": {
+            "bytes_not_skippable": 5640062,
+            "bytes_total": 5640062,
+            "files_not_skippable": 40,
+            "files_total": 40
+          }
+        }
+      },
+      "COST-03": {
+        "clustered_month_predicate": {
+          "bytes_not_skippable": 1684616,
+          "bytes_total": 2736641,
+          "files_not_skippable": 1,
+          "files_total": 2
+        },
+        "clustered_sku_predicate": {
+          "bytes_not_skippable": 2736641,
+          "bytes_total": 2736641,
+          "files_not_skippable": 2,
+          "files_total": 2
+        },
+        "partitioned_files_for_month": 1,
+        "partitioned_files_total": 12,
+        "partitioned_sku_predicate": {
+          "bytes_not_skippable": 4940736,
+          "bytes_total": 4940736,
+          "files_not_skippable": 12,
+          "files_total": 12
+        }
+      },
+      "COST-04": {
+        "num_added_files": 1,
+        "num_copied_rows": 366600,
+        "num_deleted_rows": 33400,
+        "num_removed_files": 3,
+        "rows_copied_per_row_deleted": 10.98
+      },
+      "experiments": [
+        {
+          "control": "identical row content, identical predicate",
+          "experiment_id": "COST-01",
+          "metric": "files not skippable for a month predicate, and the bytes in them",
+          "not_attributable": "not a statement about write cost: compaction rewrote every row once",
+          "question": "What does compacting many small files buy?",
+          "treatment": "OPTIMIZE (bin-packing compaction) over the same rows"
+        },
+        {
+          "control": "same rows, both arms compacted to the same target size, same predicate",
+          "experiment_id": "COST-02",
+          "metric": "files not skippable for a sku predicate",
+          "not_attributable": "not attributable to file size: both arms are compacted with the same target",
+          "question": "Does clustering by (accounting_month, sku) help a sku predicate?",
+          "treatment": "Z-ORDER on (accounting_month, sku)"
+        },
+        {
+          "control": "same rows, both compacted, two predicates (month, sku)",
+          "experiment_id": "COST-03",
+          "metric": "files not skippable for each predicate",
+          "not_attributable": "not a general recommendation: it is a statement about these two predicates",
+          "question": "Partitioning by month versus clustering: which predicate does each one serve?",
+          "treatment": "PARTITION BY accounting_month"
+        },
+        {
+          "control": "same table, same predicate",
+          "experiment_id": "COST-04",
+          "metric": "rows copied to rewrite the survivors, and files added and removed",
+          "not_attributable": "not a deletion-vector measurement: with deletion vectors the metric changes shape, and that comparison belongs to the Databricks lane",
+          "question": "What does a delete cost when the survivors have to be rewritten?",
+          "treatment": "DELETE of one month"
+        }
+      ],
+      "month_probed": "2026-03",
+      "rows": 400000,
+      "sku_probed": "SKU-00042"
+    },
+    "repetitions": 2,
+    "rows_copied_per_row_deleted": 10.98,
+    "share_read_reduction_pct": 78.25,
+    "share_read_reduction_pct_range": [
+      78.25,
+      78.25
+    ]
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-09",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "hash": "b2d4ff1f7941abe5b080a82e9f4a162c",
+  "not_claimed": [
+    "anything about query latency: no timing is measured, on purpose",
+    "anything about DBU cost: system.billing needs an account console that Free Edition does not have, and wall time is not a substitute",
+    "that clustering always helps: at large file sizes it did nothing here, and the measurement that says so is a passing check rather than a footnote",
+    "that the byte counts are bit-for-bit reproducible: the parquet writer varies by about a tenth of a per cent between runs, and the range is published"
+  ],
+  "prev": "fd4da76e1fc608b87e374ca52d14af6f",
+  "runtime": "oss-local",
+  "title": "what layout costs, in files and bytes",
+  "verdict": {
+    "claim_id": "SG-09",
+    "note": "clustering cut the share read by 78.25%",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 5,
+      "trials": 5,
+      "wilson95": [
+        0.565518,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
+      "duration_s": 18.563,
+      "n": 1,
+      "profile": "lab",
+      "runtime": "oss-local",
+      "seed_purpose": "cost",
+      "seed_source": "commit",
+      "seeds": [
+        15481441802868214019
+      ],
+      "started_at": "2026-09-01T17:45:50+00:00"
+    }
+  }
+}

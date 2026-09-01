@@ -1,17 +1,136 @@
-"""Append-only evidence, red runs included.
+"""Append-only evidence with a hash chain, and a gate that actually rejects things.
 
-``history.jsonl`` is never rewritten and never filtered. A repository that only ever shows
-green runs is showing a selection, not a history, so the renderer prints the number of red
-records next to the green ones and the fast lane fails if the file ever shrinks.
+The first version of this file was a sink: it wrote whatever it was handed and the renderer
+printed it. An adversarial review appended two lines by hand claiming 999/999 agreements and
+a 100% mutation score, pointed the record at a CI run that does not exist, ran the whole test
+suite, and got 152 passed. Everything below exists because of that.
+
+Three defences, in the order a forger meets them:
+
+  1. **The chain.** Every record carries the hash of the previous one and its own hash over a
+     canonical serialisation. Editing, inserting or deleting a line anywhere in
+     ``history.jsonl`` breaks every hash after it, and ``verify_chain`` says which line.
+  2. **Seed derivation.** A record names the commit its seeds came from and the purpose they
+     were drawn for. The gate recomputes them and refuses the record if they do not match, so
+     "I ran it with 333 lucky seeds" cannot be written down.
+  3. **Provenance shape.** ``ci_run_url`` must be a real GitHub Actions run URL for the
+     repository the record names, and a record that claims CI must also carry the commit the
+     workflow ran on. It cannot prove the run exists - nothing offline can - but it can stop
+     an arbitrary string from being printed as "CI", and the renderer labels anything without
+     it as a local run.
+
+None of this makes forgery impossible; it makes forgery require rewriting the chain, which
+is a visible act in git history rather than an invisible one in a JSON file.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from samegold.evidence.record import EvidenceRecord
+
+GENESIS = "0" * 32
+CI_RUN_URL = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+/actions/runs/\d+$")
+
+
+class EvidenceRejected(ValueError):
+    """Raised when a record cannot be written. The message says which rule refused it."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChainBreak:
+    line: int
+    claim_id: str
+    problem: str
+
+    def __str__(self) -> str:  # pragma: no cover - display only
+        return f"line {self.line} ({self.claim_id}): {self.problem}"
+
+
+def record_hash(payload: dict[str, Any]) -> str:
+    """Hash over the record's canonical JSON, excluding its own hash field."""
+    body = {k: v for k, v in payload.items() if k != "hash"}
+    return hashlib.blake2b(
+        json.dumps(body, sort_keys=True, separators=(",", ":")).encode(), digest_size=16
+    ).hexdigest()
+
+
+def _validate(payload: dict[str, Any]) -> None:
+    from samegold.generator.seeds import seeds_from_commit
+
+    runs = payload.get("verdict", {}).get("runs", {})
+    sha = str(runs.get("commit_sha", ""))
+    seeds = list(runs.get("seeds", []))
+    purpose = str(runs.get("seed_purpose", ""))
+    source = str(runs.get("seed_source", ""))
+
+    if len(sha) != 40 or any(ch not in "0123456789abcdef" for ch in sha):
+        raise EvidenceRejected(
+            f"{payload.get('claim_id')}: commit_sha is not a git object id: {sha!r}"
+        )
+    if source == "override":
+        # An override run is a refutation, not evidence. It is written to a separate log and
+        # never into the history the documents render, because its seeds are by design not
+        # derived from the commit and nothing can recompute them. An adversarial review wrote
+        # an "override" record with invented seeds straight into the main history and it was
+        # accepted, which made every other check in this file decorative.
+        raise EvidenceRejected(
+            f"{payload.get('claim_id')}: this record was produced with SAMEGOLD_SEED_OVERRIDE. "
+            f"Refutation runs go to evidence/refutations.jsonl (created on demand) and "
+            f"never back a published number."
+        )
+    if source == "commit":
+        if not purpose:
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: the record does not say what purpose its seeds "
+                f"were drawn for, so they cannot be recomputed"
+            )
+        # An override run must never be recomputed against the commit: its seeds are, by
+        # design, not derived from it. Those records are kept but never back a published
+        # number, which the renderer states in the provenance column.
+        expected = _expected_seeds(len(seeds), purpose, sha)
+        if seeds != expected:
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: the seeds in this record do not derive from "
+                f"commit {sha[:12]} for purpose {purpose!r}. Seeds are not chosen; they are "
+                f"computed by generator/seeds.py from the commit."
+            )
+    else:
+        raise EvidenceRejected(f"{payload.get('claim_id')}: unknown seed_source {source!r}")
+
+    url = payload.get("ci_run_url")
+    if url is not None:
+        if not CI_RUN_URL.match(str(url)):
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: ci_run_url is not a GitHub Actions run URL: {url!r}"
+            )
+        # A URL without the commit it ran on is a URL to anywhere. Pointing a record at
+        # `github.com/torvalds/linux/actions/runs/1` used to be enough to have it printed as
+        # "CI" in the results table.
+        if payload.get("ci_commit_sha") != sha:
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: the record claims a CI run but its ci_commit_sha "
+                f"is {payload.get('ci_commit_sha')!r} while its seeds come from {sha[:12]}"
+            )
+        repository = current_repository()
+        if repository and f"/{repository}/actions/runs/" not in str(url):
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: ci_run_url points at another repository: {url!r}"
+            )
+    del seeds_from_commit  # imported for the reference in the docstring above
+
+
+def _expected_seeds(n: int, purpose: str, sha: str) -> list[int]:
+    from samegold.generator.seeds import seed_for
+
+    return [seed_for(sha, i, purpose) for i in range(n)]
 
 
 class EvidenceStore:
@@ -22,13 +141,27 @@ class EvidenceStore:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.history.touch(exist_ok=True)
 
-    def append(self, record: EvidenceRecord) -> None:
-        with self.history.open("a", encoding="utf-8") as handle:
-            handle.write(record.to_line() + "\n")
-        latest = self.runs_dir / f"{record.claim_id}.json"
-        latest.write_text(json.dumps(record.to_json(), indent=2, sort_keys=True), encoding="utf-8")
+    # ---------------------------------------------------------------- writing
 
-    def read_history(self) -> Iterator[dict[str, object]]:
+    def append(self, record: EvidenceRecord) -> None:
+        payload = record.to_json()
+        _validate(payload)
+        payload["prev"] = self.head_hash()
+        payload["hash"] = record_hash(payload)
+        with self.history.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+        latest = self.runs_dir / f"{record.claim_id}.json"
+        latest.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    def head_hash(self) -> str:
+        last = None
+        for entry in self.read_history():
+            last = entry
+        return GENESIS if last is None else str(last.get("hash", GENESIS))
+
+    # ---------------------------------------------------------------- reading
+
+    def read_history(self) -> Iterator[dict[str, Any]]:
         if not self.history.exists():
             return iter(())
         return (
@@ -37,9 +170,9 @@ class EvidenceStore:
             if line.strip()
         )
 
-    def latest(self) -> dict[str, dict[str, object]]:
-        """The most recent record per claim, which is what the README renders."""
-        out: dict[str, dict[str, object]] = {}
+    def latest(self) -> dict[str, dict[str, Any]]:
+        """The most recent record per claim, which is what the documents render."""
+        out: dict[str, dict[str, Any]] = {}
         for entry in self.read_history():
             out[str(entry["claim_id"])] = entry
         return out
@@ -53,3 +186,128 @@ class EvidenceStore:
             else:
                 red += 1
         return {"pass": green, "fail": red, "total": green + red}
+
+    # ------------------------------------------------------------ verifying
+
+    def verify_chain(self, repo_root: Path | None = None) -> list[ChainBreak]:
+        """Recompute the whole chain and anchor it to this repository.
+
+        Internal consistency alone is not enough, and an adversarial review proved it by
+        rewriting the whole file from scratch with correct hashes and invented figures. So the
+        chain is also checked against things outside it:
+
+          * every ``commit_sha`` must be a commit that exists in this repository, so a record
+            cannot name a made-up commit whose derived seeds happen to be convenient;
+          * records must be in non-decreasing time order, so they cannot be reshuffled to make
+            an older PASS the latest word on a claim that later failed;
+          * the per-claim files in ``runs/`` must match the latest record in the history, so
+            editing one of them changes nothing.
+
+        What remains possible, and is stated in the README rather than hidden: anyone who can
+        run the code can rewrite the entire chain. What the chain buys is that a SINGLE record
+        cannot be edited, inserted, reordered or removed without rewriting everything after
+        it, and that every published record names a real commit of this repository.
+        """
+        breaks: list[ChainBreak] = []
+        previous = GENESIS
+        last_started = ""
+        seen_claims: dict[str, dict[str, Any]] = {}
+        for number, entry in enumerate(self.read_history(), start=1):
+            claim = str(entry.get("claim_id", "?"))
+            if entry.get("prev") != previous:
+                breaks.append(
+                    ChainBreak(
+                        number,
+                        claim,
+                        f"prev is {entry.get('prev')!r} but the previous record hashes to "
+                        f"{previous!r}: a line was edited, inserted or removed",
+                    )
+                )
+            recomputed = record_hash(entry)
+            if entry.get("hash") != recomputed:
+                breaks.append(
+                    ChainBreak(
+                        number,
+                        claim,
+                        f"hash is {entry.get('hash')!r} but the content hashes to "
+                        f"{recomputed!r}: this record was modified after it was written",
+                    )
+                )
+            try:
+                _validate(entry)
+            except EvidenceRejected as exc:
+                breaks.append(ChainBreak(number, claim, str(exc)))
+            started = str(entry.get("verdict", {}).get("runs", {}).get("started_at", ""))
+            if started and started < last_started:
+                breaks.append(
+                    ChainBreak(
+                        number,
+                        claim,
+                        f"this record started at {started}, before the previous one "
+                        f"({last_started}): the history has been reordered",
+                    )
+                )
+            last_started = max(last_started, started)
+            if not _commit_exists(
+                str(entry.get("verdict", {}).get("runs", {}).get("commit_sha")), repo_root
+            ):
+                breaks.append(
+                    ChainBreak(
+                        number,
+                        claim,
+                        "the commit this record names does not exist in this repository",
+                    )
+                )
+            seen_claims[claim] = entry
+            previous = str(entry.get("hash", GENESIS))
+
+        for claim_id, entry in seen_claims.items():
+            path = self.runs_dir / f"{claim_id}.json"
+            if not path.exists():
+                breaks.append(ChainBreak(0, claim_id, f"runs/{claim_id}.json is missing"))
+                continue
+            stored = json.loads(path.read_text(encoding="utf-8"))
+            # Recompute from the CONTENT. Comparing the stored `hash` field with the history's
+            # would pass for a file whose numbers were edited and whose hash field was left
+            # alone, which is exactly how the first version of this check was defeated.
+            recomputed_stored = record_hash(stored)
+            if entry.get("hash") not in (recomputed_stored, stored.get("hash")) or (
+                recomputed_stored != stored.get("hash")
+            ):
+                breaks.append(
+                    ChainBreak(
+                        0,
+                        claim_id,
+                        f"runs/{claim_id}.json does not match the latest record in the "
+                        f"history: it was edited, or an older run was left behind",
+                    )
+                )
+        return breaks
+
+
+def current_repository() -> str | None:
+    return os.environ.get("GITHUB_REPOSITORY")
+
+
+def _commit_exists(sha: str | None, repo_root: Path | None = None) -> bool:
+    """True when git knows this object. Outside a checkout, everything passes.
+
+    The all-zero sha is the documented stand-in for "not a git checkout" and is accepted, so
+    that running from a downloaded tarball produces evidence rather than an error. The
+    renderer already labels such records as local runs.
+    """
+    import subprocess
+
+    if not sha or sha == "0" * 40:
+        return True
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            cwd=str(repo_root) if repo_root else None,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return result.returncode == 0

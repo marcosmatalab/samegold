@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from samegold import claims as claim_module
@@ -106,10 +107,25 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_claims(names: list[str], profile: str, work: Path) -> list[EvidenceRecord]:
-    records: list[EvidenceRecord] = []
+def _run_claims(
+    names: list[str],
+    profile: str,
+    work: Path,
+    evidence_dir: str | Path = "",
+    repetitions: int = 3,
+) -> Iterator[EvidenceRecord]:
+    """Yields one record at a time.
+
+    A generator, not a list, and the difference matters: SG-06 verifies the history, so it
+    has to see the records the earlier claims wrote. Building the whole list before appending
+    anything made SG-06 verify an empty file and report 0 of 1, which looked like a bug in
+    the chain and was a bug in the loop.
+    """
     for name in names:
-        if name == "SG-01":
+        records: list[EvidenceRecord] = []
+        if name == "SG-00":
+            records.append(claim_module.claim_repository_facts())
+        elif name == "SG-01":
             records.append(claim_module.claim_witness_agreement(work, profile))
         elif name == "SG-02":
             records.append(claim_module.claim_redelivery_is_a_noop(work, profile))
@@ -119,14 +135,20 @@ def _run_claims(names: list[str], profile: str, work: Path) -> list[EvidenceReco
             records.append(claim_module.claim_restatement_magnitude(work, profile))
         elif name == "SG-05":
             records.append(claim_module.claim_dimension_invariants(work, profile))
+        elif name == "SG-08":
+            records.append(claim_module.claim_privacy_controls(work, profile))
+        elif name == "SG-09":
+            records.append(claim_module.claim_cost_lab(work))
+        elif name == "SG-07":
+            records.append(claim_module.claim_crash_campaign(work, repetitions=repetitions))
         elif name == "SG-06":
-            records.append(claim_module.claim_seed_provenance())
+            records.append(claim_module.claim_seed_provenance(Path(evidence_dir)))
         else:
             raise UserError(
                 f"unknown claim {name}",
-                f"pick from: {', '.join(claim_module.ALL_CLAIMS)}",
+                f"pick from: {', '.join(claim_module.ALL_CLAIMS + claim_module.SLOW_CLAIMS)}",
             )
-    return records
+        yield records.pop()
 
 
 def cmd_evidence(args: argparse.Namespace) -> int:
@@ -134,7 +156,7 @@ def cmd_evidence(args: argparse.Namespace) -> int:
     names = args.claims or list(claim_module.ALL_CLAIMS)
     store = EvidenceStore(Path(args.evidence_dir))
     failures = 0
-    for record in _run_claims(names, args.profile, work):
+    for record in _run_claims(names, args.profile, work, args.evidence_dir, args.repetitions):
         store.append(record)
         verdict = record.verdict
         mark = "PASS" if verdict.ok else "FAIL"
@@ -143,7 +165,9 @@ def cmd_evidence(args: argparse.Namespace) -> int:
         print(f"{mark:>4}  {record.claim_id}  {record.title:<52} {detail}")
         if not verdict.ok:
             failures += 1
-            print(f"        counterexample: {verdict.counterexample.description}")  # type: ignore[union-attr]
+            print(
+                f"        counterexample: {verdict.counterexample.description}"  # type: ignore[union-attr]
+            )
     if not args.work:
         shutil.rmtree(work, ignore_errors=True)
     print(f"\nevidence written to {args.evidence_dir}/ ({store.counts()})")
@@ -170,6 +194,16 @@ def cmd_readme(args: argparse.Namespace) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     store = EvidenceStore(Path(args.evidence_dir))
+    breaks = store.verify_chain(REPO_ROOT)
+    if breaks:
+        for chain_break in breaks:
+            print(f"CHAIN {chain_break}")
+        raise UserError(
+            f"{len(breaks)} evidence record(s) do not verify",
+            "the history is append-only and hash-chained: restore it with "
+            "`git checkout evidence/history.jsonl`, or re-run `make evidence` to append a "
+            "new, verifiable record",
+        )
     latest = store.latest()
     drifts = []
     for name in RENDERED_FILES:
@@ -183,20 +217,36 @@ def cmd_check(args: argparse.Namespace) -> int:
             f"{len(drifts)} places where the documents and the evidence disagree",
             "run `make readme` to regenerate them from evidence/history.jsonl",
         )
-    print(f"documents match the evidence ({len(latest)} claims)")
+    print(
+        f"evidence chain verified ({store.counts()['total']} records) and the documents "
+        f"match it ({len(latest)} claims)"
+    )
     return 0
 
 
 def cmd_refute(args: argparse.Namespace) -> int:
-    """Run the claims with a seed the author never saw."""
+    """Run every claim with a seed the author never saw.
+
+    The results go to ``evidence/refutations.jsonl`` (created on the first refutation run) and
+    never into the history the documents render. An override run's seeds are, by design, not
+    derived from the commit, so nothing can recompute them, and a record nobody can recompute
+    has no business backing a published number. The store refuses them outright; before it
+    did, an adversarial review wrote one straight into the main history and SG-06 reported it
+    under the title "every seed derives from its commit".
+    """
     os.environ["SAMEGOLD_SEED_OVERRIDE"] = str(args.seed)
     work = _work_dir(args.work)
+    log = REPO_ROOT / "evidence" / "refutations.jsonl"
     print(
         f"refutation run with seed override {args.seed!r} (evidence is marked as such and "
         f"never counts towards a published claim)\n"
     )
     failures = 0
-    for record in _run_claims(list(claim_module.ALL_CLAIMS), args.profile, work):
+    for record in _run_claims(
+        list(claim_module.ALL_CLAIMS), args.profile, work, REPO_ROOT / "evidence"
+    ):
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write(record.to_line() + "\n")
         ok = record.verdict.ok
         # SG-06 is expected to fail here: it asserts that seeds come from the commit, and
         # this run deliberately overrides them. Saying so is better than special-casing it.
@@ -272,6 +322,12 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--claims", nargs="*", default=None)
     ev.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
     ev.add_argument("--work", default=None)
+    ev.add_argument(
+        "--repetitions",
+        type=int,
+        default=3,
+        help="repetitions per crash point for SG-07; the published bound is a function of it",
+    )
     ev.add_argument(
         "--allow-failures",
         action="store_true",
