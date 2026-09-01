@@ -67,7 +67,7 @@ def test_conservation_holds_on_the_generated_data(tmp_path: Path) -> None:
         conservation(
             ingested=counts["raw_lines"],
             accepted=counts["accepted"],
-            quarantined=counts["rejected_by_rule"] + counts["unparseable"] + counts["no_event_id"],
+            quarantined=counts["rejected_by_rule"] + counts["unparseable"],
             rescued=0,
             deduplicated=counts["duplicates"],
         )

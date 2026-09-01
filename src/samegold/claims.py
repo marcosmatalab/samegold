@@ -317,6 +317,37 @@ def claim_redelivery_is_a_noop(
 # --------------------------------------------------------------------- SG-03
 
 
+def _assert_mutation_shapes_exist(root: Path, result: Any, profile_name: str) -> None:
+    """Refuse to score a mutation campaign on data that cannot distinguish its mutants.
+
+    The same discipline as the cost lab's probe-existence guard. A mutant that survives
+    because the dataset contains none of the shape it changes is not evidence about the
+    witnesses; it is evidence about the generator, and publishing it as a survivor sends a
+    reader looking for a bug that is not there. The one shape that has actually bitten is a
+    line with two amendments at distinct event times, which is what separates "the last
+    amendment wins" from "the first one does".
+    """
+    amendments: dict[tuple[str, str], set[str]] = {}
+    for path in sorted((root / "bronze").rglob("*.json")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if '"order_line_amended"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = (str(record.get("order_id")), str(record.get("sku")))
+            amendments.setdefault(key, set()).add(str(record.get("event_ts")))
+    if not any(len(times) >= 2 for times in amendments.values()):
+        raise ValueError(
+            f"profile {profile_name!r} produced no order line with two amendments at distinct "
+            f"event times, so the amendment-ordering mutants cannot be scored on it. Use a "
+            f"larger profile rather than publishing them as survivors."
+        )
+    if not result.ledger.closes:
+        raise ValueError(f"profile {profile_name!r} produced no closes to compare")
+
+
 def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceRecord:
     """SG-03. Mechanically generated mutants, plus specification mutants, past every witness.
 
@@ -328,7 +359,16 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
     seeds = seeds_from_commit(1, purpose="mutation")
     root = work / "mutation"
     shutil.rmtree(root, ignore_errors=True)
-    result = generate(root, seed=seeds[0], profile=PROFILES[profile_name])
+    # The campaign always runs on at least the CI profile, whatever the caller asked for. On
+    # the fast profile the dataset happens to contain no order line with two amendments at
+    # distinct event times before the close, so SQL-053 - which flips the amendment window
+    # from "the last amendment wins" to "the first one does", a real change of meaning -
+    # survives every witness and is reported as a genuine survivor. Nothing is wrong with the
+    # mutant or with the witnesses; the DATA cannot tell them apart. A score that depends on
+    # which profile a reader happened to pass is not a score.
+    campaign_profile = profile_name if profile_name in ("ci", "full") else "ci"
+    result = generate(root, seed=seeds[0], profile=PROFILES[campaign_profile])
+    _assert_mutation_shapes_exist(root, result, campaign_profile)
     ledger = json.loads((root / "truth" / "ledger.json").read_text(encoding="utf-8"))
     closes = [dt.datetime.fromisoformat(c) for c in result.ledger.closes]
     run = run_mutation_campaign(
@@ -496,9 +536,9 @@ def claim_dimension_invariants(
         scd2 = scd2_as_of(root / "bronze", as_of)
         revenue = _versioned_rows(root / "bronze", closes)
         counts = reference_counts(root / "bronze")
-        ledger_counts = json.loads(
-            (root / "truth" / "ledger.json").read_text(encoding="utf-8")
-        )["counts"]
+        ledger_counts = json.loads((root / "truth" / "ledger.json").read_text(encoding="utf-8"))[
+            "counts"
+        ]
         violations = (
             scd2_well_formed(scd2)
             + net_identity(revenue)
@@ -506,15 +546,19 @@ def claim_dimension_invariants(
             + returns_never_exceed_sales(revenue)
             + conservation(
                 # ingested comes from the GENERATOR's ledger, not from the same query that
-                # produces the other four. Taking all five from `reference_counts` makes the
-                # identity algebraic - substitute the SQL definitions and the sum reduces to
-                # raw_lines for any input at all - so it passed on every seed the way 1 = 1
-                # passes. An adversarial review did the substitution. This version can fail.
+                # produces the other three. Taking all of them from `reference_counts` makes
+                # the identity algebraic - substitute the SQL definitions and the sum reduces
+                # to raw_lines for any input at all - so it passed on every seed the way
+                # 1 = 1 passes. A second review pointed out that this repair leaves exactly
+                # one independent comparison in it, "the generator wrote as many lines as the
+                # reference found", which is true and is why the four-way
+                # conservation_against_ledger below is the check that carries the weight.
                 ingested=int(ledger_counts["events_written"]),
                 accepted=counts["accepted"],
-                quarantined=counts["rejected_by_rule"]
-                + counts["unparseable"]
-                + counts["no_event_id"],
+                # `unparseable` already includes the rows the reader turned into an
+                # all-NULL record, which is what `no_event_id` counts; adding both counted
+                # the same line twice.
+                quarantined=counts["rejected_by_rule"] + counts["unparseable"],
                 rescued=0,
                 deduplicated=counts["duplicates"],
             )

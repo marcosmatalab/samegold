@@ -28,7 +28,9 @@ kind:
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -92,7 +94,7 @@ def evaluate_freshness(
             )
         )
 
-    recorded = set(closed_months)
+    recorded = {month for month in closed_months if MONTH_KEY.match(month)}
     for month_key, deadline in overdue_months(now, closed_months, close_day):
         if month_key in recorded:  # pragma: no cover - overdue_months already filters
             continue
@@ -109,17 +111,28 @@ def evaluate_freshness(
     return breaches
 
 
+MONTH_KEY = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
 def close_deadline(month_key: str, close_day: int) -> dt.datetime:
     """The instant by which ``month_key`` must be closed, in the accounting timezone.
 
     End of the close day of the FOLLOWING month, local to the entity that signs the close.
     Computing it in the caller's timezone (usually UTC) moved the deadline by the Madrid
     offset and overstated every lag by an hour or two.
+
+    The day is CLAMPED to the length of that month. A close day of 31 is an ordinary choice
+    in accounting ("the month closes at month end"), and building `datetime(2026, 2, 31)`
+    raises ValueError, which took the whole freshness evaluation down rather than reporting
+    anything. Clamping means "the 31st" reads as "the last day", which is what it means.
     """
+    if not MONTH_KEY.match(month_key):
+        raise ValueError(f"not a month key: {month_key!r}")
     zone = ZoneInfo(ACCOUNTING_TIMEZONE)
     year, month = (int(part) for part in month_key.split("-"))
     year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    start_of_next_day = dt.datetime(year, month, close_day, tzinfo=zone) + dt.timedelta(days=1)
+    day = min(close_day, calendar.monthrange(year, month)[1])
+    start_of_next_day = dt.datetime(year, month, day, tzinfo=zone) + dt.timedelta(days=1)
     return start_of_next_day.astimezone(dt.UTC)
 
 
@@ -137,7 +150,12 @@ def overdue_months(
     ``horizon`` is a hard stop on how far back the walk goes, so a single very old close
     cannot turn one missing job into hundreds of alerts.
     """
-    recorded = set(closed_months)
+    # Only well-formed month keys count. `floor = min(recorded)` is a lexicographic minimum,
+    # so ONE malformed entry ("2026-1", a typo, anything) could sort below every real month
+    # and stop the walk on its first step: the function returned an empty list and the alert
+    # reported healthy. An input this rule cannot understand must never be the reason it says
+    # nothing is wrong, so unparseable entries are dropped and the rest are used.
+    recorded = {month for month in closed_months if MONTH_KEY.match(month)}
     floor = min(recorded) if recorded else None
     zone = ZoneInfo(ACCOUNTING_TIMEZONE)
     local = now.astimezone(zone)

@@ -46,17 +46,19 @@ FIRST_CLOSE = "first close"
 RESTATED = "late arrivals after close"
 
 
-def accounting_month_of(instant: str) -> str:
-    """The accounting month an ISO instant falls in, in the accounting timezone.
+def instant_of(text: str) -> dt.datetime:
+    """Parse an ISO timestamp into an aware instant.
 
     Accepts a trailing ``Z`` because that is what the pipeline writes, and treats a naive
     string as UTC because that is what every producer in this project emits.
     """
-    text = instant.replace("Z", "+00:00")
-    moment = dt.datetime.fromisoformat(text)
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=dt.UTC)
-    return moment.astimezone(ZoneInfo(ACCOUNTING_TIMEZONE)).strftime("%Y-%m")
+    moment = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=dt.UTC)
+
+
+def accounting_month_of(instant: str) -> str:
+    """The accounting month an ISO instant falls in, in the accounting timezone."""
+    return instant_of(instant).astimezone(ZoneInfo(ACCOUNTING_TIMEZONE)).strftime("%Y-%m")
 
 
 def versions_from_snapshots(
@@ -79,12 +81,17 @@ def versions_from_snapshots(
     versions: list[dict[str, Any]] = []
     last: dict[str, tuple[int, ...]] = {}
     counters: dict[str, int] = {}
-    # Sorted, not taken as given. The Spark twin orders by as_of inside a window, so a
-    # caller who passed the closes in any other order got a version history running
-    # backwards from Python and forwards from Spark, with both digests claiming to be "the
-    # same bookkeeping". A history is a function of the SET of closes; it may not depend on
-    # the order the caller happened to hold them in.
-    for as_of, months in sorted(snapshots, key=lambda item: item[0]):
+    # Sorted by INSTANT, not taken as given and not sorted as text. Two bugs, one after the
+    # other:
+    #
+    #   * the function iterated the caller's list while the Spark twin ordered inside a
+    #     window, so passing the same closes in another order gave a history running
+    #     backwards from Python and forwards from Spark;
+    #   * sorting the ISO STRINGS then fixed the wrong thing. "2026-02-01T00:30:00+01:00" is
+    #     EARLIER than "2026-01-31T23:45:00+00:00" as an instant and later as text, and
+    #     "...Z" and "...+00:00" denote the same instant and sort apart. A close is an
+    #     instant; its spelling is not a fact about it.
+    for as_of, months in sorted(snapshots, key=lambda item: instant_of(item[0])):
         for month in sorted(months):
             if not month_is_closed(month, as_of):
                 continue

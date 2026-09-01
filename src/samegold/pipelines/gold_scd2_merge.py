@@ -153,8 +153,18 @@ def upsert_scd2(spark: Any, batch: DataFrame, table: str) -> dict[str, int]:
             .whenNotMatchedInsertAll()
             .execute()
         )
-    for customer_id, valid_from in obsolete:
-        target.delete((F_col("customer_id") == customer_id) & (F_col("valid_from") == valid_from))
+    if obsolete:
+        # ONE delete, not one per row. Each `target.delete(...)` is its own Delta
+        # transaction, so a loop leaves the dimension queryable and malformed between them
+        # (two rows with is_current = true, a closed row pointing at an interval that no
+        # longer exists) and writes a commit per row into a change feed the rest of this
+        # module argues must stay readable. A single predicate over the affected keys is one
+        # commit and one visible state.
+        predicate = None
+        for customer_id, valid_from in obsolete:
+            row = (F_col("customer_id") == customer_id) & (F_col("valid_from") == valid_from)
+            predicate = row if predicate is None else (predicate | row)
+        target.delete(predicate)
     return {
         "applied": len(incoming),
         "rows_written": len(changed),

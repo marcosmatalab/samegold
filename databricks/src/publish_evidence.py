@@ -28,7 +28,11 @@ WHERE event_type = 'flow_progress'
 )
 
 record = {
-    "claim_id": "SG-09",
+    # Its own id, not one of the OSS chain's. This record is produced inside a workspace,
+    # cannot be reproduced by a reader with a clone, and is not appended to
+    # evidence/history.jsonl; giving it "SG-09" (which is the cost lab) made it look like the
+    # same claim measured somewhere else. It is a different claim on a different runtime.
+    "claim_id": "SG-DBX-01",
     "title": "the Databricks lane ran and its expectations reported",
     "runtime": "databricks-free",
     "expectations": [row.asDict() for row in expectations.collect()],

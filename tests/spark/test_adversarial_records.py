@@ -60,7 +60,7 @@ BASE_ORDER: dict[str, Any] = {
 
 def _write(tmp_path: Path, rows: list[dict[str, Any]]) -> Path:
     bronze = tmp_path / "bronze" / "batch=202601010000"
-    bronze.mkdir(parents=True)
+    bronze.mkdir(parents=True, exist_ok=True)
     (bronze / "part-00000.json").write_text(
         "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
     )
@@ -140,6 +140,27 @@ def test_a_malformed_timestamp_does_not_abort_the_close(spark, tmp_path) -> None
     rows = [BASE_ORDER, dict(BASE_ORDER, event_id="op-bad", event_ts="not-a-timestamp")]
     close = _both_agree(spark, tmp_path, rows)
     assert close == [("2026-01", 2000, 0, 2000, 1, 0, 0)]
+
+
+def test_the_broken_copy_of_a_duplicated_event_does_not_win(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Two copies of one event_id, one with a malformed event_ts. The readable one must win.
+
+    The first version of the TRY_CAST fix made this diverge by 2000 cents. Spark's ASC is
+    NULLS FIRST, so the unparseable copy sorted first in the deduplication window and the
+    good one was discarded; the reference excludes an unparseable event_ts before it
+    deduplicates, so it kept the good one. Both fixes were correct on their own and the pair
+    of them created a divergence, which is the argument for testing the pair.
+    """
+    rows = [BASE_ORDER, dict(BASE_ORDER, qty=5, event_ts="not-a-timestamp")]
+    for order in (rows, list(reversed(rows))):
+        close = _both_agree(spark, tmp_path / str(len(order)) / str(order[0]["qty"]), order)
+        assert close == [("2026-01", 2000, 0, 2000, 1, 0, 0)], order
+
+
+def test_an_integer_beyond_bigint_is_refused_by_both(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """json_type calls 2^63 a UBIGINT; a plain CAST to BIGINT then aborts the whole close."""
+    rows = [BASE_ORDER, dict(BASE_ORDER, event_id="op-2", order_id="O2", qty=2**63)]
+    assert _both_agree(spark, tmp_path, rows) == [("2026-01", 2000, 0, 2000, 1, 0, 0)]
 
 
 def test_a_line_with_a_float_quantity_is_refused_by_both(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]

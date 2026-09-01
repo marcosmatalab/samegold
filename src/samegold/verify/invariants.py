@@ -20,6 +20,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from itertools import pairwise
 from typing import Any
 
+from samegold.domain.bitemporal import instant_of
+
 Row = Mapping[str, Any]
 Violation = dict[str, Any]
 
@@ -142,8 +144,12 @@ def restatement_monotonic(rows: Sequence[Row]) -> list[Violation]:
             violations.append(
                 {"kind": "version_sequence", "accounting_month": month, "versions": versions}
             )
+        # Compared as INSTANTS, not as text. The strings come from different closes and may
+        # carry different UTC offsets, and "2026-02-01T00:30:00+01:00" sorts after
+        # "2026-01-31T23:45:00+00:00" as text while being earlier as an instant. An invariant
+        # that sorts the same way the thing it checks sorts cannot see the bug.
         stamps = [str(r["restated_at"]) for r in ordered if r.get("restated_at") is not None]
-        if stamps != sorted(stamps):
+        if [instant_of(s) for s in stamps] != sorted(instant_of(s) for s in stamps):
             violations.append(
                 {
                     "kind": "restated_at_not_monotonic",
@@ -196,6 +202,10 @@ def conservation_against_ledger(
         the reference derives it by deduplicating. A mismatch means the deduplication key is
         wrong, in either direction.
       * how many duplicate copies were written. Same two independent sources.
+      * how many lines are not readable as JSON at all. The generator wrote them broken on
+        purpose; the reference counts them as the lines it could not turn into a record plus
+        the ones it turned into an all-NULL row. That figure was published as zero on data
+        that contained them, for a whole review cycle.
 
     This is the invariant the previous ``conservation`` call was supposed to be and was not.
     """
@@ -204,6 +214,11 @@ def conservation_against_ledger(
         ("lines_written", int(ledger_counts["events_written"]), int(reference["raw_lines"])),
         ("unique_events", int(ledger_counts["unique_events"]), int(reference["unique_events"])),
         ("duplicates", int(ledger_counts["duplicates"]), int(reference["duplicates"])),
+        (
+            "unparseable_lines",
+            int(ledger_counts["unparseable_lines"]),
+            int(reference["unparseable"]),
+        ),
     ]
     for name, expected, found in pairs:
         if expected != found:

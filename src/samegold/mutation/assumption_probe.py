@@ -184,15 +184,30 @@ def probe_structural_assumption(bronze_dir: Path, as_of: str) -> dict[str, Any]:
         SELECT * FROM read_json($glob, format='newline_delimited', ignore_errors=true,
             columns={'event_id':'VARCHAR','event_type':'VARCHAR','event_ts':'VARCHAR',
                      'arrival_ts':'VARCHAR','order_id':'VARCHAR','customer_id':'VARCHAR',
-                     'sku':'VARCHAR','qty':'BIGINT','new_qty':'BIGINT',
-                     'unit_price_cents':'BIGINT','currency':'VARCHAR','return_id':'VARCHAR',
+                     'sku':'VARCHAR','qty':'JSON','new_qty':'JSON',
+                     'unit_price_cents':'JSON','currency':'VARCHAR','return_id':'VARCHAR',
                      'reason':'VARCHAR','segment':'VARCHAR','country':'VARCHAR',
                      'boundary':'VARCHAR'})
     ),
-    arrived AS (SELECT * FROM raw WHERE event_id IS NOT NULL AND arrival_ts IS NOT NULL
-                AND CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)),
+    -- JSON columns and TRY_CAST, exactly as gold_revenue.sql does it. This probe declared
+    -- BIGINT and used a bare CAST, which is the pair of defects the reference had removed:
+    -- it accepted a quoted number and it aborted on a malformed timestamp. A control that
+    -- only works on well-formed data is not controlling for anything.
+    typed AS (
+        SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
+               CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
+                    THEN TRY_CAST(qty AS BIGINT) END AS qty,
+               CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
+                    THEN TRY_CAST(new_qty AS BIGINT) END AS new_qty,
+               CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
+                    THEN TRY_CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+        FROM raw
+    ),
+    arrived AS (SELECT * FROM typed WHERE event_id IS NOT NULL AND arrival_ts IS NOT NULL
+                AND TRY_CAST(event_ts AS TIMESTAMPTZ) IS NOT NULL
+                AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)),
     sales AS (
-        SELECT DISTINCT strftime(CAST(event_ts AS TIMESTAMPTZ) AT TIME ZONE 'Europe/Madrid',
+        SELECT DISTINCT strftime(TRY_CAST(event_ts AS TIMESTAMPTZ) AT TIME ZONE 'Europe/Madrid',
                                  '%Y-%m') AS m
         FROM arrived WHERE event_type = 'order_placed' AND qty > 0 AND unit_price_cents >= 0
           AND currency = 'EUR'
@@ -200,7 +215,7 @@ def probe_structural_assumption(bronze_dir: Path, as_of: str) -> dict[str, Any]:
     refund_months AS (
         SELECT DISTINCT strftime(s.sale_ts AT TIME ZONE 'Europe/Madrid', '%Y-%m') AS m
         FROM arrived r
-        JOIN (SELECT order_id, sku, CAST(event_ts AS TIMESTAMPTZ) AS sale_ts FROM arrived
+        JOIN (SELECT order_id, sku, TRY_CAST(event_ts AS TIMESTAMPTZ) AS sale_ts FROM arrived
               WHERE event_type = 'order_placed') s
           ON s.order_id = r.order_id AND s.sku = r.sku
         WHERE r.event_type = 'return_registered'
@@ -234,8 +249,12 @@ def probe_order_free_comparison(reference_sql: str, bronze_dir: Path, as_of: str
     the reference's rows, digest the SAME rows in reverse, and require the two to be equal.
 
     A digest that did not sort would fail this, and the two mutants would immediately stop
-    being equivalent. That is what makes the classification conditional rather than
-    convenient.
+    being equivalent. But that half alone is weak: it exercises `digest.py` and says nothing
+    about the SQL. So the probe also runs the ORDER-BY-flipped statement itself and requires
+    the two to produce the same MULTISET of rows. That is the part that could catch an
+    ORDER BY which changes what is selected rather than how it is presented - a LIMIT, a
+    DISTINCT ON, a window whose frame follows the sort - and it is the reason this function
+    is a control and not a restatement of the equivalence class.
     """
     from samegold.verify.digest import REVENUE_PROJECTION, CanonicalDigest
 
@@ -257,16 +276,30 @@ def probe_order_free_comparison(reference_sql: str, bronze_dir: Path, as_of: str
     ]
     forward = CanonicalDigest.of(stamped, REVENUE_PROJECTION)
     backward = CanonicalDigest.of(list(reversed(stamped)), REVENUE_PROJECTION)
+
+    flipped = [
+        mutant
+        for mutant in mutate_sql(reference_sql)
+        if mutant.operator == "order:flip" and mutant.context == "final"
+    ]
+    same_rows = True
+    for mutant in flipped:
+        mutated = _run(mutant.source, bronze_dir)
+        same_rows = same_rows and sorted(mutated) == sorted(_run(reference_sql, bronze_dir))
+
+    digest_holds = forward.hexdigest == backward.hexdigest
     return {
         "assumption": "comparison-is-order-free",
         "statement": ASSUMPTIONS["comparison-is-order-free"],
         "rows": len(stamped),
         "digest_forward": forward.hexdigest,
         "digest_reversed": backward.hexdigest,
+        "order_flip_mutants_run": [mutant.mutant_id for mutant in flipped],
+        "same_multiset_of_rows": same_rows,
         "verdict": (
-            "holds: the digest of a permuted result is identical, so the final ORDER BY "
-            "cannot change a published answer"
-            if forward.hexdigest == backward.hexdigest
+            "holds: the digest of a permuted result is identical, and flipping the final "
+            "ORDER BY produces the same multiset of rows, so the clause is presentation"
+            if digest_holds and same_rows
             else "VIOLATED: the comparison depends on row order and the equivalence class is void"
         ),
     }

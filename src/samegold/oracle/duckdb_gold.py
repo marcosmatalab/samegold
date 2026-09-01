@@ -162,17 +162,35 @@ WITH raw AS (
 typed AS (
     SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
            CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(qty AS BIGINT) END AS qty,
+                THEN TRY_CAST(qty AS BIGINT) END AS qty,
            CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(new_qty AS BIGINT) END AS new_qty,
+                THEN TRY_CAST(new_qty AS BIGINT) END AS new_qty,
            CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+                THEN TRY_CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
     FROM raw
 ),
+-- The SAME total order as gold_revenue.sql, and for the same reason. With only event_ts in
+-- the ORDER BY, two copies of one event_id with different payloads left the winner to the
+-- physical order of the rows: swapping two lines in one file flipped this query's buckets
+-- while the revenue query, which does have the tie-break, did not move. The accounting then
+-- reported zero accepted records for a close that booked two thousand cents. Applying the
+-- fix to two of the three queries was worse than not applying it at all, because the two
+-- that agreed made the third look verified.
 tagged AS (
     SELECT *,
-           row_number() OVER (PARTITION BY event_id
-                              ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ)) AS rn
+           row_number() OVER (
+               PARTITION BY event_id
+               ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
+                        TRY_CAST(arrival_ts AS TIMESTAMPTZ),
+                        sha256(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
+                            || COALESCE(customer_id, '') || '|' || COALESCE(sku, '') || '|'
+                            || COALESCE(CAST(qty AS VARCHAR), '') || '|'
+                            || COALESCE(CAST(new_qty AS VARCHAR), '') || '|'
+                            || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
+                            || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
+                            || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
+                            || COALESCE(country, ''))
+           ) AS rn
     FROM typed WHERE event_id IS NOT NULL
 ),
 unique_events AS (SELECT * FROM tagged WHERE rn = 1),
@@ -221,6 +239,11 @@ classified AS (
 )
 SELECT
     (SELECT count(*) FROM raw)                                   AS parsed_rows,
+    -- A line the parser could not read has no event_id, and with the columns DECLARED the
+    -- reader emits an all-NULL row for it rather than dropping it. So `raw_lines - parsed`
+    -- is zero for exactly the case it was written to count, and the unparseable records were
+    -- being reported through the `no_event_id` door instead. Both are the same door in the
+    -- Spark pipeline (`unparseable_json`), and this is now the same count.
     (SELECT count(*) FROM raw WHERE event_id IS NULL)            AS no_event_id,
     (SELECT count(*) FROM tagged WHERE rn > 1)                   AS duplicates,
     (SELECT count(*) FROM unique_events)                         AS unique_events,
@@ -250,12 +273,16 @@ def reference_counts(bronze_dir: Path) -> dict[str, int]:
         con.close()
     assert row is not None
     parsed, no_id, duplicates, unique_events, accepted, rejected = (int(x) for x in row)
-    # "unparseable_json" is the reason name from the contract; DuckDB does not report it, so
-    # it is derived as (lines in the files) - (rows the parser produced).
+    # "unparseable_json" is the reason name from the contract, and it covers two shapes that
+    # DuckDB reports differently: a line the reader dropped entirely (raw_lines - parsed) and
+    # a line it read into an all-NULL row because the columns are declared (counted as
+    # no_event_id). The Spark pipeline sends both through one door, so they are added here.
+    # Reporting them separately is what made the published `unparseable` figure zero on data
+    # that contained unparseable lines.
     return {
         "raw_lines": raw_lines,
         "parsed_rows": parsed,
-        "unparseable": raw_lines - parsed,
+        "unparseable": (raw_lines - parsed) + no_id,
         "no_event_id": no_id,
         "duplicates": duplicates,
         "unique_events": unique_events,

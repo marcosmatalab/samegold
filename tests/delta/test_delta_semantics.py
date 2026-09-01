@@ -104,8 +104,31 @@ def test_the_scd2_merge_produces_a_well_formed_dimension(delta_spark, tmp_path: 
         [("C1", "2026-02-01T00:00:00.000000Z", "vip", "ES", "e2")],
         "customer_id STRING, valid_from STRING, segment STRING, country STRING, event_id STRING",
     )
+    # A LATE CORRECTION, which is the batch that broke it. The version arriving third has an
+    # earlier valid_from than the second, so the recomputed dimension re-splits the interval
+    # the second batch opened. An upsert-only MERGE cannot express that: it updated the rows
+    # it recognised and left the superseded one behind for ever, and the table then had two
+    # rows with is_current = true and a closed row whose valid_to pointed at an interval that
+    # no longer existed. Every earlier test applied purely additive batches, so the delete
+    # path had no coverage at all.
+    batch3 = delta_spark.createDataFrame(
+        [("C1", "2026-01-15T00:00:00.000000Z", "vip", "ES", "e3")],
+        "customer_id STRING, valid_from STRING, segment STRING, country STRING, event_id STRING",
+    )
     upsert_scd2(delta_spark, batch1, table)
     upsert_scd2(delta_spark, batch2, table)
     rows = [row.asDict() for row in delta_spark.table(table).collect()]
     assert len(rows) == 2
     assert scd2_well_formed(rows) == []
+
+    stats = upsert_scd2(delta_spark, batch3, table)
+    rows = [row.asDict() for row in delta_spark.table(table).collect()]
+    assert scd2_well_formed(rows) == [], rows
+    # retail until 15 January, vip from then on: the 1 February version is a heartbeat once
+    # the correction exists, and the row it used to open has to be gone, not merely closed.
+    assert sorted(row["valid_from"] for row in rows) == [
+        "2026-01-01T00:00:00.000000Z",
+        "2026-01-15T00:00:00.000000Z",
+    ]
+    assert stats["deleted"] == 1
+    assert sum(1 for row in rows if row["is_current"]) == 1

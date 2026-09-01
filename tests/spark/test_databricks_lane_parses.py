@@ -15,6 +15,7 @@ statement. Those are different guarantees and the README says which one this is.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -23,15 +24,57 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 LANE = REPO / "databricks"
 
+
 # Statements are extracted from the notebook sources rather than kept in fixture files, so
 # the thing parsed here is the thing that would be deployed.
-_TRIPLE = re.compile(r'spark\.sql\(\s*f?"""(.*?)"""\s*\)', re.DOTALL)
+def _sql_calls(source: str) -> list[str]:
+    """Every `spark.sql(...)` argument in a module, found with the Python parser.
+
+    A regex over triple-quoted strings missed the single-line calls and the implicitly
+    concatenated ones: it collected 4 of the 6 statements in this lane and the test then
+    asserted "at least 5 statements" and passed. Walking the AST cannot miss a call, and a
+    literal it cannot reconstruct (a runtime-built query) raises rather than being skipped.
+    """
+    out: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr != "sql" or not node.args:
+            continue
+        out.append(_literal(node.args[0]))
+    return out
+
+
+def _literal(node: ast.expr) -> str:
+    """Reconstruct a string literal, an f-string or a concatenation of them."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        # An interpolation is a bundle identifier or a timestamp; both are replaced by the
+        # substitutions below, so the placeholder is written back in its `{name}` form.
+        return "".join(
+            part.value if isinstance(part, ast.Constant) else "{" + ast.unparse(part.value) + "}"  # type: ignore[union-attr]
+            for part in node.values
+        )
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _literal(node.left) + _literal(node.right)
+    raise AssertionError(
+        f"spark.sql() called with something this test cannot read: {ast.dump(node)}"
+    )
+
+
+# The expectation predicates are SQL too, and they are where the NULL-safety bug lived: they
+# are not inside a spark.sql() call, so the first version of this test collected none of them
+# and reported "6 statements" while the lane had more. A predicate is wrapped in a SELECT so
+# the parser has a statement to parse.
+_RULES = re.compile(r"^RULES(?:\s*:[^=]+)?\s*=\s*\{(.*?)^\}", re.DOTALL | re.MULTILINE)
 # The notebook tasks interpolate a catalog and a close instant. Substituting plausible values
 # is enough to make the statement parseable while leaving every clause intact.
 _SUBSTITUTIONS = {
     "${catalog}": "samegold",
     "{catalog}": "samegold",
     "{as_of}": "2026-03-05 22:59:59",
+    "{pipeline_id}": "0000-000000-abcdefgh",
 }
 
 
@@ -45,10 +88,38 @@ def _statements() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for path in sorted(LANE.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        for index, statement in enumerate(_TRIPLE.findall(source)):
+        for index, statement in enumerate(_sql_calls(source)):
             out.append((f"{path.relative_to(REPO)}#{index}", _resolve(statement)))
     for path in sorted((LANE / "sql").rglob("*.sql")):
         out.append((str(path.relative_to(REPO)), _resolve(path.read_text(encoding="utf-8"))))
+    out.extend(_expectations())
+    return out
+
+
+def _expectations() -> list[tuple[str, str]]:
+    """Every pipeline expectation predicate, wrapped in a SELECT so it can be parsed."""
+    out: list[tuple[str, str]] = []
+    for path in sorted(LANE.rglob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        module: dict[str, object] = {}
+        block = _RULES.search(source)
+        if block is None:
+            continue
+        # Evaluate only the literals the rules are built from, never the module: importing it
+        # would need pyspark.pipelines and a live session. The helper strings are plain
+        # concatenations of literals, which ast.literal_eval-style execution handles safely
+        # enough for a test that then throws the namespace away.
+        helpers = re.findall(r"^(_[A-Z_]+) = \((.*?)^\)", source, re.DOTALL | re.MULTILINE)
+        for name, body in helpers:
+            module[name] = eval(f"({body})", {"__builtins__": {}}, {})
+        rules = eval("{" + block.group(1) + "}", {"__builtins__": {}}, module)
+        for name, predicate in rules.items():
+            out.append(
+                (
+                    f"{path.relative_to(REPO)}::expectation:{name}",
+                    f"SELECT * FROM t WHERE {predicate}",
+                )
+            )
     return out
 
 
@@ -75,7 +146,7 @@ EXCLUDED = [(name, part) for name, part in ALL_STATEMENTS if _is_databricks_only
 
 def test_there_is_something_to_parse() -> None:
     """A regex that silently matches nothing would make every test below vacuously green."""
-    assert len(STATEMENTS) >= 5, f"only found {len(STATEMENTS)} statements in the lane"
+    assert len(STATEMENTS) >= 12, f"only found {len(STATEMENTS)} statements in the lane"
 
 
 def test_the_exclusions_are_the_ones_claimed() -> None:
