@@ -48,7 +48,10 @@ spark: install-spark ## the Spark lane without Delta (works with no route to Mav
 
 .PHONY: delta
 delta: install-spark ## the full Spark + Delta lane (needs Maven Central)
-	$(BIN)/pytest tests/spark tests/delta -q
+	# Separate processes on purpose: a Spark session is a per-process singleton, so a parquet
+	# session created by the spark lane would be handed to the delta lane by getOrCreate.
+	$(BIN)/pytest tests/spark -q -m spark
+	$(BIN)/pytest tests/delta -q
 
 .PHONY: faults
 faults: install-spark ## the crash campaign, with its negative control (about 8 minutes)

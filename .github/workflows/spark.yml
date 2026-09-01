@@ -72,4 +72,6 @@ jobs:
         # ubuntu-latest gives 14 GB of disk. Spark plus Delta plus checkpoints plus the
         # generated data fits, but not with the preinstalled toolchains sitting there.
         run: sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/share/dotnet /usr/local/lib/android || true
-      - run: pytest tests/spark tests/delta -q
+      # Separate processes: a Spark session is a per-process singleton.
+      - run: pytest tests/spark -q -m spark
+      - run: pytest tests/delta -q
