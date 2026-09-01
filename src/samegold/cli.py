@@ -238,21 +238,20 @@ def cmd_refute(args: argparse.Namespace) -> int:
     work = _work_dir(args.work)
     log = REPO_ROOT / "evidence" / "refutations.jsonl"
     print(
-        f"refutation run with seed override {args.seed!r} (evidence is marked as such and "
-        f"never counts towards a published claim)\n"
+        f"refutation run with seed override {args.seed!r}. The results go to "
+        f"evidence/refutations.jsonl and never back a published number.\n"
+        f"SG-00 (which counts the repository) and SG-06 (which verifies the evidence chain) "
+        f"are not part of a refutation: neither is a statement about the data.\n"
     )
     failures = 0
     for record in _run_claims(
-        list(claim_module.ALL_CLAIMS), args.profile, work, REPO_ROOT / "evidence"
+        list(claim_module.REFUTABLE_CLAIMS), args.profile, work, REPO_ROOT / "evidence"
     ):
         with log.open("a", encoding="utf-8") as handle:
             handle.write(record.to_line() + "\n")
         ok = record.verdict.ok
-        # SG-06 is expected to fail here: it asserts that seeds come from the commit, and
-        # this run deliberately overrides them. Saying so is better than special-casing it.
-        expected = " (expected: this run overrides the seeds)" if record.claim_id == "SG-06" else ""
-        print(f"{'PASS' if ok else 'FAIL'}  {record.claim_id}  {record.title}{expected}")
-        if not ok and record.claim_id != "SG-06":
+        print(f"{'PASS' if ok else 'FAIL'}  {record.claim_id}  {record.title}")
+        if not ok:
             failures += 1
     shutil.rmtree(work, ignore_errors=True)
     if failures:

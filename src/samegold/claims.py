@@ -882,6 +882,11 @@ ALL_CLAIMS = (
     "SG-00",
     "SG-06",
 )
-# SG-07 needs a JVM and about three minutes, so it is not in the default set. `make faults`
+# SG-07 needs a JVM and about fifteen minutes, so it is not in the default set. `make faults`
 # and the CI evidence workflow run it explicitly.
 SLOW_CLAIMS = ("SG-07",)
+
+# What a refutation run covers. SG-00 counts the repository and SG-06 verifies the evidence
+# chain: neither is a statement about the data, and running them under a seed override
+# produced a "failure" that meant nothing except that the override was working.
+REFUTABLE_CLAIMS = ("SG-01", "SG-02", "SG-03", "SG-04", "SG-05", "SG-08", "SG-09")
