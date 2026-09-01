@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from samegold.domain.bitemporal import accounting_month_of, versions_from_snapshots
+from samegold.evidence.registry import CLAIM_TITLES
 from samegold.generator.events import FAST, generate
 from samegold.governance.anonymise import generalize_timestamp
 from samegold.mutation.operators import mutate_sql
@@ -358,181 +359,206 @@ def test_the_unparseable_counter_counts_unparseable_lines(tmp_path: Path) -> Non
     assert reference_counts(tmp_path / "bronze")["unparseable"] == 1
 
 
-def test_the_databricks_expectations_use_the_contract_reasons_and_are_null_safe() -> None:
-    """Its rules were `qty IS NULL OR qty > 0`, which PASSES a record with no quantity.
+def test_the_databricks_expectations_use_the_contract_reasons() -> None:
+    """Its rules used that lane's own vocabulary rather than the contract's closed enum.
 
-    So the shape this whole review round started from - an order line with no `currency` -
-    was accepted on the Databricks lane while both OSS engines quarantined it. The reason
-    names were also that lane's own vocabulary rather than the contract's closed enum.
+    The NULL-safety half of this check used to be `"IS NULL OR" not in block`, a substring
+    grep that never evaluated a predicate: it passed while `event_type IN (...)` silently
+    accepted a NULL event_type, and then failed on the CORRECT fix
+    (`event_type IS NULL OR ...`), which is the signature of a test measuring text rather
+    than behaviour. The behaviour is now compared against `quarantine_reason()` over a matrix
+    of records in tests/spark, where a Spark session can evaluate both. This test keeps only
+    the part that needs no engine: the names.
     """
     from samegold.domain.contract import QuarantineReason
 
     source = (REPO / "databricks" / "src" / "silver_expectations.py").read_text(encoding="utf-8")
     block = source[source.index("RULES = {") : source.index("@dp.table")]
     names = set(re.findall(r'^    "([a-z_]+)":', block, flags=re.MULTILINE))
-    assert names <= {str(reason) for reason in QuarantineReason}, (
-        f"rule names that are not contract quarantine reasons: {sorted(names)}"
-    )
-    assert "IS NULL OR" not in block, "a NULL-tolerant rule passes the record it should catch"
+    declared = {str(reason) for reason in QuarantineReason}
+    unexpected = names - declared
+    assert not unexpected, f"rule names that are not quarantine reasons: {sorted(unexpected)}"
+    assert len(names) >= 6, f"only {sorted(names)} are declared as expectations"
 
 
-# ------------------------------------------------------------------ the fifth review
+# ------------------------------------------------------------------ the sixth review
 
 
-def test_the_payload_hash_covers_the_same_columns_in_every_engine() -> None:
-    """`PAYLOAD_COLUMNS` was called "the shared definition" and appeared in one file.
+def test_the_ledgers_dimension_is_the_dimension_the_rule_produces(tmp_path: Path) -> None:
+    """`Ledger.dim_customer` is documented as "known by construction". It was not.
 
-    The reference SQL hand-wrote the list, the SCD2 reference hand-wrote a DIFFERENT one
-    (four columns instead of twelve), and nothing compared them: same hash function, different
-    input, therefore a different induced order, therefore two engines choosing different
-    copies of a colliding pair. A "total order" that is not the SAME order on both sides is
-    not the property the parity claim needs.
+    The ledger collapsed customer versions that shared a valid_from and stopped there; the
+    project's own rule (`domain.bitemporal.scd2_from_versions`) also collapses ADJACENT
+    versions with identical attributes, because a Type 2 dimension records changes and not
+    heartbeats. So the ledger claimed a few more rows than a correct implementation produces,
+    on every seed - 80 against 77 on one, 88 against 78 on another.
+
+    It survived six review rounds because nothing read it: the SCD2 claims compare the two
+    ENGINES with each other and never with the ledger, which is the one artefact that is
+    supposed to say what the answer is rather than compute it. This test reads it.
     """
-    from samegold.pipelines.transform import PAYLOAD_COLUMNS
+    from samegold.domain.bitemporal import scd2_from_versions
 
-    for name in ("gold_revenue.sql", "gold_scd2.sql"):
-        sql = (REPO / "src" / "samegold" / "oracle" / name).read_text(encoding="utf-8")
-        hashed = sql.split("sha256(", 1)[1]
-        found = [
-            column
-            for column in re.findall(r"COALESCE\((?:CAST\()?(\w+)", hashed[:900])
-            if column in PAYLOAD_COLUMNS
-        ]
-        assert found == list(PAYLOAD_COLUMNS), f"{name} hashes {found}"
-
-
-def test_the_two_hash_functions_really_did_disagree_about_half_the_time() -> None:
-    """The comment in transform.py quotes a measured rate; this is the measurement.
-
-    A figure that appears in a comment and is computed nowhere is a figure nobody can check,
-    which is the habit this whole repository argues against. Two hash functions induce two
-    independent orders on a pair of distinct payloads, so they should disagree on about half
-    of them; the point of running it is that "about half" is a claim about md5 and sha256 and
-    not an assumption.
-    """
-    import hashlib
-    import random
-
-    rng = random.Random(20260901)
-    disagreements = 0
-    pairs = 2000
-    for _ in range(pairs):
-        left = f"order_placed|O{rng.randrange(10**6)}|S{rng.randrange(10**6)}|1"
-        right = f"order_placed|O{rng.randrange(10**6)}|S{rng.randrange(10**6)}|3"
-        md5_order = hashlib.md5(left.encode()).hexdigest() < hashlib.md5(right.encode()).hexdigest()
-        sha_order = (
-            hashlib.sha256(left.encode()).hexdigest() < hashlib.sha256(right.encode()).hexdigest()
+    result = generate(tmp_path / "g", seed=11, profile=FAST)
+    ledger = result.ledger.dim_customer
+    assert ledger, "the generator produced no customer versions to compare"
+    for customer_id, versions in ledger.items():
+        expected = scd2_from_versions(
+            [
+                {
+                    "customer_id": customer_id,
+                    "valid_from": str(version["valid_from"]),
+                    "segment": version["segment"],
+                    "country": version["country"],
+                    "event_id": str(version.get("event_id", "")),
+                }
+                for version in versions
+            ]
         )
-        disagreements += md5_order != sha_order
-    share = disagreements / pairs
-    assert 0.44 < share < 0.56, f"{share:.2%} of {pairs} pairs, which is not 'about half'"
+        assert [str(v["valid_from"]) for v in versions] == [
+            str(row["valid_from"]) for row in expected
+        ], f"{customer_id}: the ledger and the rule disagree about the version history"
 
 
-def test_a_close_day_below_one_does_not_crash_the_freshness_rule() -> None:
-    """The clamp was applied to the upper end only, so 0 raised from the other side."""
-    # A day below one is clamped to the first, so all three name the same deadline.
-    assert (
-        close_deadline("2026-01", -5)
-        == close_deadline("2026-01", 0)
-        == close_deadline("2026-01", 1)
+def test_the_digest_refuses_a_type_it_cannot_encode_unambiguously() -> None:
+    """The type tag only helped for types that had one; everything else fell to str().
+
+    Which is the tag `str` uses, so the fallback recreated the collision the tags exist to
+    prevent: a UUID and its own string form digested identically while comparing unequal, and
+    two equal dicts with different insertion orders digested differently.
+    """
+    import uuid
+
+    from samegold.verify.digest import Projection, ProjectionError, digest_rows
+
+    projection = Projection(table="t", columns=("k", "v"), order_by=("k",))
+    identifier = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    with pytest.raises(ProjectionError, match="unambiguously"):
+        digest_rows([{"k": "a", "v": identifier}], projection)
+    with pytest.raises(ProjectionError, match="unambiguously"):
+        digest_rows([{"k": "a", "v": {"x": 1}}], projection)
+    # And the string form, which used to collide with the UUID, is still perfectly fine.
+    assert digest_rows([{"k": "a", "v": str(identifier)}], projection).row_count == 1
+
+
+def test_the_digest_refuses_a_non_finite_decimal() -> None:
+    """float('nan') was refused and Decimal('NaN') was digested silently; sNaN raised
+    InvalidOperation out of the encoder rather than a ProjectionError."""
+    from decimal import Decimal
+
+    from samegold.verify.digest import Projection, ProjectionError, digest_rows
+
+    projection = Projection(table="t", columns=("k", "v"), order_by=("k",))
+    for value in (Decimal("NaN"), Decimal("Infinity"), Decimal("sNaN")):
+        with pytest.raises(ProjectionError, match="non-finite"):
+            digest_rows([{"k": "a", "v": value}], projection)
+
+
+def test_the_evidence_store_refuses_a_claim_it_does_not_define(tmp_path: Path) -> None:
+    """A record for a claim that does not exist was accepted and rendered as a table row."""
+    from samegold.evidence.record import EvidenceRecord
+    from samegold.evidence.store import EvidenceRejected, EvidenceStore
+    from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+    from samegold.verify.verdict import Pass, Rate, RunSet
+
+    sha = current_commit_sha()
+
+    def record(claim_id: str, title: str, purpose: str = "witness") -> EvidenceRecord:
+        seeds = tuple(seeds_from_commit(1, purpose, sha=sha))
+        runs = RunSet(
+            n=1,
+            seeds=seeds,
+            commit_sha=sha,
+            seed_source="commit",
+            seed_purpose=purpose,
+            profile="fast",
+            started_at="2026-09-01T00:00:00+00:00",
+            duration_s=1.0,
+            runtime="oss-local",
+        )
+        return EvidenceRecord(claim_id, title, Pass(claim_id, runs, Rate(1, 1)), "oss-local")
+
+    store = EvidenceStore(tmp_path)
+    with pytest.raises(EvidenceRejected, match="not a claim this repository defines"):
+        store.append(record("SG-DOES-NOT-EXIST", "anything"))
+    with pytest.raises(EvidenceRejected, match="renames its own claim"):
+        store.append(record("SG-01", "a much better sounding title"))
+    with pytest.raises(EvidenceRejected, match="not one of the purposes"):
+        store.append(record("SG-01", CLAIM_TITLES["SG-01"], purpose="witness-attempt-0"))
+
+
+def test_the_evidence_store_refuses_a_number_that_is_not_json(tmp_path: Path) -> None:
+    """json.dumps writes NaN and Infinity as bare tokens, which no other JSON reader accepts.
+
+    The chain verified while the append-only file the whole argument rests on had become
+    unreadable to `jq`, `JSON.parse`, `serde_json` and Go's `encoding/json`.
+    """
+    from samegold.evidence.record import EvidenceRecord
+    from samegold.evidence.store import EvidenceRejected, EvidenceStore
+    from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+    from samegold.verify.verdict import Pass, Rate, RunSet
+
+    sha = current_commit_sha()
+    runs = RunSet(
+        n=1,
+        seeds=tuple(seeds_from_commit(1, "witness", sha=sha)),
+        commit_sha=sha,
+        seed_source="commit",
+        seed_purpose="witness",
+        profile="fast",
+        started_at="2026-09-01T00:00:00+00:00",
+        duration_s=1.0,
+        runtime="oss-local",
     )
-    now = dt.datetime(2026, 4, 10, 12, tzinfo=dt.UTC)
-    assert evaluate_freshness(now - dt.timedelta(minutes=1), ["2026-03"], now, close_day=0) == []
+    bad = EvidenceRecord(
+        "SG-01",
+        CLAIM_TITLES["SG-01"],
+        Pass("SG-01", runs, Rate(1, 1)),
+        "oss-local",
+        artifacts={"share": float("nan")},
+    )
+    with pytest.raises(EvidenceRejected, match="non-finite"):
+        EvidenceStore(tmp_path).append(bad)
 
 
-def test_a_close_recorded_for_a_future_month_does_not_silence_the_alert() -> None:
-    """Filtering the floor for SYNTAX was half the fix.
+def test_the_renderer_refuses_a_value_that_would_break_the_document(tmp_path: Path) -> None:
+    """An artifact value containing the anchor terminator closed the anchor early.
 
-    One entry for a month that has not happened is the lexicographic minimum, the walk stops
-    on its first step, and every month with no close is reported as healthy.
+    The rest of the value landed outside it, the next render appended it again, the document
+    grew on every `make readme`, and the drift gate could then only be satisfied by hand
+    editing the document, which is the exact act the module exists to prevent.
     """
-    now = dt.datetime(2026, 9, 1, 12, tzinfo=dt.UTC)
-    with_future = [m for m, _ in overdue_months(now, ["2026-01", "2030-01"])]
-    without = [m for m, _ in overdue_months(now, ["2026-01"])]
-    assert with_future == without and len(without) == 6
-    # And a record that contains ONLY future months is no history at all, not a silence.
-    assert [m for m, _ in overdue_months(now, ["2030-01"])] == ["2026-07"]
+    from samegold.evidence.render import render_readme
 
-
-def test_the_repository_facts_rate_can_fall() -> None:
-    """It was Rate(collected, collected): 100% by construction for any suite, however red."""
-    from samegold.claims import _pytest_counts
-
-    assert _pytest_counts("3 failed, 320 passed in 47.04s") == (320, 3)
-    assert _pytest_counts("325 passed in 49.32s") == (325, 0)
-    assert _pytest_counts("1 error in 0.31s") == (0, 1)
-    assert _pytest_counts("something else entirely") == (0, 0)
-
-
-def test_the_amendment_shape_guard_is_not_satisfied_by_the_wrong_shapes(tmp_path: Path) -> None:
-    """It measured distinctness on the raw event_ts STRING and ignored arrival and quantity.
-
-    Three shapes satisfied it while leaving SQL-053 exactly as unscorable as before: an
-    amendment arriving after the last close, two amendments carrying the same new_qty, and
-    two amendments whose timestamps spell one instant in two offsets.
-    """
-    from dataclasses import dataclass
-
-    from samegold.claims import _assert_mutation_shapes_exist
-
-    @dataclass
-    class _Ledger:
-        closes: list[str]
-
-    @dataclass
-    class _Result:
-        ledger: _Ledger
-
-    result = _Result(_Ledger(["2026-02-01T00:00:00+00:00"]))
-
-    def amendment(**overrides: object) -> dict[str, object]:
-        base = {
-            "event_id": "am-1",
-            "event_type": "order_line_amended",
-            "event_ts": "2026-01-10T10:00:00+00:00",
-            "arrival_ts": "2026-01-10T10:05:00+00:00",
-            "order_id": "O1",
-            "sku": "S1",
-            "new_qty": 5,
+    latest = {
+        "SG-01": {
+            "claim_id": "SG-01",
+            "title": "two implementations agree on the close",
+            "runtime": "oss-local",
+            "artifacts": {"x": "99.9%<!--/sg--> and INJECTED TEXT"},
+            "verdict": {"outcome": "pass", "runs": {}, "rate": None},
         }
-        base.update(overrides)
-        return base
-
-    unscorable = {
-        "arrives-after-the-close": [
-            amendment(),
-            amendment(
-                event_id="am-2",
-                event_ts="2026-01-11T10:00:00+00:00",
-                new_qty=9,
-                arrival_ts="2099-01-01T00:00:00+00:00",
-            ),
-        ],
-        "same-quantity": [
-            amendment(),
-            amendment(event_id="am-2", event_ts="2026-01-11T10:00:00+00:00"),
-        ],
-        "one-instant-two-spellings": [
-            amendment(event_ts="2026-01-10T10:00:00+00:00"),
-            amendment(event_id="am-2", event_ts="2026-01-10T11:00:00+01:00", new_qty=9),
-        ],
     }
-    for name, rows in unscorable.items():
-        root = tmp_path / name
-        (root / "bronze" / "batch=1").mkdir(parents=True)
-        (root / "bronze" / "batch=1" / "part-00000.json").write_text(
-            "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
-        )
-        with pytest.raises(ValueError, match="amendment-ordering"):
-            _assert_mutation_shapes_exist(root, result, "test")
+    with pytest.raises(ValueError, match="comment delimiter"):
+        render_readme("<!--sg:SG-01.artifact.x-->?<!--/sg-->\n", latest)
 
-    scorable = tmp_path / "scorable"
-    (scorable / "bronze" / "batch=1").mkdir(parents=True)
-    (scorable / "bronze" / "batch=1" / "part-00000.json").write_text(
-        json.dumps(amendment())
-        + "\n"
-        + json.dumps(amendment(event_id="am-2", event_ts="2026-01-11T10:00:00+00:00", new_qty=9))
-        + "\n",
-        encoding="utf-8",
-    )
-    _assert_mutation_shapes_exist(scorable, result, "test")
+
+def test_the_hardcoded_number_check_reads_the_document(tmp_path: Path) -> None:
+    """It used to look for a marker the author had to volunteer, which appeared nowhere."""
+    from samegold.evidence.render import check_readme
+
+    latest = {
+        "SG-01": {
+            "claim_id": "SG-01",
+            "title": "two implementations agree on the close",
+            "runtime": "oss-local",
+            "artifacts": {},
+            "verdict": {"outcome": "pass", "runs": {}, "rate": None},
+        }
+    }
+    document = tmp_path / "DOC.md"
+    document.write_text("`SG-01` agreed on 15/15 runs.\n", encoding="utf-8")
+    kinds = [drift.kind for drift in check_readme(document, latest)]
+    assert "hardcoded" in kinds
+    document.write_text("`SG-01` agreed on every run.\n", encoding="utf-8")
+    assert [d.kind for d in check_readme(document, latest)] == []

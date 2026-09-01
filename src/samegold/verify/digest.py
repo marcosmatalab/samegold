@@ -10,8 +10,13 @@ kill this kind of evidence, and both are made silently:
 
 So the projection is a value with rules, not a list of strings passed at the call site:
 it refuses to be built over a non-deterministic column, and it refuses to be built without
-a total order. ``CanonicalDigest`` cannot be constructed from a hex string at all, which is
-the point: a report cannot be edited into agreement, it can only be recomputed.
+a total order. ``CanonicalDigest`` has no public constructor: the only ways to get one are
+``of()``, which computes it from data, and ``parse()``, which reads a published one back
+together with its projection and row count. That is the point: a report cannot be edited into
+agreement, it can only be recomputed. (An earlier version of this paragraph said the class
+"cannot be constructed from a hex string at all", which the ``parse`` classmethod twelve
+lines below contradicts. Two docstrings in one file disagreeing about the same class is the
+smallest possible version of the failure this repository is about.)
 """
 
 from __future__ import annotations
@@ -100,6 +105,21 @@ def _canonical(value: Any) -> str:
     encoding is ``<tag>:<byte length>:<text>``, which no value can forge because the length
     is counted, not delimited. The four collisions are regression tests in
     tests/fast/test_digest.py and each names the value pair it came from.
+
+    A LATER review found that the type tag only helped for the types that had one. Everything
+    else fell through to ``str(value)`` under the tag ``s``, which is the tag ``str`` uses, so
+    the fallback recreated exactly the collision the tags exist to prevent:
+
+      * ``UUID("...0001")`` and its own string form digested identically while comparing
+        unequal;
+      * ``("x",)`` and the string ``"('x',)"`` likewise;
+      * and in the other direction, two equal dicts with different insertion orders digested
+        differently, because ``str(dict)`` is insertion-ordered.
+
+    So there is no fallback any more. A type this function does not know is a
+    ``ProjectionError``, which is the same answer it already gave for a non-finite float: a
+    digest is a claim about equality, and a value it cannot encode unambiguously is a value
+    it must not make that claim about. Adding a type means adding a tag, deliberately.
     """
     if value is None:
         return "n:0:"
@@ -108,6 +128,11 @@ def _canonical(value: Any) -> str:
     elif isinstance(value, int):
         text, tag = str(value), "i"
     elif isinstance(value, Decimal):
+        # Decimal carries NaN, sNaN and Infinity too, and format() renders them happily.
+        # A non-finite Decimal was digested silently while the identical float was refused;
+        # sNaN did not even reach that, it raised InvalidOperation out of normalize().
+        if not value.is_finite():
+            raise ProjectionError(f"non-finite decimal in a digest: {value!r}")
         text, tag = format(value.normalize(), "f"), "d"
     elif isinstance(value, float):
         if value != value or value in (float("inf"), float("-inf")):
@@ -122,8 +147,13 @@ def _canonical(value: Any) -> str:
         text, tag = value.isoformat(), "D"
     elif isinstance(value, bytes):
         text, tag = value.hex(), "x"
+    elif isinstance(value, str):
+        text, tag = value, "s"
     else:
-        text, tag = str(value), "s"
+        raise ProjectionError(
+            f"a digest cannot encode {type(value).__name__} unambiguously: {value!r}. "
+            f"Convert it in the projection, or give it a type tag in _canonical()."
+        )
     return f"{tag}:{len(text.encode())}:{text}"
 
 
@@ -131,10 +161,11 @@ def _canonical(value: Any) -> str:
 class CanonicalDigest:
     """A digest that knows what it is a digest of.
 
-    There is no public constructor: ``CanonicalDigest("deadbeef")`` raises. The only ways
-    to get one are ``of()`` (compute it) and ``parse()`` (read one back from evidence,
-    which keeps the projection alongside it so a comparison across different projections
-    fails loudly instead of returning False).
+    There is no public constructor: ``CanonicalDigest("deadbeef")`` raises. The only ways to
+    get one are ``of()`` (compute it) and ``parse()`` (read a published one back, WITH its
+    projection and row count, so a comparison across different projections fails loudly
+    instead of returning False). ``parse()`` is not a back door: it cannot invent a digest
+    that any dataset produces, it only re-attaches the metadata a bare hex string has lost.
     """
 
     hexdigest: str

@@ -37,7 +37,21 @@ td.negative { color: #a3352a; }
 
 
 def _euros(cents: int) -> str:
-    return f"{cents / 100:,.2f}"
+    """Cents as the rest of this project writes money: 67269342 -> "672 693,42".
+
+    INTEGER arithmetic, in a repository whose contract says "money is integer cents
+    everywhere; there is no float in this pipeline" and whose whole argument for cents as
+    BIGINT is that it removes an entire class of engine-dependent rounding. This function was
+    `f"{cents / 100:,.2f}"`: a float division, in the one place the numbers are shown to a
+    person. At 1 234 567 890 123 456 789 cents it prints ...568,00 for a figure ending 567,89.
+
+    And es-ES, like `evidence/runs/SG-04.json` and the post-mortem. It was printing
+    `662,481.62` for a number those two write as `662 481,62`: one figure, two conventions,
+    on a page documented as generated from the same table they are.
+    """
+    whole, fraction = divmod(abs(int(cents)), 100)
+    sign = "-" if int(cents) < 0 else ""
+    return f"{sign}{whole:,}".replace(",", " ") + f",{fraction:02d}"
 
 
 def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime) -> str:

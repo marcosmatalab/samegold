@@ -49,18 +49,28 @@ def test_the_document_lists_exactly_the_quarantine_reasons_the_enum_has() -> Non
     assert listed == declared, f"document {sorted(listed)} != enum {sorted(declared)}"
 
 
-def test_every_quarantine_reason_is_reachable_in_the_spark_rules() -> None:
-    """A reason nobody can produce is a reason nobody maintains."""
-    source = (
-        Path(__file__).resolve().parents[2] / "src" / "samegold" / "pipelines" / "transform.py"
-    ).read_text(encoding="utf-8")
-    generator = (
-        Path(__file__).resolve().parents[2] / "src" / "samegold" / "generator" / "events.py"
-    ).read_text(encoding="utf-8")
-    for reason in QuarantineReason:
-        assert str(reason) in source or reason.name in generator, (
-            f"{reason} is declared in the contract but no implementation can emit it"
-        )
+def test_every_quarantine_reason_is_actually_produced_by_a_run() -> None:
+    """Produced, not mentioned. The previous version of this test grepped for the name.
+
+    It asserted `str(reason) in source`, i.e. that the literal string had been typed into
+    `transform.py`. `return_exceeds_sold_qty` passed it for the whole life of the repository
+    while being UNREACHABLE by construction: the generator drew a return quantity with
+    `randrange(1, sold + 1)`, so "more units than were sold" could not happen, and the branch
+    existed in all three implementations and was exercised by none of them.
+
+    This version generates a dataset and reads the ledger's own accounting of what it planted.
+    A reason nobody can produce is a reason nobody maintains; grepping for its name is not
+    producing it.
+    """
+    import tempfile
+
+    from samegold.generator.events import FAST, generate
+
+    with tempfile.TemporaryDirectory(prefix="samegold-reasons-") as tmp:
+        result = generate(Path(tmp) / "g", seed=42, profile=FAST)
+    produced = set(result.ledger.quarantine)
+    missing = {str(reason) for reason in QuarantineReason} - produced
+    assert not missing, f"declared in the contract and produced by no run: {sorted(missing)}"
 
 
 def test_the_sql_reference_enforces_the_window_in_seconds() -> None:

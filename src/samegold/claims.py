@@ -25,6 +25,7 @@ from typing import Any
 
 from samegold.domain.bitemporal import accounting_month_of
 from samegold.evidence.record import EvidenceRecord
+from samegold.evidence.registry import CLAIM_TITLES
 from samegold.generator.events import CI, FAST, FULL, Profile, generate
 from samegold.generator.seeds import current_commit_sha, seed_source, seeds_from_commit
 from samegold.mutation.assumption_probe import (
@@ -206,7 +207,7 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     )
     return EvidenceRecord(
         claim_id="SG-00",
-        title="what this repository contains, counted",
+        title=CLAIM_TITLES["SG-00"],
         verdict=verdict,
         runtime="oss-local",
         artifacts=facts,
@@ -264,7 +265,7 @@ def claim_witness_agreement(
     )
     return EvidenceRecord(
         claim_id="SG-01",
-        title="two implementations agree on the close",
+        title=CLAIM_TITLES["SG-01"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={"comparisons": comparisons, "closes_per_run": comparisons // max(1, len(seeds))},
@@ -329,7 +330,7 @@ def claim_redelivery_is_a_noop(
     )
     return EvidenceRecord(
         claim_id="SG-02",
-        title="re-delivery under a new path is a no-op",
+        title=CLAIM_TITLES["SG-02"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={"files_duplicated": "all"},
@@ -468,7 +469,7 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
     )
     return EvidenceRecord(
         claim_id="SG-03",
-        title="mutation campaign",
+        title=CLAIM_TITLES["SG-03"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={
@@ -582,7 +583,7 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
         }
     return EvidenceRecord(
         claim_id="SG-04",
-        title="a closed month moves after it is closed",
+        title=CLAIM_TITLES["SG-04"],
         verdict=Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close"),
         runtime="oss-local",
         artifacts={
@@ -672,7 +673,7 @@ def claim_dimension_invariants(
     )
     return EvidenceRecord(
         claim_id="SG-05",
-        title="dimension and conservation invariants hold without an oracle",
+        title=CLAIM_TITLES["SG-05"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={"scd2_digests": digests},
@@ -731,7 +732,7 @@ def claim_seed_provenance(evidence_dir: Path | None = None) -> EvidenceRecord:
         )
     return EvidenceRecord(
         claim_id="SG-06",
-        title="the evidence chain verifies and every seed derives from its commit",
+        title=CLAIM_TITLES["SG-06"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={
@@ -817,7 +818,7 @@ def claim_crash_campaign(
         verdict = Pass("SG-07", runset, rate, "negative control detected, no divergences")
     return EvidenceRecord(
         claim_id="SG-07",
-        title="the silver writer survives a crash at each of its structural points",
+        title=CLAIM_TITLES["SG-07"],
         verdict=verdict,
         runtime="oss-local",
         artifacts=payload,
@@ -926,7 +927,7 @@ def claim_privacy_controls(work: Path, profile_name: str = "fast") -> EvidenceRe
     )
     return EvidenceRecord(
         claim_id="SG-08",
-        title="no direct identifier reaches gold, and a purge really purges",
+        title=CLAIM_TITLES["SG-08"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={
@@ -1020,7 +1021,7 @@ def claim_cost_lab(work: Path, repetitions: int = 2) -> EvidenceRecord:
     )
     return EvidenceRecord(
         claim_id="SG-09",
-        title="what layout costs, in files and bytes",
+        title=CLAIM_TITLES["SG-09"],
         verdict=verdict,
         runtime="oss-local",
         artifacts={

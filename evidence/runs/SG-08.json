@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 253,
+    "dimension_rows": 258,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -27,12 +27,12 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "ae2fad878af039fbaaab25bed726e6ef",
+  "hash": "85317c2c0705109ef34a2217e3206c15",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "c2a0cea15cff6d4f8cc7f50faa93ec6c",
+  "prev": "6cf17850c8e44c52cdc0e0ca6858427f",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,17 +49,17 @@
       ]
     },
     "runs": {
-      "commit_sha": "8ae09424aaf351ddb6060b4dc090b469a309f5dd",
-      "duration_s": 0.619,
+      "commit_sha": "88b8301442a1e0388ca12bf01c790cd33363e0d2",
+      "duration_s": 0.607,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        2161254257853103590
+        12681322869753401646
       ],
-      "started_at": "2026-09-01T20:33:01+00:00"
+      "started_at": "2026-09-01T21:02:05+00:00"
     }
   }
 }

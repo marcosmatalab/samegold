@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from samegold.evidence.record import EvidenceRecord
+from samegold.evidence.registry import CLAIM_TITLES
 from samegold.evidence.render import BEGIN, END, check_readme, render_readme
 from samegold.evidence.store import EvidenceRejected, EvidenceStore, record_hash
 from samegold.generator.seeds import current_commit_sha, seeds_from_commit
@@ -24,7 +25,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 def _record(
-    claim_id: str = "SG-99",
+    # A REAL claim id and its real title. The gate now checks that a record is about a claim
+    # this repository defines and that it has not renamed it, so a fixture using "SG-01" and
+    # "a test claim" would be refused by the identity check before it ever reached the rule
+    # each test below is actually about.
+    claim_id: str = "SG-01",
     successes: int = 9,
     trials: int = 10,
     seeds: tuple[int, ...] | None = None,
@@ -45,7 +50,7 @@ def _record(
     )
     return EvidenceRecord(
         claim_id=claim_id,
-        title="a test claim",
+        title=CLAIM_TITLES[claim_id],
         verdict=Pass(claim_id, runs, Rate(successes, trials)),
         runtime="oss-local",
         ci_run_url=ci_run_url,
@@ -59,21 +64,21 @@ def _record(
 def test_a_value_anchor_is_replaced_and_survives_rendering(tmp_path: Path) -> None:
     store = EvidenceStore(tmp_path)
     store.append(_record())
-    text = "score: <!--sg:SG-99.rate-->?<!--/sg--> done\n"
+    text = "score: <!--sg:SG-01.rate-->?<!--/sg--> done\n"
     once = render_readme(text, store.latest())
     assert "9/10" in once
     # Idempotence is the property that matters: the anchor must still be there so the next
     # run can update the number. A token consumed on first render cannot drift, but it can
     # never be corrected either.
     assert render_readme(once, store.latest()) == once
-    assert "<!--sg:SG-99.rate-->" in once
+    assert "<!--sg:SG-01.rate-->" in once
 
 
 def test_a_changed_number_is_detected_as_drift(tmp_path: Path) -> None:
     store = EvidenceStore(tmp_path)
     store.append(_record())
     document = tmp_path / "DOC.md"
-    document.write_text(render_readme("score: <!--sg:SG-99.rate-->?<!--/sg-->\n", store.latest()))
+    document.write_text(render_readme("score: <!--sg:SG-01.rate-->?<!--/sg-->\n", store.latest()))
     assert check_readme(document, store.latest()) == []
     document.write_text(document.read_text().replace("9/10", "10/10"))
     drifts = check_readme(document, store.latest())
@@ -108,7 +113,7 @@ def test_attack_editing_the_history_by_hand_breaks_the_chain(tmp_path: Path) -> 
     """Attack 1: change a number in history.jsonl and re-render."""
     store = EvidenceStore(tmp_path)
     store.append(_record())
-    store.append(_record("SG-98"))
+    store.append(_record("SG-02"))
     assert store.verify_chain() == []
     forged = store.history.read_text().replace('"successes": 9', '"successes": 999')
     store.history.write_text(forged)
@@ -121,7 +126,7 @@ def test_attack_inserting_a_record_breaks_the_chain(tmp_path: Path) -> None:
     """Appending a well-formed record produced elsewhere still breaks the chain."""
     store = EvidenceStore(tmp_path)
     store.append(_record())
-    smuggled = _record("SG-97", successes=999, trials=999).to_json()
+    smuggled = _record("SG-03", successes=999, trials=999).to_json()
     smuggled["prev"] = "0" * 32
     smuggled["hash"] = record_hash(smuggled)
     with store.history.open("a", encoding="utf-8") as handle:
@@ -134,8 +139,8 @@ def test_attack_deleting_a_record_breaks_the_chain(tmp_path: Path) -> None:
     """A failing run cannot be quietly removed from the history."""
     store = EvidenceStore(tmp_path)
     store.append(_record())
-    store.append(_record("SG-98"))
-    store.append(_record("SG-97"))
+    store.append(_record("SG-02"))
+    store.append(_record("SG-03"))
     lines = store.history.read_text().splitlines()
     store.history.write_text("\n".join([lines[0], lines[2]]) + "\n")
     assert store.verify_chain(), "removing the middle record must be visible"
@@ -173,7 +178,7 @@ def test_attack_editing_a_runs_file_is_detected(tmp_path: Path) -> None:
     """runs/<claim>.json is what a reader opens. It used to be unchecked."""
     store = EvidenceStore(tmp_path)
     store.append(_record())
-    path = store.runs_dir / "SG-99.json"
+    path = store.runs_dir / "SG-01.json"
     payload = json.loads(path.read_text())
     payload["verdict"]["rate"]["successes"] = 999
     path.write_text(json.dumps(payload))
@@ -184,9 +189,9 @@ def test_attack_editing_a_runs_file_is_detected(tmp_path: Path) -> None:
 def test_attack_reordering_the_history_is_detected(tmp_path: Path) -> None:
     """Moving an old PASS after a later FAIL used to make the PASS the latest word."""
     store = EvidenceStore(tmp_path)
-    first = _record("SG-97")
+    first = _record("SG-03")
     object.__setattr__(first.verdict.runs, "started_at", "2026-01-01T00:00:00+00:00")
-    second = _record("SG-97", successes=1)
+    second = _record("SG-03", successes=1)
     object.__setattr__(second.verdict.runs, "started_at", "2026-02-01T00:00:00+00:00")
     store.append(first)
     store.append(second)
@@ -212,7 +217,7 @@ def test_attack_a_record_naming_a_commit_that_does_not_exist(tmp_path: Path) -> 
     store = EvidenceStore(tmp_path)
     # A real record first: the commit anchor only applies to a history that belongs to this
     # checkout, so that a fork or a downloaded tarball is not told its evidence is forged.
-    store.append(_record("SG-96"))
+    store.append(_record("SG-04"))
     fake = "dead" * 10
     record = _record(seeds=tuple(seed_for(fake, i, "witness") for i in range(2)))
     object.__setattr__(record.verdict.runs, "commit_sha", fake)
@@ -254,11 +259,11 @@ def test_the_repository_documents_are_consistent_with_its_evidence() -> None:
 
 def test_history_is_append_only_and_keeps_failures(tmp_path: Path) -> None:
     store = EvidenceStore(tmp_path)
-    store.append(_record("SG-98"))
-    store.append(_record("SG-98", successes=8))
+    store.append(_record("SG-02"))
+    store.append(_record("SG-02", successes=8))
     lines = store.history.read_text().splitlines()
     assert len(lines) == 2, "history.jsonl must never be rewritten in place"
-    assert store.latest()["SG-98"]["verdict"]["rate"]["successes"] == 8
+    assert store.latest()["SG-02"]["verdict"]["rate"]["successes"] == 8
 
 
 def test_every_claim_cited_in_the_documents_exists() -> None:
