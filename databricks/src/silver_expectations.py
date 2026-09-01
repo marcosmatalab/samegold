@@ -65,6 +65,13 @@ RULES = {
     ),
     "negative_price": "event_type <> 'order_placed' OR unit_price_cents >= 0",
     "unknown_currency": "event_type <> 'order_placed' OR currency = 'EUR'",
+    # Bounded, because qty * unit_price_cents is a BIGINT multiplication. See
+    # domain/contract.py: three lines at the maximum legal price ended the close outright.
+    "amount_out_of_range": (
+        "(event_type NOT IN ('order_placed','return_registered') OR qty <= 10000000)"
+        " AND (event_type <> 'order_line_amended' OR new_qty <= 10000000)"
+        " AND (event_type <> 'order_placed' OR unit_price_cents <= 10000000000)"
+    ),
 }
 
 
@@ -95,6 +102,10 @@ _REASON = (
     " WHEN event_type = 'order_line_amended' AND new_qty <= 0 THEN 'non_positive_quantity'"
     " WHEN event_type = 'order_placed' AND unit_price_cents < 0 THEN 'negative_price'"
     " WHEN event_type = 'order_placed' AND currency <> 'EUR' THEN 'unknown_currency'"
+    " WHEN (event_type IN ('order_placed','return_registered') AND qty > 10000000)"
+    " OR (event_type = 'order_line_amended' AND new_qty > 10000000)"
+    " OR (event_type = 'order_placed' AND unit_price_cents > 10000000000)"
+    " THEN 'amount_out_of_range'"
     " ELSE 'accepted' END"
 )
 

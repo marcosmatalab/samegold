@@ -117,7 +117,8 @@ dedup AS (
                                   || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
                                   || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
                                   || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
-                                  || COALESCE(country, ''))
+                                  || COALESCE(country, '') || '|'
+                                  || COALESCE(boundary, ''))
                   ) AS rn
         FROM arrived
     ) WHERE rn = 1
@@ -126,12 +127,14 @@ lines AS (
     SELECT order_id, customer_id, sku,
            qty AS qty0,
            unit_price_cents,
+           event_id AS line_event_id,
            event_ts AS sale_ts
     FROM dedup
     WHERE event_type = 'order_placed'
       AND order_id IS NOT NULL AND sku IS NOT NULL AND customer_id IS NOT NULL
-      AND qty > 0
+      AND qty > 0 AND qty <= 10000000
       AND unit_price_cents IS NOT NULL AND unit_price_cents >= 0
+      AND unit_price_cents <= 10000000000
       AND currency = 'EUR'
 ),
 amendments AS (
@@ -140,44 +143,72 @@ amendments AS (
                row_number() OVER (PARTITION BY order_id, sku
                                   ORDER BY event_ts DESC, event_id DESC) AS rn
         FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
-                     AND new_qty > 0
+                     AND new_qty > 0 AND new_qty <= 10000000
                      AND order_id IS NOT NULL AND sku IS NOT NULL
     ) WHERE rn = 1
+),
+-- ONE line per (order_id, sku). The key of an order_placed is its event_id, so two sales
+-- with one (order_id, sku) are contract-legal, and until now they fanned the returns out
+-- across the join: one return event came back BOTH refunded and counted as refused, in both
+-- engines, and no quarantine reason covers a duplicated line key. The first sale by
+-- (event_ts, event_id) is the line; the rest are refused with the reason that says so.
+lines_ranked AS (
+    SELECT *, row_number() OVER (PARTITION BY order_id, sku
+                                 ORDER BY sale_ts, line_event_id) AS line_rn
+    FROM lines
 ),
 effective AS (
     SELECT l.order_id, l.customer_id, l.sku, l.unit_price_cents, l.sale_ts,
            COALESCE(a.qty, l.qty0) AS qty
-    FROM lines l LEFT JOIN amendments a ON a.order_id = l.order_id AND a.sku = l.sku
+    FROM lines_ranked l LEFT JOIN amendments a ON a.order_id = l.order_id AND a.sku = l.sku
+    WHERE l.line_rn = 1
 ),
 return_candidates AS (
-    SELECT d.order_id, d.sku, d.qty AS return_qty,
+    SELECT d.order_id, d.sku, d.qty AS return_qty, d.event_id AS return_event_id,
            d.event_ts AS return_ts,
-           e.sale_ts, e.unit_price_cents, e.qty AS sold_qty,
-           -- CUMULATIVE, not per event. Comparing each return against the quantity sold let
-           -- three returns of three units each be accepted against one sale of three: gross
-           -- 3000, refunds 9000, net MINUS 6000, and returns_rejected_count zero. Both
-           -- engines agreed on it, so the parity claim was blind, and the generator never
-           -- emits a second return for a line, so no seed reached it. The window is ordered
-           -- by (return_ts, event_id), which is the same total order the Spark side uses.
-           SUM(d.qty) OVER (PARTITION BY d.order_id, d.sku
-                            ORDER BY d.event_ts, d.event_id
-                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-               AS returned_including_this
+           e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
     FROM dedup d
     LEFT JOIN effective e ON e.order_id = d.order_id AND e.sku = d.sku
     WHERE d.event_type = 'return_registered' AND d.qty IS NOT NULL AND d.qty > 0
+      AND d.qty <= 10000000
       AND d.order_id IS NOT NULL AND d.sku IS NOT NULL
 ),
-returns_classified AS (
+-- Eligibility first, then the CUMULATIVE quantity rule over the ELIGIBLE returns only.
+--
+-- Two mistakes were made here in two consecutive review rounds. Comparing each return
+-- against the quantity sold let three returns of three units each be accepted against one
+-- sale of three (net MINUS 6000). Summing over every candidate then let a REFUSED return eat
+-- the line's quantity: a return dated before its sale takes nothing and still consumed three
+-- units, so the good return after it was refused with a reason that was factually false.
+--
+-- Once the eligible returns have taken every unit sold, the ones after them are refused too,
+-- including a small one that would have fitted in a gap. That is stated in CONTRACT.md as
+-- part of the rule rather than left as an artefact of how it is computed.
+eligibility AS (
     SELECT *,
            CASE
                WHEN sale_ts IS NULL THEN 'return_without_order'
                WHEN return_ts < sale_ts THEN 'return_outside_window'
                WHEN epoch(return_ts) - epoch(sale_ts) > 45 * 86400 THEN 'return_outside_window'
-               WHEN returned_including_this > sold_qty THEN 'return_exceeds_sold_qty'
-               ELSE 'accepted'
-           END AS return_reason
+           END AS ineligible_reason
     FROM return_candidates
+),
+returns_classified AS (
+    SELECT * EXCLUDE (ineligible_reason, returned_including_this),
+           COALESCE(
+               ineligible_reason,
+               CASE WHEN returned_including_this > sold_qty THEN 'return_exceeds_sold_qty' END,
+               'accepted'
+           ) AS return_reason
+    FROM (
+        SELECT *,
+               SUM(CASE WHEN ineligible_reason IS NULL THEN return_qty ELSE 0 END)
+                   OVER (PARTITION BY order_id, sku
+                         ORDER BY return_ts, return_event_id
+                         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                   AS returned_including_this
+        FROM eligibility
+    )
 ),
 returns AS (SELECT * FROM returns_classified WHERE return_reason = 'accepted'),
 -- Rejected returns are reported, not discarded. Finance asks how many refunds were refused

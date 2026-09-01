@@ -198,7 +198,8 @@ tagged AS (
                             || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
                             || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
                             || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
-                            || COALESCE(country, ''))
+                            || COALESCE(country, '') || '|'
+                            || COALESCE(boundary, ''))
            ) AS rn
     FROM stamped WHERE event_id IS NOT NULL
 ),
@@ -241,6 +242,15 @@ classified AS (
                 THEN 'non_positive_quantity'
             WHEN event_type = 'order_placed' AND CAST(unit_price_cents AS BIGINT) < 0
                 THEN 'negative_price'
+            -- Bounded: qty * unit_price_cents is a BIGINT multiplication and BIGINT
+            -- overflows. See domain/contract.py for the numbers and the incident.
+            WHEN (event_type IN ('order_placed','return_registered')
+                  AND CAST(qty AS BIGINT) > 10000000)
+                 OR (event_type = 'order_line_amended'
+                     AND CAST(new_qty AS BIGINT) > 10000000)
+                 OR (event_type = 'order_placed'
+                     AND CAST(unit_price_cents AS BIGINT) > 10000000000)
+                THEN 'amount_out_of_range'
             WHEN event_type = 'order_placed' AND currency <> 'EUR'
                 THEN 'unknown_currency'
             ELSE 'accepted'
@@ -260,6 +270,37 @@ SELECT
     (SELECT count(*) FROM classified WHERE bucket = 'accepted')  AS accepted,
     (SELECT count(*) FROM classified WHERE bucket <> 'accepted') AS rejected_by_rule
 """
+
+
+_RETURN_REASONS_SQL = """
+SELECT return_reason, COUNT(*) AS n
+FROM returns_classified
+WHERE return_reason <> 'accepted'
+GROUP BY 1
+"""
+
+
+def returns_rejected_by_reason(bronze_dir: Path, as_of: dt.datetime) -> dict[str, int]:
+    """How many returns each RETURN-STAGE reason refused, from the reference.
+
+    The ingest-stage accounting in `reference_counts` classifies a return event by its own
+    fields only: whether it matches a sale, falls inside the window or fits in the remaining
+    quantity are questions about the SALE, answered in gold. So a return that gold refuses is
+    `accepted` at ingest, and for a long time nothing counted it anywhere - CONTRACT.md
+    claimed a quarantine counter that did not exist, and the generator's own per-reason
+    ledger was compared against nothing.
+
+    This is the other half of the accounting, and SG-05 compares it with that ledger.
+    """
+    glob = str(Path(bronze_dir) / "**" / "*.json")
+    sql = _SQL_PATH.read_text(encoding="utf-8")
+    body = sql[: sql.rindex("SELECT COALESCE(g.accounting_month")] + _RETURN_REASONS_SQL
+    con = _connect()
+    try:
+        rows = con.execute(body, {"glob": glob, "as_of": as_of.isoformat()}).fetchall()
+    finally:
+        con.close()
+    return {str(reason): int(count) for reason, count in rows}
 
 
 def reference_counts(bronze_dir: Path) -> dict[str, int]:

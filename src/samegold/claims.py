@@ -41,7 +41,12 @@ from samegold.mutation.assumption_probe import (
     probe_structural_assumption,
 )
 from samegold.mutation.runner import run_mutation_campaign
-from samegold.oracle.duckdb_gold import DuckDBWitness, reference_counts, scd2_as_of
+from samegold.oracle.duckdb_gold import (
+    DuckDBWitness,
+    reference_counts,
+    returns_rejected_by_reason,
+    scd2_as_of,
+)
 from samegold.verify.digest import (
     REVENUE_PROJECTION,
     SCD2_PROJECTION,
@@ -52,6 +57,7 @@ from samegold.verify.invariants import (
     conservation_against_ledger,
     net_identity,
     restatement_monotonic,
+    returns_accounted_by_reason,
     returns_never_exceed_sales,
     scd2_well_formed,
 )
@@ -738,10 +744,26 @@ def claim_dimension_invariants(
                 # all-NULL record, which is what `no_event_id` counts; adding both counted
                 # the same line twice.
                 quarantined=counts["rejected_by_rule"] + counts["unparseable"],
+                # Structurally zero, and said out loud rather than left as a literal. The
+                # reader declares a `_rescued_data` column (PERMISSIVE mode fills it) and no
+                # consumer reads it: a record whose JSON is malformed arrives with every
+                # field NULL and leaves through `unparseable_json`, so the rescue DOOR of the
+                # contract's four is one this pipeline never uses. A term that cannot move is
+                # not a check, which is why CONTRACT.md now says so where the identity is
+                # stated.
                 rescued=0,
                 deduplicated=counts["duplicates"],
             )
             + conservation_against_ledger(ledger_counts, counts)
+            # And the return-stage reasons, whose counts live a stage later and had no
+            # comparison at all: the contract described a counter that did not exist and the
+            # generator's per-reason ledger was read by nothing.
+            + returns_accounted_by_reason(
+                json.loads((root / "truth" / "ledger.json").read_text(encoding="utf-8"))[
+                    "quarantine"
+                ],
+                returns_rejected_by_reason(root / "bronze", as_of),
+            )
         )
         checks += 1
         if not violations:

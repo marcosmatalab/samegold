@@ -85,15 +85,23 @@ def revenue_by_month():
                                           COALESCE(CAST(unit_price_cents AS STRING), ''),
                                           COALESCE(currency, ''), COALESCE(return_id, ''),
                                           COALESCE(reason, ''), COALESCE(segment, ''),
-                                          COALESCE(country, '')), 256)) AS rn
+                                          COALESCE(country, ''),
+                                          COALESCE(boundary, '')), 256)) AS rn
                 FROM silver_classified
             ) WHERE rn = 1
         ),
         lines AS (
-            SELECT order_id, sku, customer_id, qty AS qty0, unit_price_cents,
-                   try_to_timestamp(event_ts) AS sale_ts
-            FROM dedup
-            WHERE event_type = 'order_placed' AND quarantine_reason = 'accepted'
+            -- ONE line per (order_id, sku): two sales sharing that pair are contract-legal
+            -- (an order_placed is keyed by event_id) and used to fan the returns out across
+            -- the join, so one return was both refunded and counted as refused.
+            SELECT * EXCEPT (line_rn) FROM (
+                SELECT order_id, sku, customer_id, qty AS qty0, unit_price_cents,
+                       try_to_timestamp(event_ts) AS sale_ts,
+                       row_number() OVER (PARTITION BY order_id, sku
+                                          ORDER BY try_to_timestamp(event_ts), event_id) AS line_rn
+                FROM dedup
+                WHERE event_type = 'order_placed' AND quarantine_reason = 'accepted'
+            ) WHERE line_rn = 1
         ),
         amendments AS (
             SELECT order_id, sku, qty FROM (
@@ -112,35 +120,49 @@ def revenue_by_month():
             FROM lines l LEFT JOIN amendments a USING (order_id, sku)
         ),
         return_candidates AS (
-            SELECT d.order_id, d.sku, d.qty AS return_qty,
+            SELECT d.order_id, d.sku, d.qty AS return_qty, d.event_id AS return_event_id,
                    try_to_timestamp(d.event_ts) AS return_ts,
-                   e.sale_ts, e.unit_price_cents, e.qty AS sold_qty,
-                   -- Cumulative, for the reason given in the OSS reference: per-event, three
-                   -- returns of three units each are accepted against one sale of three.
-                   SUM(d.qty) OVER (PARTITION BY d.order_id, d.sku
-                                    ORDER BY d.event_ts, d.event_id
-                                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                       AS returned_including_this
+                   e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
             FROM dedup d LEFT JOIN effective e USING (order_id, sku)
             WHERE d.event_type = 'return_registered' AND d.quarantine_reason = 'accepted'
               AND d.qty IS NOT NULL AND d.qty > 0
         ),
-        returns_classified AS (
+        -- Eligibility first, then the cumulative rule over the ELIGIBLE returns only, and
+        -- ordered by the TIMESTAMP rather than by the text of it. The first version of this
+        -- window ordered by the raw event_ts string while the dedup and amendments CTEs above
+        -- both parse it, so two returns spelled with different UTC offsets were applied in the
+        -- wrong order and this lane accepted a different set of returns from the other two:
+        -- 2000 cents of net revenue, introduced by the fix.
+        eligibility AS (
             SELECT *,
                    CASE
                        WHEN sale_ts IS NULL THEN 'return_without_order'
                        WHEN return_ts < sale_ts THEN 'return_outside_window'
                        -- Seconds, and a cast to double rather than unix_timestamp: the
                        -- latter truncates to whole seconds and accepted a return one
-                       -- microsecond outside the window. Found by comparing this
-                       -- implementation with the DuckDB reference.
+                       -- microsecond outside the window.
                        WHEN CAST(return_ts AS DOUBLE) - CAST(sale_ts AS DOUBLE) > 45 * 86400
                            THEN 'return_outside_window'
-                       WHEN returned_including_this > sold_qty
-                           THEN 'return_exceeds_sold_qty'
-                       ELSE 'accepted'
-                   END AS return_reason
+                   END AS ineligible_reason
             FROM return_candidates
+        ),
+        returns_classified AS (
+            SELECT * EXCEPT (ineligible_reason, returned_including_this),
+                   COALESCE(
+                       ineligible_reason,
+                       CASE WHEN returned_including_this > sold_qty
+                            THEN 'return_exceeds_sold_qty' END,
+                       'accepted'
+                   ) AS return_reason
+            FROM (
+                SELECT *,
+                       SUM(CASE WHEN ineligible_reason IS NULL THEN return_qty ELSE 0 END)
+                           OVER (PARTITION BY order_id, sku
+                                 ORDER BY return_ts, return_event_id
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                           AS returned_including_this
+                FROM eligibility
+            )
         ),
         returns AS (SELECT * FROM returns_classified WHERE return_reason = 'accepted'),
         rejected AS (

@@ -46,6 +46,12 @@ stamped AS (
 arrived AS (
     SELECT * FROM stamped
     WHERE event_type = 'customer_upserted'
+      -- A record with no event_id is `unparseable_json` by contract: nothing can be routed.
+      -- gold_revenue.sql filtered it and this file did not, so a record the Spark pipeline
+      -- quarantined produced a dimension row here and the two engines disagreed by three
+      -- rows to one. The dimension is now in the adversarial matrix, which is how it was
+      -- found; the guard is the same one, in the same place, in both references.
+      AND event_id IS NOT NULL
       AND customer_id IS NOT NULL
       AND event_ts IS NOT NULL
       AND arrival_ts <= CAST($as_of AS TIMESTAMPTZ)
@@ -69,7 +75,8 @@ dedup AS (
                               || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
                               || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
                               || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
-                              || COALESCE(country, ''))
+                              || COALESCE(country, '') || '|'
+                            || COALESCE(boundary, ''))
                   ) AS rn
         FROM arrived
     ) WHERE rn = 1

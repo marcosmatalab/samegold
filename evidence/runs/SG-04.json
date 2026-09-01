@@ -4,26 +4,26 @@
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -3178570,
-        "delta_pct": -4.9623,
-        "final_net_cents": 60876168,
-        "first_close_net_cents": 64054738,
+        "delta_cents": -3207007,
+        "delta_pct": -5.8381,
+        "final_net_cents": 51725139,
+        "first_close_net_cents": 54932146,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -1601317,
-        "delta_pct": -5.3784,
-        "final_net_cents": 28171913,
-        "first_close_net_cents": 29773230,
+        "delta_cents": -912245,
+        "delta_pct": -3.4522,
+        "final_net_cents": 25512425,
+        "first_close_net_cents": 26424670,
         "versions": 3
       }
     ],
-    "worst_delta_eur": "16 013,17",
-    "worst_final_eur": "281 719,13",
-    "worst_first_close_eur": "297 732,30",
-    "worst_month": "2026-02",
-    "worst_move_pct": 5.3784,
+    "worst_delta_eur": "32 070,07",
+    "worst_final_eur": "517 251,39",
+    "worst_first_close_eur": "549 321,46",
+    "worst_month": "2026-01",
+    "worst_move_pct": 5.8381,
     "worst_versions": 3
   },
   "ci_commit_sha": null,
@@ -39,16 +39,16 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "dd19019d6e24f257da08f21735b45302",
+  "hash": "608825cb5fad005d9d9f68d1815eecb5",
   "not_claimed": [
     "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one"
   ],
-  "prev": "fe54066da07364311a0b3126b14de6e2",
+  "prev": "403c5cf60087fa95db7de067a618353c",
   "runtime": "oss-local",
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 5.38% of the first close",
+    "note": "largest move 5.84% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -60,19 +60,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "2dceae30b4946bfaa6197d95ee817093f2a63eb0",
-      "duration_s": 0.365,
+      "commit_sha": "bef164c967d85650d02c5192126c99f85fdfd453",
+      "duration_s": 0.255,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "restatement",
       "seed_source": "commit",
       "seeds": [
-        3795329780712933100
+        15569582768990436253
       ],
-      "started_at": "2026-09-01T22:18:51+00:00",
+      "started_at": "2026-09-01T22:35:38+00:00",
       "tree_dirty": true,
-      "tree_sha": "82178cf152a7c8402b8597cdf50956c4e70623ab"
+      "tree_sha": "26a6959c2412b8435065b83b61244585772db817"
     }
   }
 }

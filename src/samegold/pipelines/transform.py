@@ -10,7 +10,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from samegold.domain.contract import ACCOUNTING_TIMEZONE, CURRENCY, RETURN_WINDOW_DAYS
+from samegold.domain.contract import (
+    ACCOUNTING_TIMEZONE,
+    CURRENCY,
+    MAX_LINE_QUANTITY,
+    MAX_UNIT_PRICE_CENTS,
+    RETURN_WINDOW_DAYS,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import Column, DataFrame
@@ -35,6 +41,10 @@ PAYLOAD_COLUMNS: tuple[str, ...] = (
     "reason",
     "segment",
     "country",
+    # `boundary` is a payload column too - it is in bronze_schema() and the generator writes
+    # it - so "the hash covers EVERY payload column" was not literally true while it was
+    # missing. Two records differing only in it hashed identically.
+    "boundary",
 )
 
 REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
@@ -217,6 +227,25 @@ def quarantine_reason() -> Column:
             (F.col("event_type") == "order_placed") & (F.col("unit_price_cents") < 0),
             F.lit("negative_price"),
         )
+        # Bounded, because `qty * unit_price_cents` is a BIGINT multiplication and BIGINT
+        # overflows. Three lines at the maximum legal price made this side refuse to produce
+        # any close at all (ARITHMETIC_OVERFLOW) while the reference published a gross that
+        # does not fit its own column. Every value was a legal BIGINT; nothing bounded them.
+        .when(
+            (
+                F.col("event_type").isin("order_placed", "return_registered")
+                & (F.col("qty") > MAX_LINE_QUANTITY)
+            )
+            | (
+                (F.col("event_type") == "order_line_amended")
+                & (F.col("new_qty") > MAX_LINE_QUANTITY)
+            )
+            | (
+                (F.col("event_type") == "order_placed")
+                & (F.col("unit_price_cents") > MAX_UNIT_PRICE_CENTS)
+            ),
+            F.lit("amount_out_of_range"),
+        )
         .when(
             (F.col("event_type") == "order_placed") & (F.col("currency") != F.lit(CURRENCY)),
             F.lit("unknown_currency"),
@@ -269,6 +298,20 @@ def effective_lines(silver_df: DataFrame) -> DataFrame:
         F.col("qty").alias("qty0"),
         "unit_price_cents",
         _ts("event_ts").alias("sale_ts"),
+        F.col("event_id").alias("line_event_id"),
+    )
+    # ONE line per (order_id, sku). The key of an order_placed is its event_id, so two sales
+    # with one (order_id, sku) are contract-legal, and they fanned the returns out across the
+    # join below: a single return came back BOTH refunded and counted as refused, in both
+    # engines. No quarantine reason covers a duplicated line key; the first sale by
+    # (sale_ts, event_id) is the line.
+    line_window = Window.partitionBy("order_id", "sku").orderBy(
+        F.col("sale_ts").asc_nulls_last(), F.col("line_event_id").asc_nulls_last()
+    )
+    lines = (
+        lines.withColumn("_line_rn", F.row_number().over(line_window))
+        .where(F.col("_line_rn") == 1)
+        .drop("_line_rn", "line_event_id")
     )
     amend_window = Window.partitionBy("order_id", "sku").orderBy(
         _ts("event_ts").desc(), F.col("event_id").desc()
@@ -320,26 +363,30 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
         F.col("event_id").alias("return_event_id"),
     )
     joined = candidates.join(lines, ["order_id", "sku"], "left")
-    # The rule is CUMULATIVE, and it was not. Comparing each return against the quantity sold
-    # lets three returns of three units each be accepted against one sale of three: the close
-    # then reported gross 3000, refunds 9000, net MINUS 6000, and returns_rejected_count zero.
-    # Both engines agreed, so the parity claim could not see it; the generator never emits a
-    # second return for a line, so no seed could; and the one invariant that does catch it
-    # (returns_never_exceed_sales) only ever runs on generated data. It is the most expensive
-    # bug found in eight review rounds and it was found by writing three records by hand.
+    # The rule is CUMULATIVE, and the cumulative total counts only the returns that are
+    # ELIGIBLE to take units off the line. Two mistakes, one after the other:
     #
-    # The running total is ordered by (return_ts, order of arrival), so the returns that fit
-    # inside the sold quantity are accepted and the ones that overflow it are refused, which
-    # is what a returns desk does. The order is total: the tie-break is the return's own
-    # event_id, and the reference SQL orders the same way.
+    #   * comparing each return against the quantity sold let three returns of three units
+    #     each be accepted against one sale of three: gross 3000, refunds 9000, net MINUS
+    #     6000, returns_rejected_count zero;
+    #   * summing over EVERY return candidate then let a REFUSED return eat the line's
+    #     quantity. A return dated before its sale is refused, takes nothing, and still
+    #     consumed three units, so the good return that followed was stamped
+    #     `return_exceeds_sold_qty` and 3000 cents of refund disappeared - with a reason
+    #     attached to it that was factually false.
+    #
+    # So eligibility is decided first (matched to a sale, not before it, inside the window),
+    # and the running total sums only eligible returns. What a refused return does NOT do is
+    # come back later: once the eligible returns of a line have taken every unit sold, the
+    # ones after them are refused too, including small ones that would have fitted in a gap.
+    # That is a decision, not an accident - a line whose returns no longer reconcile is a
+    # line for a human, not one to keep partially refunding - and CONTRACT.md states it.
+    #
+    # Both engines agreed on both versions of the bug, so the parity claim was blind to it,
+    # and the generator emits at most one return per line, so no seed reached either.
     from pyspark.sql import Window as _Window
 
-    running = F.sum("return_qty").over(
-        _Window.partitionBy("order_id", "sku")
-        .orderBy(F.col("return_ts").asc_nulls_last(), F.col("return_event_id").asc_nulls_last())
-        .rowsBetween(_Window.unboundedPreceding, _Window.currentRow)
-    )
-    reason = (
+    ineligible = (
         F.when(F.col("sale_ts").isNull(), F.lit("return_without_order"))
         .when(F.col("return_ts") < F.col("sale_ts"), F.lit("return_outside_window"))
         # Seconds, not INTERVAL 45 DAY: interval arithmetic over a timestamp is calendar
@@ -351,15 +398,23 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
         # exactly 45 days and was ACCEPTED here while the DuckDB reference rejected it. One
         # return per run, five thousand cents, and the only reason it was ever noticed is
         # that two implementations were compared and the generator emits that boundary on
-        # purpose. It is the single best argument in this repository for both of those
-        # decisions.
+        # purpose.
         .when(
             F.col("return_ts").cast("double") - F.col("sale_ts").cast("double")
             > RETURN_WINDOW_DAYS * 86400,
             F.lit("return_outside_window"),
         )
-        .when(F.col("_returned_including_this") > F.col("qty"), F.lit("return_exceeds_sold_qty"))
-        .otherwise(F.lit(ACCEPTED))
+    )
+    eligible_qty = F.when(ineligible.isNull(), F.col("return_qty")).otherwise(F.lit(0))
+    running = F.sum(eligible_qty).over(
+        _Window.partitionBy("order_id", "sku")
+        .orderBy(F.col("return_ts").asc_nulls_last(), F.col("return_event_id").asc_nulls_last())
+        .rowsBetween(_Window.unboundedPreceding, _Window.currentRow)
+    )
+    reason = F.coalesce(
+        ineligible,
+        F.when(F.col("_returned_including_this") > F.col("qty"), F.lit("return_exceeds_sold_qty")),
+        F.lit(ACCEPTED),
     )
     return (
         joined.withColumn("_returned_including_this", running)
