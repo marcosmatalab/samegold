@@ -65,7 +65,7 @@ python_version = "3.11"
 strict = true
 files = ["src/samegold"]
 [[tool.mypy.overrides]]
-module = ["duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*"]
+module = ["duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*", "pyarrow.*", "arro3.*"]
 ignore_missing_imports = true
 
 # PySpark ships no usable stubs, so every DataFrame is Any and "returning Any from a function

@@ -5,11 +5,13 @@ on the generator's ledger, which makes them the part a reader has to trust least
 returns the offending rows rather than a boolean, because "SCD2 is wrong" is not actionable
 and "customer C000317 has two rows with is_current=true, versions 3 and 4" is.
 
-Deliberately NOT here, because it is false: "reordering the arrival of events does not
-change gold". With a watermark it does - an event that arrives after the watermark has
-passed its event time is treated differently from the same event arriving early. The
-version that IS true, and that lives in faults/permutations.py, is invariance under
-permutations that preserve the watermark order.
+Deliberately NOT here, because it is false: "reordering the arrival of events does not change
+gold". With a watermark it does - an event that arrives after the watermark has passed its
+event time is treated differently from the same event arriving early. The version that IS
+true is invariance under a reordering that preserves the watermark order, and the test that
+exercises it is
+`tests/spark/test_transform_matches_reference.py::test_the_dedup_tie_break_is_a_total_order`,
+which repartitions the input and asserts the same digest.
 """
 
 from __future__ import annotations

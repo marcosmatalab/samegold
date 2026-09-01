@@ -1,0 +1,94 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "batches_available": 8,
+    "clean_digest": {
+      "content": "6cb485b591127ce9e212e0db2140e4e2",
+      "multiset": "5563f71ee11768cf5fd763f7257deefd"
+    },
+    "divergence_rate_upper95_per_point": {
+      "after_batch_write_before_commit": 0.299573,
+      "before_batch_write": 0.299573
+    },
+    "divergence_rate_upper95_per_run": 0.149787,
+    "divergences": [],
+    "duration_s": 1225.85,
+    "injected_runs": 20,
+    "missed_injections": [],
+    "negative_control": {
+      "detected_by": [
+        "multiset"
+      ],
+      "digest": {
+        "content": "6cb485b591127ce9e212e0db2140e4e2",
+        "multiset": "ffd316feac454f6c6d9da08dfddcc215"
+      },
+      "note": "the content digest deduplicates by event_id and is blind to double writes; the multiset digest is the one that has to catch this",
+      "status": "detected",
+      "writer": "append (non-idempotent on replay)"
+    },
+    "per_point": {
+      "after_batch_write_before_commit": {
+        "attempts": 10,
+        "converged": 10,
+        "injected": 10
+      },
+      "before_batch_write": {
+        "attempts": 10,
+        "converged": 10,
+        "injected": 10
+      }
+    },
+    "points_covered": 2,
+    "points_total": 2,
+    "runs": 20
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-07",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "hash": "b7c1dce48bc9177ef60e25dee600eff1",
+  "not_claimed": [
+    "crash safety of the engine: the reachable points are the ones the writer owns, and the points inside a Delta commit or a state-store checkpoint are listed in faults/points.py as not covered",
+    "anything about Databricks: serverless gives you no process to kill"
+  ],
+  "prev": "48eead1ccf871d3f11fb348750e49f1c",
+  "runtime": "oss-local",
+  "title": "the close survives a crash at each structural point",
+  "verdict": {
+    "claim_id": "SG-07",
+    "note": "negative control detected, no divergences",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 20,
+      "trials": 20,
+      "wilson95": [
+        0.838875,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
+      "duration_s": 1225.919,
+      "n": 1,
+      "profile": "fast",
+      "runtime": "oss-local",
+      "seed_purpose": "faults",
+      "seed_source": "commit",
+      "seeds": [
+        12411473183872787781
+      ],
+      "started_at": "2026-09-01T18:29:29+00:00"
+    }
+  }
+}

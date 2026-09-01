@@ -73,6 +73,7 @@ class EvidenceRecord:
     artifacts: dict[str, Any] = field(default_factory=dict)
     environment: dict[str, str] = field(default_factory=environment_fingerprint)
     ci_run_url: str | None = field(default_factory=lambda: _ci_run_url())
+    ci_commit_sha: str | None = field(default_factory=lambda: os.environ.get("GITHUB_SHA"))
     artifact_digest: str | None = None
     not_claimed: tuple[str, ...] = ()
 
@@ -85,6 +86,7 @@ class EvidenceRecord:
             "artifacts": self.artifacts,
             "environment": self.environment,
             "ci_run_url": self.ci_run_url,
+            "ci_commit_sha": self.ci_commit_sha,
             "artifact_digest": self.artifact_digest,
             "not_claimed": list(self.not_claimed),
         }

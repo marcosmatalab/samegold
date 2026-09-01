@@ -25,8 +25,11 @@ targets:
   free:
     default: true
     mode: development
-    workspace:
-      host: ${var.DATABRICKS_HOST}
+    # No `host:` here on purpose. ${var.DATABRICKS_HOST} does not validate: ${var.X} resolves
+    # a variable declared in this file's `variables:` block, and DATABRICKS_HOST is an
+    # authentication environment variable for the CLI, not a bundle variable. Leaving the host
+    # out lets `databricks bundle validate -t free` take it from DATABRICKS_HOST or from the
+    # configured profile, which is what the CI job sets.
     resources:
       pipelines:
         samegold_pipeline:
@@ -41,12 +44,16 @@ targets:
           configuration:
             samegold.landing: ${var.landing_volume}
           libraries:
+            # Paths resolve against the file that declares them, and this file lives at the
+            # bundle root, so `../src` pointed OUTSIDE the bundle at a directory that does not
+            # exist. It is `src/` from here. (resources/jobs.yml, one directory deeper, is the
+            # one that legitimately says `../src`.)
             - file:
-                path: ../src/bronze_autoloader.py
+                path: src/bronze_autoloader.py
             - file:
-                path: ../src/silver_expectations.py
+                path: src/silver_expectations.py
             - file:
-                path: ../src/gold_close.py
+                path: src/gold_close.py
 
 include:
   - resources/*.yml

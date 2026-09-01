@@ -1,104 +1,122 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "equivalent": 11,
+    "equivalent": 20,
     "kappa": {
-      "invariants|runtime": -0.1337,
-      "ledger|invariants": 0.0475,
-      "ledger|runtime": -0.5127
+      "invariants|runtime": 0.0,
+      "ledger|invariants": 0.0,
+      "ledger|runtime": 0.0
     },
     "marginal": {
       "invariants": 0,
-      "ledger": 26,
-      "runtime": 8
+      "ledger": 43,
+      "runtime": 0
     },
     "matrix": {
       "equivalent": {
-        "SQL-001": "unreachable branch. The right-only side of this join is a month with returns and no sales, which cannot exist while a return is imputed to the month of its sale: the sale is in that month by construction. Note the dependency - this equivalence is conditional on SPEC-01 being the correct rule. Under the other imputation rule the mutant is NOT equivalent, which is why SPEC-01 is a mutant and not a comment.",
-        "SQL-002": "unreachable branch, same cause as the FULL OUTER JOIN above: the default only fires for a month that has returns and no sales.",
-        "SQL-003": "unreachable branch, same cause as the FULL OUTER JOIN above: the default only fires for a month that has returns and no sales.",
-        "SQL-005": "unreachable branch, same cause as the FULL OUTER JOIN above: the default only fires for a month that has returns and no sales.",
-        "SQL-008": "order-only. The canonical digest sorts rows by the projection's total order before hashing, and every comparison in the harness is over a keyed mapping, so a change of row order cannot change any published value. This is equivalence with respect to the OBSERVATION, and it holds only because the digest refuses to be taken without a total order (verify/digest.py).",
-        "SQL-009": "unreachable branch, same cause as the FULL OUTER JOIN above: the default only fires for a month that has returns and no sales.",
-        "SQL-012": "neutralised by a predicate. Turning this INNER join into a LEFT join admits orphan returns with NULL on the right, and the very next predicates (event_ts >= sale_ts, qty <= e.qty) are NULL for those rows, so they are filtered out again. A classic, and the reason 'change the join type' alone is a weak test: the WHERE clause was already doing the work.",
-        "SQL-038": "order-only. The canonical digest sorts rows by the projection's total order before hashing, and every comparison in the harness is over a keyed mapping, so a change of row order cannot change any published value. This is equivalence with respect to the OBSERVATION, and it holds only because the digest refuses to be taken without a total order (verify/digest.py).",
-        "SQL-039": "order-only. The canonical digest sorts rows by the projection's total order before hashing, and every comparison in the harness is over a keyed mapping, so a change of row order cannot change any published value. This is equivalence with respect to the OBSERVATION, and it holds only because the digest refuses to be taken without a total order (verify/digest.py).",
-        "SQL-040": "order-only. The canonical digest sorts rows by the projection's total order before hashing, and every comparison in the harness is over a keyed mapping, so a change of row order cannot change any published value. This is equivalence with respect to the OBSERVATION, and it holds only because the digest refuses to be taken without a total order (verify/digest.py).",
-        "SQL-041": "order-only. The canonical digest sorts rows by the projection's total order before hashing, and every comparison in the harness is over a keyed mapping, so a change of row order cannot change any published value. This is equivalence with respect to the OBSERVATION, and it holds only because the digest refuses to be taken without a total order (verify/digest.py)."
+        "SQL-001": "final: unreachable branch, same cause. Turning the FULL OUTER JOIN into a LEFT JOIN drops months that exist only on the refunds side, and the derivation cannot produce one. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-003": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-004": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-006": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-011": "final: presentation only. The final ORDER BY decides the order rows are printed in, and every comparison in this project is over a keyed mapping or a canonical digest that sorts by the projection's total order before hashing.",
+        "SQL-012": "final: unreachable branch. The literal is the default of a COALESCE over the right side of the FULL OUTER JOIN, which only fires for a month that has returns and no sales. That month cannot exist: refunds is derived from effective through an inner join on the sale, and gross groups effective, so the refunds month keys are a subset of the gross month keys by construction. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-014": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-016": "final: unreachable branch. The literal is the default of a COALESCE over the right side of the FULL OUTER JOIN, which only fires for a month that has returns and no sales. That month cannot exist: refunds is derived from effective through an inner join on the sale, and gross groups effective, so the refunds month keys are a subset of the gross month keys by construction. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-019": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-020": "final: unreachable branch. The literal is the default of a COALESCE over the right side of the FULL OUTER JOIN, which only fires for a month that has returns and no sales. That month cannot exist: refunds is derived from effective through an inner join on the sale, and gross groups effective, so the refunds month keys are a subset of the gross month keys by construction. [assumption: refunds-months-are-a-subset-of-gross-months]",
+        "SQL-023": "return_candidates: neutralised by the classification that follows. Turning this LEFT join into an INNER join drops orphan returns, and the CASE immediately after labels exactly those rows 'return_without_order' and excludes them from every output column. A classic: the WHERE clause was already doing the join's work.",
+        "SQL-051": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
+        "SQL-052": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
+        "SQL-053": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
+        "SQL-057": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-058": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-059": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-060": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-061": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-062": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]"
       },
       "kappa": {
-        "invariants|runtime": -0.1337,
-        "ledger|invariants": 0.0475,
-        "ledger|runtime": -0.5127
+        "invariants|runtime": 0.0,
+        "ledger|invariants": 0.0,
+        "ledger|runtime": 0.0
       },
-      "killed": 37,
-      "mutants_scored": 37,
-      "mutants_total": 48,
+      "killed": 48,
+      "mutants_scored": 48,
+      "mutants_total": 68,
       "per_witness": {
         "invariants": {
-          "killed": 3,
+          "killed": 5,
           "marginal": []
         },
         "ledger": {
-          "killed": 29,
+          "killed": 48,
           "marginal": [
             "SPEC-02",
             "SPEC-03",
             "SPEC-04",
             "SPEC-05",
             "SPEC-06",
+            "SQL-002",
+            "SQL-005",
             "SQL-007",
-            "SQL-011",
-            "SQL-013",
-            "SQL-014",
+            "SQL-008",
+            "SQL-009",
+            "SQL-010",
             "SQL-015",
             "SQL-017",
             "SQL-018",
-            "SQL-019",
-            "SQL-020",
-            "SQL-021",
-            "SQL-023",
+            "SQL-022",
             "SQL-024",
+            "SQL-025",
+            "SQL-026",
+            "SQL-027",
+            "SQL-029",
             "SQL-030",
             "SQL-031",
             "SQL-032",
             "SQL-033",
             "SQL-034",
             "SQL-035",
-            "SQL-036",
             "SQL-037",
-            "SQL-042"
+            "SQL-038",
+            "SQL-039",
+            "SQL-040",
+            "SQL-041",
+            "SQL-042",
+            "SQL-043",
+            "SQL-044",
+            "SQL-045",
+            "SQL-046",
+            "SQL-047",
+            "SQL-048",
+            "SQL-049",
+            "SQL-050",
+            "SQL-054",
+            "SQL-055",
+            "SQL-056"
           ]
         },
         "runtime": {
-          "killed": 8,
-          "marginal": [
-            "SQL-004",
-            "SQL-006",
-            "SQL-010",
-            "SQL-025",
-            "SQL-026",
-            "SQL-027",
-            "SQL-028",
-            "SQL-029"
-          ]
+          "killed": 0,
+          "marginal": []
         }
       },
       "score": 1.0,
       "survivors": [],
       "wilson95": [
-        0.9059,
+        0.9259,
         1.0
       ]
     },
-    "mutants_total": 48,
+    "mutants_total": 68,
     "per_witness": {
-      "invariants": 3,
-      "ledger": 29,
-      "runtime": 8
+      "invariants": 5,
+      "ledger": 48,
+      "runtime": 0
     },
-    "strict_score": 0.7708
+    "strict_score": 0.7059
   },
+  "ci_commit_sha": null,
   "ci_run_url": null,
   "claim_id": "SG-03",
   "environment": {
@@ -111,36 +129,39 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
+  "hash": "c3bbf703236f7985b2aebdf2d824ae77",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
+  "prev": "9d6158e247d40a489327a9eecf055056",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
     "claim_id": "SG-03",
-    "note": "11 classified equivalent",
+    "note": "20 classified equivalent",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 37,
-      "trials": 37,
+      "successes": 48,
+      "trials": 48,
       "wilson95": [
-        0.905942,
+        0.9259,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "080ba4bd2c43d4c979eb1abf96b13653ce324477",
-      "duration_s": 44.281,
+      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
+      "duration_s": 61.507,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
+      "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        1732729772208927286
+        9404454710315368900
       ],
-      "started_at": "2026-09-01T14:49:35+00:00"
+      "started_at": "2026-09-01T17:45:25+00:00"
     }
   }
 }

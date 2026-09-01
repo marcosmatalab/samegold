@@ -11,22 +11,25 @@ from samegold.verify.digest import (
     ProjectionError,
 )
 
-ROWS = [
-    {
-        "accounting_month": "2026-01",
+
+def _row(month: str, net: int) -> dict[str, object]:
+    """One row of the real gold projection, which is the point: the projection declares the
+    columns gold actually has, not a convenient subset the tests can produce."""
+    return {
+        "accounting_month": month,
         "close_version": 0,
-        "gross_cents": 10,
+        "gross_cents": net + 3,
         "returns_cents": 3,
-        "net_cents": 7,
-    },
-    {
-        "accounting_month": "2026-02",
-        "close_version": 0,
-        "gross_cents": 20,
-        "returns_cents": 0,
-        "net_cents": 20,
-    },
-]
+        "net_cents": net,
+        "line_count": 2,
+        "return_count": 1,
+        "returns_rejected_count": 0,
+        "restated_at": "2026-02-05T22:59:59+00:00",
+        "restatement_reason": "first close",
+    }
+
+
+ROWS = [_row("2026-01", 7), _row("2026-02", 20)]
 
 
 def test_projection_refuses_non_deterministic_columns() -> None:

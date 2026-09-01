@@ -35,14 +35,40 @@ SILVER_PROJECTION = Projection(
     order_by=("event_id",),
 )
 
+# The second digest is what makes the experiment able to fail. Deduplicating before hashing
+# answers "does the close still get the same answer", and that question is blind to a writer
+# that wrote every row twice - an adversarial review copied a whole batch directory and the
+# digest did not move. This one counts the copies of each event, so a non-idempotent writer
+# changes it even when the business result is unchanged.
+MULTISET_PROJECTION = Projection(
+    table="silver_multiset",
+    columns=("event_id", "copies"),
+    order_by=("event_id",),
+)
+
+
+def _bound(trials: int, saw_divergence: bool) -> float | None:
+    """Rule-of-three upper bound, or None when it would say nothing.
+
+    With fewer than three injections the bound exceeds 1 and stops being a probability at
+    all: the first version printed 1.4979 as a "rate", which is not a number anyone should
+    put in a README.
+    """
+    if saw_divergence or trials < 3:
+        return None
+    return round(min(1.0, rule_of_three_upper(trials)), 6)
+
 
 @dataclass
 class CampaignResult:
     runs: int = 0
+    injected: int = 0
     divergences: list[dict[str, Any]] = field(default_factory=list)
     missed_injections: list[dict[str, Any]] = field(default_factory=list)
     per_point: dict[str, dict[str, int]] = field(default_factory=dict)
-    clean_digest: str = ""
+    clean_digest: dict[str, str] = field(default_factory=dict)
+    negative_control: dict[str, Any] = field(default_factory=dict)
+    batches: int = 0
     duration_s: float = 0.0
 
     def to_json(self) -> dict[str, Any]:
@@ -54,11 +80,17 @@ class CampaignResult:
             "missed_injections": self.missed_injections,
             "per_point": self.per_point,
             "clean_digest": self.clean_digest,
-            "divergence_rate_upper95": (
-                round(rule_of_three_upper(self.runs), 6)
-                if self.runs and not self.divergences
-                else None
-            ),
+            "negative_control": self.negative_control,
+            # Only INJECTED runs count towards the bound. Counting attempts that never
+            # reached their crash point would publish a tighter interval for having tested
+            # less, which is the wrong direction for a number to move.
+            "injected_runs": self.injected,
+            "divergence_rate_upper95_per_run": _bound(self.injected, bool(self.divergences)),
+            "divergence_rate_upper95_per_point": {
+                point: _bound(stats["injected"], any(d["point"] == point for d in self.divergences))
+                for point, stats in self.per_point.items()
+            },
+            "batches_available": self.batches,
             "duration_s": round(self.duration_s, 2),
         }
 
@@ -86,7 +118,7 @@ def _worker(bronze: Path, out: Path, env: dict[str, str], reset: bool) -> int:
     return result.returncode
 
 
-def _digest_silver(out: Path) -> str:
+def _digest_silver(out: Path) -> dict[str, str]:
     """Read the silver output with a second engine, deduplicate it, and digest it.
 
     Two decisions worth stating.
@@ -113,8 +145,9 @@ def _digest_silver(out: Path) -> str:
 
     pattern = str(out / "silver" / "**" / "*.parquet")
     con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
     try:
-        rows = con.execute(
+        content_rows = con.execute(
             """
             SELECT event_id, event_type, event_ts, quarantine_reason FROM (
                 SELECT event_id, event_type, event_ts, quarantine_reason,
@@ -125,13 +158,56 @@ def _digest_silver(out: Path) -> str:
             """,
             [pattern],
         ).fetchall()
+        multiset_rows = con.execute(
+            "SELECT event_id, count(*) AS copies FROM read_parquet(?, union_by_name := true) "
+            "GROUP BY event_id",
+            [pattern],
+        ).fetchall()
     finally:
         con.close()
-    mapped = [
-        {"event_id": r[0], "event_type": r[1], "event_ts": r[2], "quarantine_reason": r[3]}
-        for r in rows
-    ]
-    return CanonicalDigest.of(mapped, SILVER_PROJECTION).hexdigest
+    content = CanonicalDigest.of(
+        [
+            {"event_id": r[0], "event_type": r[1], "event_ts": r[2], "quarantine_reason": r[3]}
+            for r in content_rows
+        ],
+        SILVER_PROJECTION,
+    )
+    multiset = CanonicalDigest.of(
+        [{"event_id": r[0], "copies": int(r[1])} for r in multiset_rows], MULTISET_PROJECTION
+    )
+    return {"content": content.hexdigest, "multiset": multiset.hexdigest}
+
+
+def _negative_control(bronze: Path, workdir: Path, clean: dict[str, str]) -> dict[str, Any]:
+    """Crash a deliberately non-idempotent writer and check that the harness notices."""
+    shutil.rmtree(workdir, ignore_errors=True)
+    code = _worker(
+        bronze,
+        workdir,
+        {
+            "SAMEGOLD_CRASH_POINT": "after_batch_write_before_commit",
+            # Batch 1 exists in every profile this runs on (the clean run produces eight),
+            # and batches are numbered from zero, so this is the second one.
+            "SAMEGOLD_CRASH_BATCH": "1",
+            "SAMEGOLD_WRITER": "append",
+        },
+        reset=True,
+    )
+    if code != EXIT_CODE:
+        return {"status": "inconclusive", "detail": "the control run never reached its crash point"}
+    _worker(bronze, workdir, {"SAMEGOLD_CRASH_POINT": "", "SAMEGOLD_WRITER": "append"}, reset=False)
+    digest = _digest_silver(workdir)
+    detected_by = [key for key in ("content", "multiset") if digest[key] != clean[key]]
+    return {
+        "status": "detected" if detected_by else "NOT DETECTED",
+        "writer": "append (non-idempotent on replay)",
+        "detected_by": detected_by,
+        "digest": digest,
+        "note": (
+            "the content digest deduplicates by event_id and is blind to double writes; the "
+            "multiset digest is the one that has to catch this"
+        ),
+    }
 
 
 def run_campaign(
@@ -145,6 +221,15 @@ def run_campaign(
     _worker(bronze, clean_out, {"SAMEGOLD_CRASH_POINT": ""}, reset=True)
     result.clean_digest = _digest_silver(clean_out)
 
+    # The negative control: the same campaign against a writer that appends instead of
+    # overwriting. A crash after a partial write leaves rows behind, the replay appends them
+    # again, and the multiset digest has to notice. If this control ever comes back clean,
+    # the campaign above is measuring nothing and the whole claim is void.
+    # How many micro-batches the clean run actually produced: the crash schedule cannot ask
+    # for a batch that does not exist.
+    batches = len(list((clean_out / "silver").glob("batch_id=*")))
+    result.batches = batches
+    result.negative_control = _negative_control(bronze, workdir / "negative", result.clean_digest)
     selected = [p for p in SILVER_POINTS if points is None or p.name in points]
     for point in selected:
         stats = {"attempts": 0, "injected": 0, "converged": 0}
@@ -156,7 +241,16 @@ def run_campaign(
             code = _worker(
                 bronze,
                 out,
-                {"SAMEGOLD_CRASH_POINT": point.name, "SAMEGOLD_CRASH_BATCH": str(repetition + 1)},
+                {
+                    "SAMEGOLD_CRASH_POINT": point.name,
+                    # Spark numbers micro-batches from ZERO, and the campaign asked for
+                    # batch `repetition + 1`. With eight batches and ten repetitions that
+                    # requested batches 8, 9 and 10, none of which exist: six of twenty runs
+                    # reported "missed injection" and the claim failed for a reason that had
+                    # nothing to do with the pipeline. The schedule now cycles over the
+                    # batches the clean run actually produced.
+                    "SAMEGOLD_CRASH_BATCH": str(repetition % max(1, batches)),
+                },
                 reset=True,
             )
             if code != EXIT_CODE:
@@ -170,6 +264,7 @@ def run_campaign(
                 )
                 continue
             stats["injected"] += 1
+            result.injected += 1
             _worker(bronze, out, {"SAMEGOLD_CRASH_POINT": ""}, reset=False)
             digest = _digest_silver(out)
             if digest == result.clean_digest:

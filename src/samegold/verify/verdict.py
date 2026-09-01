@@ -24,6 +24,7 @@ class RunSet:
     seeds: tuple[int, ...]
     commit_sha: str
     seed_source: Literal["commit", "override"]
+    seed_purpose: str
     profile: str
     started_at: str
     duration_s: float
@@ -44,6 +45,7 @@ class RunSet:
             "seeds": list(self.seeds),
             "commit_sha": self.commit_sha,
             "seed_source": self.seed_source,
+            "seed_purpose": self.seed_purpose,
             "profile": self.profile,
             "started_at": self.started_at,
             "duration_s": round(self.duration_s, 3),

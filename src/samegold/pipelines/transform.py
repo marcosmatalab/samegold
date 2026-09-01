@@ -50,17 +50,35 @@ def as_of_cut(df: DataFrame, as_of: str) -> DataFrame:
 
 
 def deduplicate(df: DataFrame) -> DataFrame:
-    """One row per producer event_id.
+    """One row per producer event_id, chosen by a TOTAL order.
 
     The key is the producer's idempotency key alone. Adding the file path (or
     ``_metadata.file_path``) to the key turns a replayed file into double revenue, which is
     specification mutant SPEC-03 and the most expensive one in the set.
+
+    The ordering inside the partition matters as much as the key. Ordering only by
+    (event_ts, arrival_ts) leaves ties unbroken, and an unbroken tie makes ``row_number``
+    pick whichever row the shuffle happened to place first: the answer would depend on the
+    physical layout of the input. The tie is broken by a hash of the record's payload, which
+    is stable across engines and across runs.
     """
     from pyspark.sql import Window
 
     F = _f()
+    payload_hash = F.sha2(
+        F.concat_ws(
+            "|",
+            *[
+                F.coalesce(F.col(c).cast("string"), F.lit(""))
+                for c in ("event_type", "order_id", "sku", "qty", "new_qty", "unit_price_cents")
+            ],
+        ),
+        256,
+    )
     window = Window.partitionBy("event_id").orderBy(
-        F.col("event_ts").cast("timestamp").asc(), F.col("arrival_ts").cast("timestamp").asc()
+        F.col("event_ts").cast("timestamp").asc(),
+        F.col("arrival_ts").cast("timestamp").asc(),
+        payload_hash.asc(),
     )
     return (
         df.where(F.col("event_id").isNotNull())
@@ -110,9 +128,29 @@ def quarantine_reason() -> Column:
     )
 
 
+def classify(df: DataFrame) -> DataFrame:
+    """Tag every row with why it was accepted or rejected. No rows are removed and none are
+    deduplicated.
+
+    Silver is append-only and may contain duplicates: deduplication inside a micro-batch is
+    not deduplication across batches, and a stateful dedup with a two-hour watermark cannot
+    see a duplicate that arrives days later. Uniqueness is a property of gold.
+
+    This split exists because the declarative pipeline and the batch path had quietly
+    diverged: the batch path deduplicated in silver, the streaming one did not, and the two
+    were described in the documentation as "the same transformations". They are the same
+    now because there is only one function.
+    """
+    return df.withColumn("quarantine_reason", quarantine_reason())
+
+
 def silver(df: DataFrame) -> DataFrame:
-    """Deduplicated, validated, and tagged with why a record was rejected."""
-    return deduplicate(df).withColumn("quarantine_reason", quarantine_reason())
+    """The gold-facing view of silver: classified, then deduplicated by business key.
+
+    Deduplication happens here, at the boundary where uniqueness is required, and not in the
+    silver table itself.
+    """
+    return deduplicate(classify(df))
 
 
 def effective_lines(silver_df: DataFrame) -> DataFrame:
@@ -179,8 +217,20 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
     reason = (
         F.when(F.col("sale_ts").isNull(), F.lit("return_without_order"))
         .when(F.col("return_ts") < F.col("sale_ts"), F.lit("return_outside_window"))
+        # Seconds, not INTERVAL 45 DAY: interval arithmetic over a timestamp is calendar
+        # arithmetic in the session timezone, so the window silently becomes 44h23 or 45h01
+        # long across a daylight-saving boundary.
+        #
+        # And a cast to DOUBLE, not unix_timestamp(). unix_timestamp truncates to whole
+        # seconds, so a return exactly one microsecond outside the window came back as
+        # exactly 45 days and was ACCEPTED here while the DuckDB reference rejected it. One
+        # return per run, five thousand cents, and the only reason it was ever noticed is
+        # that two implementations were compared and the generator emits that boundary on
+        # purpose. It is the single best argument in this repository for both of those
+        # decisions.
         .when(
-            F.col("return_ts") > F.expr(f"sale_ts + INTERVAL {RETURN_WINDOW_DAYS} DAY"),
+            F.col("return_ts").cast("double") - F.col("sale_ts").cast("double")
+            > RETURN_WINDOW_DAYS * 86400,
             F.lit("return_outside_window"),
         )
         .when(F.col("return_qty") > F.col("qty"), F.lit("return_exceeds_sold_qty"))
@@ -201,27 +251,40 @@ def valid_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
     )
 
 
-def revenue_by_month(lines: DataFrame, returns: DataFrame) -> DataFrame:
-    """The close: gross, returns and net per accounting month, plus the counts.
+def revenue_by_month(lines: DataFrame, classified_returns: DataFrame) -> DataFrame:
+    """One close: gross, returns and net per accounting month, plus the counts.
 
-    The counts are not decoration either: a line sold for zero cents moves no money, and
-    without a count a mutant that drops it is invisible. They earn their place in the
+    Takes the CLASSIFIED returns, not the accepted ones, because the rejected ones are
+    reported too: a refund the pipeline refused is a number finance asks about, and a record
+    that leaves the pipeline without a counter is the failure nobody detects.
+
+    The counts are not decoration either. A line sold for zero cents moves no money, and
+    without a count a mutant that drops it is invisible; they earn their place in the
     mutation matrix.
     """
     F = _f()
-    month = lambda column: F.date_format(  # noqa: E731
-        F.from_utc_timestamp(F.col(column), ACCOUNTING_TIMEZONE), "yyyy-MM"
+
+    def month(column: str) -> Column:
+        return F.date_format(F.from_utc_timestamp(F.col(column), ACCOUNTING_TIMEZONE), "yyyy-MM")
+
+    accepted = classified_returns.where(F.col("return_reason") == ACCEPTED)
+    rejected = classified_returns.where(
+        (F.col("return_reason") != ACCEPTED) & F.col("sale_ts").isNotNull()
     )
     gross = lines.groupBy(month("sale_ts").alias("accounting_month")).agg(
         F.sum(F.col("qty") * F.col("unit_price_cents")).alias("gross_cents"),
         F.count(F.lit(1)).alias("line_count"),
     )
-    refunds = returns.groupBy(month("sale_ts").alias("accounting_month")).agg(
+    refunds = accepted.groupBy(month("sale_ts").alias("accounting_month")).agg(
         F.sum(F.col("return_qty") * F.col("unit_price_cents")).alias("returns_cents"),
         F.count(F.lit(1)).alias("return_count"),
     )
+    refused = rejected.groupBy(month("sale_ts").alias("accounting_month")).agg(
+        F.count(F.lit(1)).alias("returns_rejected_count")
+    )
     return (
         gross.join(refunds, ["accounting_month"], "full_outer")
+        .join(refused, ["accounting_month"], "left")
         .select(
             "accounting_month",
             F.coalesce(F.col("gross_cents"), F.lit(0)).cast("long").alias("gross_cents"),
@@ -234,6 +297,9 @@ def revenue_by_month(lines: DataFrame, returns: DataFrame) -> DataFrame:
             .alias("net_cents"),
             F.coalesce(F.col("line_count"), F.lit(0)).cast("long").alias("line_count"),
             F.coalesce(F.col("return_count"), F.lit(0)).cast("long").alias("return_count"),
+            F.coalesce(F.col("returns_rejected_count"), F.lit(0))
+            .cast("long")
+            .alias("returns_rejected_count"),
         )
         .orderBy("accounting_month")
     )
@@ -273,3 +339,56 @@ def dim_customer_scd2(silver_df: DataFrame) -> DataFrame:
         "country",
         F.lead("valid_from").over(lead).isNull().alias("is_current"),
     ).orderBy("customer_id", "valid_from")
+
+
+def revenue_versions(snapshots: list[tuple[str, DataFrame]]) -> DataFrame:
+    """The versioned close table, computed in Spark.
+
+    A second derivation of the same bookkeeping the reference does in Python
+    (``domain.bitemporal.versions_from_snapshots``). Deliberately not a call into that
+    function: if both sides shared it, their agreement on the version history would only mean
+    the import worked.
+
+    The shape of the computation is a union of the per-close snapshots, a lag over
+    (month, as_of) to keep only the closes where a value actually changed, and a row_number to
+    number the surviving versions densely from zero.
+    """
+    from pyspark.sql import Window
+
+    F = _f()
+    union = None
+    for as_of, snapshot in snapshots:
+        stamped = snapshot.withColumn("as_of", F.lit(as_of))
+        union = stamped if union is None else union.unionByName(stamped)
+    if union is None:
+        raise ValueError("revenue_versions needs at least one snapshot")
+
+    value_columns = [
+        "gross_cents",
+        "returns_cents",
+        "net_cents",
+        "line_count",
+        "return_count",
+        "returns_rejected_count",
+    ]
+    # A month is closed once a close happens AFTER the month ends. Without this, the partial
+    # view of the current month appears at every close and manufactures a restatement per
+    # close for ever.
+    closed = union.where(F.substring(F.col("as_of"), 1, 7) > F.col("accounting_month"))
+    fingerprint = F.concat_ws("|", *[F.col(c).cast("string") for c in value_columns])
+    ordered = Window.partitionBy("accounting_month").orderBy("as_of")
+    changed = (
+        closed.withColumn("_fp", fingerprint)
+        .withColumn("_previous", F.lag("_fp").over(ordered))
+        .where(F.col("_previous").isNull() | (F.col("_fp") != F.col("_previous")))
+    )
+    numbered = changed.withColumn("close_version", F.row_number().over(ordered) - F.lit(1))
+    return numbered.select(
+        "accounting_month",
+        "close_version",
+        *value_columns,
+        F.col("as_of").alias("restated_at"),
+        F.when(F.col("close_version") == 0, F.lit("first close"))
+        .otherwise(F.lit("late arrivals after close"))
+        .alias("restatement_reason"),
+    ).orderBy("accounting_month", "close_version")

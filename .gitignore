@@ -12,3 +12,5 @@ metastore_db/
 derby.log
 .samegold-work/
 # evidence/ is NOT ignored: history.jsonl is the point of the repository.
+# evidence/refutations.jsonl is written by `make refute`; commit it if you want the
+# refutation history in the repository, it never backs a published number either way.

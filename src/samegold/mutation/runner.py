@@ -48,23 +48,38 @@ def classify_equivalent(mutant: Mutant) -> str | None:
     human writes down why it cannot change the answer on ANY input, and the README prints
     the score both ways so a reader can refuse the classification wholesale.
     """
-    return classify(mutant.operator, mutant.original)
+    entry = classify(mutant.operator, mutant.original, mutant.context)
+    if entry is None:
+        return None
+    suffix = f" [assumption: {entry.assumption}]" if entry.assumption else ""
+    return f"{entry.context}: {entry.reason}{suffix}"
 
 
 def _run_sql(sql: str, glob: str, as_of: dt.datetime) -> list[dict[str, Any]]:
     con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
     try:
         rows = con.execute(sql, {"glob": glob, "as_of": as_of.isoformat()}).fetchall()
     finally:
         con.close()
+
+    # NULL-tolerant on purpose. A mutant that removes a COALESCE makes a column NULL, and the
+    # first version of this mapper crashed on int(None) - which the campaign then recorded as
+    # "killed by the runtime". Three mutants were being credited to the harness falling over
+    # rather than to a witness noticing anything. A NULL is now a value, and the comparison
+    # against the ledger is what kills the mutant, for the right reason.
+    def cell(value: Any) -> Any:
+        return None if value is None else int(value)
+
     return [
         {
-            "accounting_month": str(r[0]),
-            "gross_cents": int(r[1]),
-            "returns_cents": int(r[2]),
-            "net_cents": int(r[3]),
-            "line_count": int(r[4]),
-            "return_count": int(r[5]),
+            "accounting_month": None if r[0] is None else str(r[0]),
+            "gross_cents": cell(r[1]),
+            "returns_cents": cell(r[2]),
+            "net_cents": cell(r[3]),
+            "line_count": cell(r[4]),
+            "return_count": cell(r[5]),
+            "returns_rejected_count": cell(r[6]),
         }
         for r in rows
     ]
@@ -74,7 +89,14 @@ def _ledger_expectation(ledger: dict[str, Any], as_of: str) -> dict[str, dict[st
     return {
         row["accounting_month"]: {
             k: row[k]
-            for k in ("gross_cents", "returns_cents", "net_cents", "line_count", "return_count")
+            for k in (
+                "gross_cents",
+                "returns_cents",
+                "net_cents",
+                "line_count",
+                "return_count",
+                "returns_rejected_count",
+            )
         }
         for row in ledger["revenue"]
         if row["as_of"] == as_of
@@ -128,8 +150,11 @@ def run_mutation_campaign(
         for a in as_ofs:
             try:
                 rows = _run_sql(mutant.source, glob, a)
-            except Exception as exc:
-                error = f"error: {exc}"[:200]
+            except duckdb.Error as exc:
+                # Only a database error means "this mutant does not run". Anything else is a
+                # bug in this harness, and laundering a harness crash into a kill is exactly
+                # how a mutation score stops meaning anything.
+                error = f"{type(exc).__name__}: {exc}"[:200]
                 break
             got = {
                 r["accounting_month"]: {
@@ -140,6 +165,7 @@ def run_mutation_campaign(
                         "net_cents",
                         "line_count",
                         "return_count",
+                        "returns_rejected_count",
                     )
                 }
                 for r in rows
@@ -147,7 +173,8 @@ def run_mutation_campaign(
             if got != expectations[a.isoformat()] and "ledger" not in killed_by:
                 killed_by.append("ledger")
                 failed_at.append(a.isoformat())
-            if (net_identity(rows) or returns_never_exceed_sales(rows)) and (
+            checkable = [row for row in rows if None not in row.values()]
+            if (net_identity(checkable) or returns_never_exceed_sales(checkable)) and (
                 "invariants" not in killed_by
             ):
                 killed_by.append("invariants")
