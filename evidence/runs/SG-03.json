@@ -17,12 +17,9 @@
           "null"
         ],
         "mutants_checked": [
-          "SQL-049",
-          "SQL-050",
-          "SQL-051",
-          "SQL-059",
-          "SQL-060",
-          "SQL-061",
+          "SQL-052",
+          "SQL-053",
+          "SQL-054",
           "SQL-062",
           "SQL-063",
           "SQL-064",
@@ -31,26 +28,29 @@
           "SQL-067",
           "SQL-068",
           "SQL-069",
-          "SQL-070"
+          "SQL-070",
+          "SQL-071",
+          "SQL-072",
+          "SQL-073"
         ],
         "mutants_that_diverge_when_it_is_false": [
-          "SQL-051",
-          "SQL-059",
-          "SQL-060",
-          "SQL-061",
+          "SQL-054",
           "SQL-062",
+          "SQL-063",
           "SQL-064",
           "SQL-065",
-          "SQL-066",
           "SQL-067",
+          "SQL-068",
           "SQL-069",
-          "SQL-070"
+          "SQL-070",
+          "SQL-072",
+          "SQL-073"
         ],
         "mutants_the_probe_could_not_falsify": [
-          "SQL-049",
-          "SQL-050",
-          "SQL-063",
-          "SQL-068"
+          "SQL-052",
+          "SQL-053",
+          "SQL-066",
+          "SQL-071"
         ],
         "statement": "two records sharing an event_id carry identical payloads, because event_id is the producer's idempotency key and a re-delivery is a copy, not a new fact",
         "verdict": "conditional: 11 of 15 covered mutants change their answer once the assumption is false, which is what makes the classification conditional rather than convenient"
@@ -63,8 +63,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "88ab0e1b35765817cdc65bcd99fc8abc",
-        "digest_reversed": "88ab0e1b35765817cdc65bcd99fc8abc",
+        "digest_forward": "03b168b99780bdf81771840822c12825",
+        "digest_reversed": "03b168b99780bdf81771840822c12825",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -84,12 +84,12 @@
     "equivalent": 26,
     "kappa": {
       "invariants|runtime": 0.0,
-      "ledger|invariants": 0.0045,
-      "ledger|runtime": -0.0
+      "ledger|invariants": 0.0132,
+      "ledger|runtime": 0.0
     },
     "marginal": {
       "invariants": 0,
-      "ledger": 44,
+      "ledger": 45,
       "runtime": 0
     },
     "matrix": {
@@ -105,12 +105,9 @@
         "SQL-019": "final: unreachable branch, same cause: the default only fires for a month with returns and no sales, which the derivation cannot produce. [assumption: refunds-months-are-a-subset-of-gross-months]",
         "SQL-020": "final: unreachable branch. The literal is the default of a COALESCE over the right side of the FULL OUTER JOIN, which only fires for a month that has returns and no sales. That month cannot exist: refunds is derived from effective through an inner join on the sale, and gross groups effective, so the refunds month keys are a subset of the gross month keys by construction. [assumption: refunds-months-are-a-subset-of-gross-months]",
         "SQL-023": "return_candidates: neutralised by the classification that follows. Turning this LEFT join into an INNER join drops orphan returns, and the CASE immediately after labels exactly those rows 'return_without_order' and excludes them from every output column. A classic: the WHERE clause was already doing the join's work. [assumption: orphan-returns-are-excluded-downstream]",
-        "SQL-049": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
-        "SQL-050": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
-        "SQL-051": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
-        "SQL-059": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
-        "SQL-060": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
-        "SQL-061": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-052": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
+        "SQL-053": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
+        "SQL-054": "dedup: the deduplication window picks one row out of a set of IDENTICAL rows. Under the contract, two records sharing an event_id are copies of the same fact, so every ordering of that partition selects the same values. This is equivalence CONDITIONAL on the input, not on the code, and the assumption is asserted against the generated data by a test rather than trusted. [assumption: unique-event-payload]",
         "SQL-062": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
         "SQL-063": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
         "SQL-064": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
@@ -119,19 +116,22 @@
         "SQL-067": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
         "SQL-068": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
         "SQL-069": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
-        "SQL-070": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]"
+        "SQL-070": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-071": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-072": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]",
+        "SQL-073": "dedup: the COALESCE is inside the payload hash that breaks ties in the deduplication window. Dropping it makes the hash NULL when a field is NULL, which changes the tie-break - and the tie-break is only consulted between identical rows. Same assumption as above, asserted by the same test. [assumption: unique-event-payload]"
       },
       "kappa": {
         "invariants|runtime": 0.0,
-        "ledger|invariants": 0.0045,
-        "ledger|runtime": -0.0
+        "ledger|invariants": 0.0132,
+        "ledger|runtime": 0.0
       },
       "killed": 49,
-      "mutants_scored": 50,
-      "mutants_total": 76,
+      "mutants_scored": 53,
+      "mutants_total": 79,
       "per_witness": {
         "invariants": {
-          "killed": 5,
+          "killed": 4,
           "marginal": []
         },
         "ledger": {
@@ -166,8 +166,6 @@
             "SQL-037",
             "SQL-038",
             "SQL-039",
-            "SQL-040",
-            "SQL-041",
             "SQL-042",
             "SQL-043",
             "SQL-044",
@@ -175,12 +173,15 @@
             "SQL-046",
             "SQL-047",
             "SQL-048",
-            "SQL-052",
-            "SQL-053",
-            "SQL-054",
+            "SQL-049",
+            "SQL-050",
+            "SQL-051",
+            "SQL-055",
             "SQL-056",
             "SQL-057",
-            "SQL-058"
+            "SQL-059",
+            "SQL-060",
+            "SQL-061"
           ]
         },
         "runtime": {
@@ -188,28 +189,31 @@
           "marginal": []
         }
       },
-      "score": 0.98,
+      "score": 0.9245,
       "survivors": [
-        "SQL-055"
+        "SQL-036",
+        "SQL-040",
+        "SQL-041",
+        "SQL-058"
       ],
       "wilson95": [
-        0.895,
-        0.9965
+        0.8214,
+        0.9703
       ]
     },
     "mutants_the_probe_could_not_falsify": [
-      "SQL-049",
-      "SQL-050",
-      "SQL-063",
-      "SQL-068"
+      "SQL-052",
+      "SQL-053",
+      "SQL-066",
+      "SQL-071"
     ],
-    "mutants_total": 76,
+    "mutants_total": 79,
     "per_witness": {
-      "invariants": 5,
+      "invariants": 4,
       "ledger": 49,
       "runtime": 0
     },
-    "strict_score": 0.6447
+    "strict_score": 0.6203
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -224,50 +228,53 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "a8a154d9eda6797079da43e9e07b9a0d",
+  "hash": "403c5cf60087fa95db7de067a618353c",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "d9b137be79c74a629f5eea00b59d59ed",
+  "prev": "0cd261f848db2370b1ef99896b587d57",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
     "claim_id": "SG-03",
     "counterexample": {
       "claim_id": "SG-03",
-      "description": "1 mutants survive every witness",
+      "description": "4 mutants survive every witness",
       "payload": {
         "survivors": [
-          "SQL-055"
+          "SQL-036",
+          "SQL-040",
+          "SQL-041",
+          "SQL-058"
         ]
       },
-      "seed": 7185893407888904769
+      "seed": 13397663474720804825
     },
     "outcome": "fail",
     "rate": {
-      "point": 0.98,
+      "point": 0.924528,
       "successes": 49,
-      "trials": 50,
+      "trials": 53,
       "wilson95": [
-        0.895046,
-        0.996461
+        0.821415,
+        0.97026
       ]
     },
     "runs": {
-      "commit_sha": "2dceae30b4946bfaa6197d95ee817093f2a63eb0",
-      "duration_s": 99.112,
+      "commit_sha": "bef164c967d85650d02c5192126c99f85fdfd453",
+      "duration_s": 91.238,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        7185893407888904769
+        13397663474720804825
       ],
-      "started_at": "2026-09-01T22:00:33+00:00",
+      "started_at": "2026-09-01T22:35:38+00:00",
       "tree_dirty": true,
-      "tree_sha": "53479e81833e2b1ee6a44c4ec7daeb4d71c73738"
+      "tree_sha": "2745a443da003b71ad8bd83ddf80228e3ac29a11"
     }
   }
 }

@@ -20,7 +20,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-CONTRACT_VERSION = "1.2.0"
+# 1.3.0: `amount_out_of_range` joins the closed enum, and the two bounds below join the
+# contract. A change to the set of quarantine reasons is a contract change; calling it a
+# patch would be the kind of quiet reinterpretation this file exists to prevent.
+CONTRACT_VERSION = "1.3.0"
 
 # All accounting periods are computed in this timezone, never in UTC and never in the
 # session timezone. A close is a legal artefact of a Spanish entity; UTC would move
@@ -43,6 +46,23 @@ FRESHNESS_SLA = dt.timedelta(minutes=15)
 # A DECIMAL(18,2) would also work, but cents as BIGINT makes the digest exact by
 # construction and removes an entire class of engine-dependent rounding differences.
 CURRENCY = "EUR"
+
+# Bounds on the money arithmetic, and the reason they exist rather than being obvious.
+#
+# `qty * unit_price_cents` is a BIGINT multiplication, and BIGINT overflows. Three order
+# lines at the maximum legal price produced a `gross_cents` DuckDB happily returned as
+# 18 446 744 073 709 553 614 - a number that does not fit the column it is published in -
+# while Spark, under ANSI mode, refused to produce ANY close for ANY month with an
+# ARITHMETIC_OVERFLOW. Every value involved was a legal BIGINT that both readers accept, and
+# no rule bounded either factor, so this was the last record shape in the pipeline with no
+# door: not quarantined, not counted, just the end of the close.
+#
+# The bounds are business bounds, not type bounds, and deliberately far above anything real:
+# ten million units on a line, and a hundred million euros a unit. Their product is 10^17
+# cents, so a close would need a hundred billion such lines before the SUM itself overflowed
+# a BIGINT, which is a comfortable margin rather than a coincidence.
+MAX_LINE_QUANTITY = 10_000_000
+MAX_UNIT_PRICE_CENTS = 10_000_000_000
 
 
 class EventType(StrEnum):
@@ -71,6 +91,10 @@ class QuarantineReason(StrEnum):
     # reason as well would double-count it, and a test in tests/fast/test_contract_documents.py
     # refuses any reason that no implementation can actually emit.
     UNKNOWN_CURRENCY = "unknown_currency"
+    # A quantity or a price outside the contract's bounds. Not a type error - every value
+    # that triggered it was a legal BIGINT - but an arithmetic overflow further down, which
+    # is the only record shape that used to end a close instead of leaving through a door.
+    AMOUNT_OUT_OF_RANGE = "amount_out_of_range"
 
 
 @dataclass(frozen=True, slots=True)

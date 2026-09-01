@@ -405,6 +405,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         (QuarantineReason.NEGATIVE_PRICE, "negative_price"),
         (QuarantineReason.RETURN_WITHOUT_ORDER, "orphan_return"),
         (QuarantineReason.UNKNOWN_CURRENCY, "bad_currency"),
+        (QuarantineReason.AMOUNT_OUT_OF_RANGE, "huge_amount"),
     ]
     for i in range(n_corrupt):
         reason, kind = corrupt_kinds[i % len(corrupt_kinds)]
@@ -445,6 +446,22 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 "sku": skus[0],
                 "qty": 1,
                 "unit_price_cents": -500,
+                "currency": CURRENCY,
+            }
+        elif kind == "huge_amount":
+            # A price that is a legal BIGINT and outside the contract's bound. Three of these
+            # in one close used to end it outright: Spark refused to produce any month with an
+            # ARITHMETIC_OVERFLOW and DuckDB published a gross that does not fit its column.
+            # The reason exists because of that, and it is generated so that it is REACHED.
+            rec = {
+                "event_id": eid,
+                "event_type": "order_placed",
+                "event_ts": ts,
+                "order_id": f"OBAD{i}",
+                "customer_id": customers[0],
+                "sku": skus[0],
+                "qty": 1,
+                "unit_price_cents": 9223372036854775807,
                 "currency": CURRENCY,
             }
         elif kind == "orphan_return":

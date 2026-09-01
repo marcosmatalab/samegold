@@ -38,8 +38,8 @@ def accounting_month(ts: dt.datetime) -> str:
 def is_return_within_window(sale_ts: dt.datetime, return_ts: dt.datetime) -> bool:
     """True when a return is inside the 45-day commercial window.
 
-    Half-open on the right: a return exactly 45 days later is accepted, 45 days plus one
-    microsecond is not. The boundary is asserted in tests/fast/test_rules.py because it is
+    Closed on the right: a return exactly 45 days after the sale is accepted, and 45 days
+    plus one microsecond is not. The boundary is asserted in tests/fast/test_rules.py because it is
     the single most common off-by-one in this domain and it is worth one euro per unit.
     """
     if sale_ts.tzinfo is None:

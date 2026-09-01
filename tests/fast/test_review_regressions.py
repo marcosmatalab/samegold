@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -777,84 +778,186 @@ def test_the_ledger_collapse_re_compares_after_a_replacement() -> None:
     assert collapse_versions(versions) == collapse_versions(list(reversed(versions)))
 
 
-def test_sg04_can_fail() -> None:
-    """It had one unconditional Pass and was listed as refutable, so nothing could refute it.
+def test_sg04_can_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It had one unconditional Pass, then a failure branch that could not fire.
 
-    The claim the README puts in its opening pull-quote was the one claim with no failure
-    condition, in a repository that says elsewhere "a crash test that cannot fail is a
-    screenshot".
+    Three versions of this claim, three ways of not being falsifiable: no Fail branch at all;
+    a Fail branch comparing two properties its own producer constructs (20 000 randomised
+    inputs, zero violations); and a TEST for that branch which grepped the source for the
+    literal `Fail(\n            "SG-04"`. A review inserted `disagreements = []` above the
+    verdict, left the literal in place, broke the reference, and watched both the test pass
+    and the claim report Pass.
+
+    So this runs the claim, with the reference perturbed, and asserts the verdict.
     """
-    source = (REPO / "src" / "samegold" / "claims.py").read_text(encoding="utf-8")
-    body = source[source.index("def claim_restatement_magnitude") :]
-    body = body[: body.index("\ndef ")]
-    assert 'Fail(\n            "SG-04"' in body, "SG-04 has no failure branch"
-    from samegold.claims import REFUTABLE_CLAIMS
+    from samegold import claims as claim_module
 
-    assert "SG-04" in REFUTABLE_CLAIMS
+    real = claim_module._versioned_rows
+
+    def wrong(bronze: Path, closes: list[Any]) -> list[dict[str, Any]]:
+        rows = [dict(row) for row in real(bronze, closes)]
+        if rows:
+            rows[0]["net_cents"] = int(rows[0]["net_cents"]) + 1
+        return rows
+
+    monkeypatch.setattr(claim_module, "_versioned_rows", wrong)
+    record = claim_module.claim_restatement_magnitude(tmp_path, "fast")
+    assert not record.verdict.ok, "one cent of disagreement must refute this claim"
+    assert "differ between the ledger" in record.verdict.counterexample.description  # type: ignore[union-attr]
+
+    monkeypatch.setattr(claim_module, "_versioned_rows", real)
+    assert claim_module.claim_restatement_magnitude(tmp_path, "fast").verdict.ok
 
 
-def test_current_tree_reports_a_dirty_tree_as_dirty(tmp_path: Path) -> None:
-    """The headline mechanism of the seventh round had no test at all.
+def test_a_refused_return_consumes_nothing() -> None:
+    """The cumulative rule summed over EVERY candidate, so a refused return ate the line.
 
-    A review deleted the `git stash create` call, `current_tree()` went on reporting a clean
-    committed tree with a modified file in it, and the suite stayed green. It also found that
-    the original implementation reported CLEAN for a tree whose only change was an untracked
-    file - which is how five new tests can enter the published count with the record saying
-    the code was committed.
+    A return dated before its sale is refused and takes nothing, and it still consumed three
+    of the three units sold: the good return that followed was stamped
+    `return_exceeds_sold_qty` and 3000 cents of refund disappeared, with a reason attached to
+    it that was factually false. Both engines agreed, as they had on the previous version of
+    the same rule.
     """
-    import os
-    import subprocess
+    import datetime as dt
+    import json
+    import tempfile
 
-    from samegold.generator.seeds import current_tree
+    from samegold.oracle.duckdb_gold import returns_rejected_by_reason, revenue_by_month_as_of
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
+    sale = {
+        "event_id": "op-1",
+        "event_type": "order_placed",
+        "event_ts": "2026-01-10T10:00:00+00:00",
+        "arrival_ts": "2026-01-10T10:05:00+00:00",
+        "order_id": "O1",
+        "customer_id": "C1",
+        "sku": "S1",
+        "qty": 3,
+        "unit_price_cents": 1000,
+        "currency": "EUR",
+    }
 
-    def git(*args: str) -> None:
-        subprocess.run(
-            ["git", "-c", "user.email=a@b", "-c", "user.name=a", "-C", str(repo), *args],
-            check=True,
-            capture_output=True,
+    def a_return(event_id: str, when: str, qty: int) -> dict[str, Any]:
+        return {
+            "event_id": event_id,
+            "event_type": "return_registered",
+            "event_ts": when,
+            "arrival_ts": "2026-02-01T00:00:00+00:00",
+            "order_id": "O1",
+            "sku": "S1",
+            "qty": qty,
+        }
+
+    with tempfile.TemporaryDirectory(prefix="samegold-returns-") as tmp:
+        bronze = Path(tmp) / "bronze" / "batch=1"
+        bronze.mkdir(parents=True)
+        rows = [
+            sale,
+            a_return("r-early", "2026-01-05T10:00:00+00:00", 3),  # before the sale: refused
+            a_return("r-good", "2026-01-20T10:00:00+00:00", 3),  # in the window: accepted
+        ]
+        (bronze / "part-00000.json").write_text(
+            "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
         )
-
-    git("init", "-q")
-    (repo / "a.py").write_text("x\n", encoding="utf-8")
-    git("add", "a.py")
-    git("commit", "-qm", "first")
-
-    cwd = os.getcwd()
-    try:
-        os.chdir(repo)
-        clean_tree, clean_dirty = current_tree()
-        assert len(clean_tree) == 40 and clean_dirty is False
-
-        (repo / "untracked.py").write_text("y\n", encoding="utf-8")
-        untracked_tree, untracked_dirty = current_tree()
-        assert untracked_dirty is True, "an untracked file is code that is in no commit"
-        assert untracked_tree == clean_tree, "an untracked file changes no tree hash"
-
-        (repo / "a.py").write_text("z\n", encoding="utf-8")
-        modified_tree, modified_dirty = current_tree()
-        assert modified_dirty is True
-        assert modified_tree != clean_tree, "a modified file must change the recorded tree"
-    finally:
-        os.chdir(cwd)
+        as_of = dt.datetime(2026, 12, 31, tzinfo=dt.UTC)
+        close = revenue_by_month_as_of(Path(tmp) / "bronze", as_of)
+        assert [(row.gross_cents, row.returns_cents, row.net_cents) for row in close] == [
+            (3000, 3000, 0)
+        ]
+        assert [(row.return_count, row.returns_rejected_count) for row in close] == [(1, 1)]
+        assert returns_rejected_by_reason(Path(tmp) / "bronze", as_of) == {
+            "return_outside_window": 1
+        }
 
 
-def test_current_tree_returns_nothing_outside_a_checkout(tmp_path: Path) -> None:
-    """And the gate then refuses the record rather than accepting forty zeros.
+def test_three_returns_of_a_three_unit_line_do_not_refund_nine() -> None:
+    """The bug the eighth round is named after, with a test this time.
 
-    Everything in this repository runs from a downloaded tarball. Publishing evidence from
-    one does not, because a number whose provenance is "some files, somewhere" is not
-    evidence, and the previous fallback was a valid-looking 40-character tree of zeros.
+    A review reverted the cumulative rule in all three lanes - restoring "gross 3000, refunds
+    9000, net MINUS 6000" - and the entire suite stayed green, because the only thing standing
+    between this repository and a negative-revenue close was a comment. The generator emits at
+    most one return per line, so no seed can produce the shape; it has to be written.
     """
-    import os
+    import datetime as dt
+    import json
+    import tempfile
 
-    from samegold.generator.seeds import current_tree
+    from samegold.oracle.duckdb_gold import revenue_by_month_as_of
 
-    cwd = os.getcwd()
-    try:
-        os.chdir(tmp_path)
-        assert current_tree() == ("", False)
-    finally:
-        os.chdir(cwd)
+    with tempfile.TemporaryDirectory(prefix="samegold-nine-") as tmp:
+        bronze = Path(tmp) / "bronze" / "batch=1"
+        bronze.mkdir(parents=True)
+        rows: list[dict[str, Any]] = [
+            {
+                "event_id": "op-1",
+                "event_type": "order_placed",
+                "event_ts": "2026-01-10T10:00:00+00:00",
+                "arrival_ts": "2026-01-10T10:05:00+00:00",
+                "order_id": "O1",
+                "customer_id": "C1",
+                "sku": "S1",
+                "qty": 3,
+                "unit_price_cents": 1000,
+                "currency": "EUR",
+            }
+        ]
+        for index in range(3):
+            rows.append(
+                {
+                    "event_id": f"rt-{index}",
+                    "event_type": "return_registered",
+                    "event_ts": f"2026-01-2{index}T10:00:00+00:00",
+                    "arrival_ts": "2026-02-01T00:00:00+00:00",
+                    "order_id": "O1",
+                    "sku": "S1",
+                    "qty": 3,
+                }
+            )
+        (bronze / "part-00000.json").write_text(
+            "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+        )
+        close = revenue_by_month_as_of(
+            Path(tmp) / "bronze", dt.datetime(2026, 12, 31, tzinfo=dt.UTC)
+        )
+        row = close[0]
+        assert row.net_cents >= 0, f"a close cannot report negative revenue: {row}"
+        assert (row.gross_cents, row.returns_cents, row.net_cents) == (3000, 3000, 0)
+        assert (row.return_count, row.returns_rejected_count) == (1, 2)
+
+
+def test_a_legal_but_enormous_amount_leaves_through_a_door() -> None:
+    """It ended the close instead: ARITHMETIC_OVERFLOW in Spark, an out-of-range figure here.
+
+    Every value involved was a legal BIGINT that both readers accept, and no rule bounded
+    either factor, so this was the last record shape in the pipeline with no door.
+    """
+    import datetime as dt
+    import json
+    import tempfile
+
+    from samegold.oracle.duckdb_gold import revenue_by_month_as_of
+
+    line = {
+        "event_type": "order_placed",
+        "event_ts": "2026-01-10T10:00:00+00:00",
+        "arrival_ts": "2026-01-10T10:05:00+00:00",
+        "customer_id": "C1",
+        "sku": "S1",
+        "currency": "EUR",
+    }
+    with tempfile.TemporaryDirectory(prefix="samegold-huge-") as tmp:
+        bronze = Path(tmp) / "bronze" / "batch=1"
+        bronze.mkdir(parents=True)
+        rows = [
+            dict(line, event_id="op-ok", order_id="O0", qty=2, unit_price_cents=1000),
+            dict(line, event_id="op-1", order_id="O1", qty=1, unit_price_cents=2**63 - 1),
+            dict(line, event_id="op-2", order_id="O2", qty=1, unit_price_cents=2**63 - 1),
+            dict(line, event_id="op-3", order_id="O3", qty=2**62, unit_price_cents=1000),
+        ]
+        (bronze / "part-00000.json").write_text(
+            "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+        )
+        close = revenue_by_month_as_of(
+            Path(tmp) / "bronze", dt.datetime(2026, 12, 31, tzinfo=dt.UTC)
+        )
+        assert [(row.gross_cents, row.line_count) for row in close] == [(2000, 1)]

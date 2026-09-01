@@ -232,3 +232,41 @@ def conservation_against_ledger(
                 }
             )
     return violations
+
+
+def returns_accounted_by_reason(
+    ledger_quarantine: Mapping[str, int], reference: Mapping[str, int]
+) -> list[Violation]:
+    """The generator's per-reason record of the returns it planted, against the reference's.
+
+    The return-stage reasons - `return_without_order`, `return_outside_window`,
+    `return_exceeds_sold_qty` - are decided in gold, by questions about the SALE, so the
+    ingest-stage accounting cannot see them and for a long time nothing counted them at all:
+    CONTRACT.md described a quarantine counter that did not exist, and `ledger.quarantine`,
+    the generator's own by-construction record, was read by no test and no claim.
+
+    Both sides here are independent: the generator counted as it wrote the events, the
+    reference recounts by classifying them. It is the same argument as
+    `conservation_against_ledger`, applied to the half of the classification that happens a
+    stage later.
+    """
+    reasons = {
+        "return_without_order",
+        "return_outside_window",
+        "return_exceeds_sold_qty",
+    }
+    violations: list[Violation] = []
+    for reason in sorted(reasons):
+        expected = int(ledger_quarantine.get(reason, 0))
+        found = int(reference.get(reason, 0))
+        if expected != found:
+            violations.append(
+                {
+                    "kind": "returns_by_reason",
+                    "reason": reason,
+                    "ledger": expected,
+                    "reference": found,
+                    "difference": found - expected,
+                }
+            )
+    return violations

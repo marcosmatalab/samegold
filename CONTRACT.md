@@ -1,6 +1,6 @@
 # Data contract
 
-Version 1.2.0. The machine-readable half lives in `src/samegold/domain/contract.py`; a test
+Version 1.3.0. The machine-readable half lives in `src/samegold/domain/contract.py`; a test
 fails if this document and that module disagree about the version, the window, the timezone
 or the set of quarantine reasons: the reasons are enumerated below and
 `tests/fast/test_contract_documents.py` compares that list with the enum in both directions.
@@ -33,21 +33,40 @@ clock-like column allowed downstream and it is excluded from every digest.
    them measured it with a function that truncates to whole seconds.)
 4. **A return is imputed to the month of the SALE**, not of the return. This is the rule that
    makes a closed month reopen, and therefore the reason gold is bitemporal.
-5. **The returns of a line cannot exceed its effective quantity, in total.** The rule is cumulative: the second return of a two-unit line is refused if the first already took both units. Per-return it is not a rule at all, because three returns of three units each pass it against one sale of three.
-6. **A close is a version.** At each close, `revenue_by_month` records what was known at that
+5. **The returns of a line cannot exceed its effective quantity, in total.** The rule is
+   cumulative, and the total counts only the returns that are ELIGIBLE to take units off the
+   line: a return before its sale, outside the window, or matching no sale takes nothing and
+   consumes nothing. Once the eligible returns have taken every unit sold, the returns after
+   them are refused too, including a small one that would have fitted in a gap: a line whose
+   returns no longer reconcile is a line for a person to look at, not one to keep partially
+   refunding. Per-return the rule is not a rule at all, because three returns of three units
+   each pass it against one sale of three, and the close then reports negative revenue.
+6. **Money is bounded.** A quantity above 10 000 000 or a unit price above 10 000 000 000
+   cents is quarantined as `amount_out_of_range`. `qty * unit_price_cents` is a BIGINT
+   multiplication and BIGINT overflows: unbounded, three legal order lines were enough to end
+   a close outright in one engine and to publish a figure that does not fit its own column in
+   the other.
+7. **A close is a version.** At each close, `revenue_by_month` records what was known at that
    instant. Later arrivals never rewrite a version; they add one, with `restated_at` and a
    reason.
-7. **A record leaves through exactly one door**: accepted, quarantined with one of the
+8. **A record leaves through exactly one door**: accepted, quarantined with one of the
    reasons in the closed enum, rescued, or deduplicated. `ingested = accepted + quarantined +
-   rescued + deduplicated`, cumulatively over the whole input. It is checked over the input,
+   rescued + deduplicated`, cumulatively over the whole input. `rescued` is structurally zero
+   in this pipeline and is kept in the identity because the door exists in the medallion
+   design, not because anything walks through it: the reader declares a `_rescued_data`
+   column and no consumer reads it, so a malformed record leaves through `unparseable_json`.
+   A term that cannot move is not a check, and saying which term that is costs one sentence. It is checked over the input,
    not per batch: there is no per-batch accounting in this repository and claiming one would
    be describing a mechanism that does not exist.
-8. **A refused return is reported, not dropped.** Returns outside the window and for more
+9. **A refused return is reported, not dropped.** Returns outside the window and for more
    units than were sold are counted in `returns_rejected_count` on the month of the sale. A
    return **without an order** has no sale month to be counted on, so it is classified
-   `return_without_order` and appears in the quarantine accounting rather than in gold; that
-   asymmetry is deliberate and it is the one gap in "a record that leaves the pipeline
-   without a counter is the failure nobody detects".
+   `return_without_order` and appears in `evidence/runs/SG-05.json` under
+   `returns_rejected_by_reason`, which is where every return-stage reason is counted. The
+   INGEST-stage accounting (`reference_counts`, the conservation identity) classifies return
+   events by their own fields only, so a return that is later refused for a reason about its
+   SALE is `accepted` there. That is the honest split - two stages, two accountings - and an
+   earlier version of this rule claimed a single quarantine counter that does not exist.
 
 ## Quarantine reasons
 
@@ -63,6 +82,7 @@ nothing can emit, and refuses an implementation that can emit one that is not he
 | `non_positive_quantity` | a sale, a return, or an amendment to zero or fewer units |
 | `negative_price` | a unit price below zero |
 | `unknown_currency` | a currency other than EUR |
+| `amount_out_of_range` | a quantity above 10 000 000 or a unit price above 10 000 000 000 cents |
 | `return_without_order` | a return whose `(order_id, sku)` matches no accepted sale |
 | `return_outside_window` | a return before the sale, or more than 45 days after it |
 | `return_exceeds_sold_qty` | a return that takes the line's CUMULATIVE returned quantity past its effective quantity |

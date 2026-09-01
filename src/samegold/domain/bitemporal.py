@@ -91,7 +91,12 @@ def versions_from_snapshots(
     #     EARLIER than "2026-01-31T23:45:00+00:00" as an instant and later as text, and
     #     "...Z" and "...+00:00" denote the same instant and sort apart. A close is an
     #     instant; its spelling is not a fact about it.
-    for as_of, months in sorted(snapshots, key=lambda item: instant_of(item[0])):
+    # (instant, text). The Spark twin orders by (as_of::timestamp, as_of) and this one sorted
+    # by the instant alone, relying on `sorted` being stable - which makes the tie-break the
+    # caller's input order rather than a property of the data. Both sides were total; they
+    # were not the SAME total order, which is the distinction the dedup tie-break in
+    # transform.py spends a paragraph on.
+    for as_of, months in sorted(snapshots, key=lambda item: (instant_of(item[0]), item[0])):
         for month in sorted(months):
             if not month_is_closed(month, as_of):
                 continue
