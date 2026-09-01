@@ -114,7 +114,13 @@ def revenue_by_month():
         return_candidates AS (
             SELECT d.order_id, d.sku, d.qty AS return_qty,
                    try_to_timestamp(d.event_ts) AS return_ts,
-                   e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
+                   e.sale_ts, e.unit_price_cents, e.qty AS sold_qty,
+                   -- Cumulative, for the reason given in the OSS reference: per-event, three
+                   -- returns of three units each are accepted against one sale of three.
+                   SUM(d.qty) OVER (PARTITION BY d.order_id, d.sku
+                                    ORDER BY d.event_ts, d.event_id
+                                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                       AS returned_including_this
             FROM dedup d LEFT JOIN effective e USING (order_id, sku)
             WHERE d.event_type = 'return_registered' AND d.quarantine_reason = 'accepted'
               AND d.qty IS NOT NULL AND d.qty > 0
@@ -130,7 +136,8 @@ def revenue_by_month():
                        -- implementation with the DuckDB reference.
                        WHEN CAST(return_ts AS DOUBLE) - CAST(sale_ts AS DOUBLE) > 45 * 86400
                            THEN 'return_outside_window'
-                       WHEN return_qty > sold_qty THEN 'return_exceeds_sold_qty'
+                       WHEN returned_including_this > sold_qty
+                           THEN 'return_exceeds_sold_qty'
                        ELSE 'accepted'
                    END AS return_reason
             FROM return_candidates

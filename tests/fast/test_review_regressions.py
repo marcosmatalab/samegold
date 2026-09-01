@@ -719,30 +719,62 @@ def test_every_seed_purpose_the_code_draws_is_in_the_registry() -> None:
 def test_the_ledger_collapse_re_compares_after_a_replacement() -> None:
     """One loop doing both collapses leaves an adjacent identical pair behind.
 
-    A(t1,X), B(t2,Y), C(t2,X): the C replaces B in place and is never compared with A, so the
-    result is [A(X), C(X)] - exactly the pair the collapse exists to remove. No seed produces
-    it (it needs a valid_from collision plus an attribute round-trip in three versions), which
-    is the argument for not writing it that way rather than for leaving it.
+    A(t1,X), B(t2,Y), C(t2,X): C replaces B in place and is never compared with A, so the
+    result is [A(X), C(X)] - exactly the pair the collapse exists to remove.
+
+    The first version of this test copied the two-pass loop into its own body and asserted on
+    that copy. A review reverted `generator/events.py` to the single-loop version the commit
+    calls wrong, ran the suite, and this test passed: it was protecting a transcription of the
+    code rather than the code. The rule is a function now and the test calls it.
     """
+    from samegold.domain.bitemporal import collapse_versions
+
     versions = [
-        {"valid_from": "t1", "segment": "X", "country": "ES", "event_id": "a"},
-        {"valid_from": "t2", "segment": "Y", "country": "ES", "event_id": "b"},
-        {"valid_from": "t2", "segment": "X", "country": "ES", "event_id": "c"},
+        {
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "segment": "X",
+            "country": "ES",
+            "event_id": "a",
+        },
+        {
+            "valid_from": "2026-02-01T00:00:00+00:00",
+            "segment": "Y",
+            "country": "ES",
+            "event_id": "b",
+        },
+        {
+            "valid_from": "2026-02-01T00:00:00+00:00",
+            "segment": "X",
+            "country": "ES",
+            "event_id": "c",
+        },
     ]
-    deduped: list[dict[str, object]] = []
-    for version in versions:
-        if deduped and deduped[-1]["valid_from"] == version["valid_from"]:
-            deduped[-1] = version
-        else:
-            deduped.append(version)
-    collapsed: list[dict[str, object]] = []
-    for version in deduped:
-        if collapsed and all(
-            collapsed[-1][name] == version[name] for name in ("segment", "country")
-        ):
-            continue
-        collapsed.append(version)
-    assert [row["valid_from"] for row in collapsed] == ["t1"]
+    assert [row["valid_from"] for row in collapse_versions(versions)] == [
+        "2026-01-01T00:00:00+00:00"
+    ]
+    # And the two rules it is made of, separately, so a regression in either is named.
+    heartbeat = [
+        {"valid_from": "2026-01-01T00:00:00+00:00", "segment": "X", "country": "ES"},
+        {"valid_from": "2026-02-01T00:00:00+00:00", "segment": "X", "country": "ES"},
+    ]
+    assert len(collapse_versions(heartbeat)) == 1
+    same_instant = [
+        {
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "segment": "X",
+            "country": "ES",
+            "event_id": "a",
+        },
+        {
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "segment": "Y",
+            "country": "ES",
+            "event_id": "b",
+        },
+    ]
+    assert [row["segment"] for row in collapse_versions(same_instant)] == ["Y"]
+    # Order-free: it sorts by instant, so the caller's order cannot change the answer.
+    assert collapse_versions(versions) == collapse_versions(list(reversed(versions)))
 
 
 def test_sg04_can_fail() -> None:
@@ -759,3 +791,70 @@ def test_sg04_can_fail() -> None:
     from samegold.claims import REFUTABLE_CLAIMS
 
     assert "SG-04" in REFUTABLE_CLAIMS
+
+
+def test_current_tree_reports_a_dirty_tree_as_dirty(tmp_path: Path) -> None:
+    """The headline mechanism of the seventh round had no test at all.
+
+    A review deleted the `git stash create` call, `current_tree()` went on reporting a clean
+    committed tree with a modified file in it, and the suite stayed green. It also found that
+    the original implementation reported CLEAN for a tree whose only change was an untracked
+    file - which is how five new tests can enter the published count with the record saying
+    the code was committed.
+    """
+    import os
+    import subprocess
+
+    from samegold.generator.seeds import current_tree
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=a@b", "-c", "user.name=a", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    (repo / "a.py").write_text("x\n", encoding="utf-8")
+    git("add", "a.py")
+    git("commit", "-qm", "first")
+
+    cwd = os.getcwd()
+    try:
+        os.chdir(repo)
+        clean_tree, clean_dirty = current_tree()
+        assert len(clean_tree) == 40 and clean_dirty is False
+
+        (repo / "untracked.py").write_text("y\n", encoding="utf-8")
+        untracked_tree, untracked_dirty = current_tree()
+        assert untracked_dirty is True, "an untracked file is code that is in no commit"
+        assert untracked_tree == clean_tree, "an untracked file changes no tree hash"
+
+        (repo / "a.py").write_text("z\n", encoding="utf-8")
+        modified_tree, modified_dirty = current_tree()
+        assert modified_dirty is True
+        assert modified_tree != clean_tree, "a modified file must change the recorded tree"
+    finally:
+        os.chdir(cwd)
+
+
+def test_current_tree_returns_nothing_outside_a_checkout(tmp_path: Path) -> None:
+    """And the gate then refuses the record rather than accepting forty zeros.
+
+    Everything in this repository runs from a downloaded tarball. Publishing evidence from
+    one does not, because a number whose provenance is "some files, somewhere" is not
+    evidence, and the previous fallback was a valid-looking 40-character tree of zeros.
+    """
+    import os
+
+    from samegold.generator.seeds import current_tree
+
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        assert current_tree() == ("", False)
+    finally:
+        os.chdir(cwd)

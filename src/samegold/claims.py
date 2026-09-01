@@ -108,8 +108,11 @@ def _pytest_counts(output: str) -> tuple[int, int]:
 
     Parsed rather than inferred, because "how many tests passed" is the number the claim is
     about and the exit code only says whether it equalled the total. A summary line the parser
-    does not recognise returns (0, 0), which makes the published rate 0/0 - visibly wrong
-    rather than quietly optimistic.
+    does not recognise returns (0, 0), and the caller publishes a FAILED record naming the
+    exit code. It does not publish a rate: `Rate` refuses a zero denominator, so the "visibly
+    wrong 0/0" an earlier version of this docstring promised would have raised out of
+    `samegold evidence` rather than being published at all. pytest exits 5 with "no tests ran"
+    whenever a marker expression matches everything, which this claim's own -m filter can do.
     """
     line = next(
         (
@@ -213,6 +216,29 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     facts["tests_passed"] = passed
     facts["tests_failed"] = failed
     runset = _runset(seeds, "n/a", started, "oss-local", "facts")
+    # A run that produced no recognisable summary is a FAILURE of this claim, not a rate over
+    # zero trials. `Rate` refuses a zero denominator (rightly), so the docstring's promise
+    # that an unparsed summary "makes the published rate 0/0, visibly wrong rather than
+    # quietly optimistic" would in fact have raised out of `samegold evidence`. pytest exits
+    # 5 with "no tests ran" whenever a marker expression matches everything, which is exactly
+    # the failure mode this claim's own -m filter can produce.
+    if passed + failed == 0:
+        return EvidenceRecord(
+            claim_id="SG-00",
+            title=CLAIM_TITLES["SG-00"],
+            verdict=Fail(
+                "SG-00",
+                runset,
+                Counterexample(
+                    "SG-00",
+                    seeds[0],
+                    "the fast lane produced no recognisable result at all",
+                    {"exit_code": fast_run.returncode, "tail": fast_run.stdout[-600:]},
+                ),
+            ),
+            runtime="oss-local",
+            artifacts=facts,
+        )
     rate = Rate(passed, passed + failed)
     verdict: Verdict = (
         Pass("SG-00", runset, rate, "fast lane green")
@@ -593,28 +619,54 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
             "worst_versions": int(heaviest["versions"]),
         }
     # A measurement still has to be able to FAIL, or the "result" column is a decoration.
-    # This claim had a single unconditional `Pass` and was listed as refutable, so
-    # `make refute SEED=anything` could not refute it: the one claim the README puts in its
-    # opening pull-quote was the one claim with no failure condition. The condition is the
-    # structural property the measurement depends on - a month that moved must have a dense,
-    # monotonic version history - because a "restatement" recorded on a broken history is a
-    # number about nothing.
-    history: list[dict[str, Any]] = []
+    #
+    # The first attempt at a failure condition was worse than none: it built a version history
+    # with `versions_from_snapshots` and then asked `restatement_monotonic` whether that
+    # history was dense and monotonic - two properties the producer constructs. Twenty
+    # thousand randomised inputs, including duplicate instants, reversed order and mixed UTC
+    # offsets, produced zero violations. It was the same shape as the conservation identity
+    # three rounds earlier: a check whose two sides come from one derivation.
+    #
+    # This one compares two DERIVATIONS. The measurement above reads the generator's ledger,
+    # which knows what each close reported because it wrote the events; the check recomputes
+    # the same versioned close from the bronze FILES with the DuckDB reference. A restatement
+    # the reference does not see is not a restatement, and this can fail: it did, on the
+    # first run, until the comparison was restricted to closed months (the ledger records the
+    # month in progress and the reference does not publish a version for it).
+    closes = [dt.datetime.fromisoformat(instant) for instant in result.ledger.closes]
+    reference = _versioned_rows(root / "bronze", closes)
+    from_reference = {
+        (str(row["accounting_month"]), int(row["close_version"])): int(row["net_cents"])
+        for row in reference
+    }
+    from_ledger: dict[tuple[str, int], int] = {}
     for month, series in by_month.items():
         snapshots = [(as_of, {month: values}) for as_of, values in series]
-        history.extend(versions_from_snapshots(snapshots))
-    broken = restatement_monotonic(history)
+        for row in versions_from_snapshots(snapshots):
+            from_ledger[(month, int(row["close_version"]))] = int(row["net_cents"])
+    disagreements = sorted(
+        {
+            key
+            for key in set(from_ledger) | set(from_reference)
+            if from_ledger.get(key) != from_reference.get(key)
+        }
+    )
     verdict_04: Verdict = (
         Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close")
-        if not broken
+        if not disagreements
         else Fail(
             "SG-04",
             runset,
             Counterexample(
                 "SG-04",
                 seeds[0],
-                "a month moved on a version history that is not dense and monotonic",
-                {"first": broken[0], "count": len(broken)},
+                f"{len(disagreements)} (month, version) figures differ between the ledger "
+                f"that recorded the closes and the reference that recomputes them",
+                {
+                    "first": list(disagreements[0]),
+                    "ledger": from_ledger.get(disagreements[0]),
+                    "reference": from_reference.get(disagreements[0]),
+                },
             ),
             rate,
         )
@@ -857,13 +909,24 @@ def claim_crash_campaign(
     return EvidenceRecord(
         claim_id="SG-07",
         title=CLAIM_TITLES["SG-07"],
-        # The fingerprint of the code that ran, so that "the injected runs and the clean runs
-        # executed the same program" is a comparison a reader can make and not a sentence in
-        # a docstring. The function existed and was called by nothing; the field was null in
-        # every one of the records in the history.
+        # The fingerprint of the code that computed this claim. The function existed and was
+        # called by nothing, and the field was null in every record in the history.
+        #
+        # What it supports and what it does not: a reader comparing two SG-07 records can see
+        # whether the program changed between them, which is the question "was the campaign
+        # re-run against different code" - and the tree hash in the runset now answers a
+        # stronger version of it. It does NOT show that the injected and the clean runs inside
+        # ONE campaign used the same program: they do, because they are one process reading
+        # one set of files, and a single digest computed afterwards cannot be evidence of it.
+        # The docstring used to imply otherwise.
+        #
+        # The set covers everything the campaign's answer depends on, including the contract
+        # and the bookkeeping the first version omitted.
         artifact_digest=artifact_digest(
             sorted(_source_root().joinpath("pipelines").glob("*.py"))
             + sorted(_source_root().joinpath("faults").glob("*.py"))
+            + sorted(_source_root().joinpath("domain").glob("*.py"))
+            + sorted(_source_root().joinpath("oracle").glob("*.py"))
             + sorted(_source_root().joinpath("oracle").glob("*.sql"))
         ),
         verdict=verdict,

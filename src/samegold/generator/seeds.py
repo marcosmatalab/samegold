@@ -25,35 +25,50 @@ import os
 import subprocess
 
 
-def current_tree(default: str = "0" * 40) -> tuple[str, bool]:
-    """The hash of the tree that is actually about to run, and whether it is committed.
-
-    ``git stash create`` writes a commit object for the working tree WITHOUT touching the
-    index, the stash or the checkout, and its tree is exactly what a run will execute. On a
-    clean tree it prints nothing, and the answer is HEAD's tree.
+def current_tree(default: str = "") -> tuple[str, bool]:
+    """The hash of the tree that is about to run, and whether it is exactly a commit's tree.
 
     Why a record needs this and not only the commit: the commit anchors the SEEDS, and an
-    adversarial review pointed out that it anchors nothing else. Two records at one commit
-    can disagree about their own denominators, because the code between them changed and was
-    not committed. That is what fixing a bug and re-measuring looks like, and it is also what
+    adversarial review pointed out that it anchors nothing else. Two records at one commit can
+    disagree about their own denominators, because the code between them changed and was not
+    committed. That is what fixing a bug and re-measuring looks like, and it is also what
     retry-until-green looks like, and the record could not tell them apart.
+
+    Dirtiness comes from ``git status --porcelain`` and not from ``git stash create``, which
+    was the first implementation and which IGNORES UNTRACKED FILES. Adding one untracked test
+    module moved the published test count by five while this function reported a clean tree,
+    and an untracked file is the shape of "code that is in no commit" a repository under
+    active review is most likely to have.
+
+    Outside a git checkout it returns ``("", False)`` and the evidence gate refuses the
+    record. Everything in this repository runs from a tarball; publishing evidence from one
+    does not, because a number whose provenance is "some files, somewhere" is not evidence.
     """
 
-    def git(*args: str) -> str:
+    def git(*args: str) -> tuple[str, bool]:
         try:
             out = subprocess.run(
                 ["git", *args], capture_output=True, text=True, timeout=15, check=False
             )
         except (OSError, subprocess.SubprocessError):
-            return ""
-        return out.stdout.strip() if out.returncode == 0 else ""
+            return ("", False)
+        return (out.stdout.strip(), out.returncode == 0)
 
-    stashed = git("stash", "create")
-    if stashed:
-        tree = git("rev-parse", f"{stashed}^{{tree}}")
-        return (tree or default, True)
-    tree = git("rev-parse", "HEAD^{tree}")
-    return (tree or default, False)
+    status, ok = git("status", "--porcelain")
+    if not ok:
+        return (default, False)
+    dirty = bool(status)
+    if dirty:
+        # A commit object for the working tree, written without touching the index, the stash
+        # or the checkout. It captures tracked modifications; an untracked file changes no
+        # tree hash anywhere, which is why `dirty` is decided above and not here.
+        stashed, ok = git("stash", "create")
+        if ok and stashed:
+            tree, ok = git("rev-parse", f"{stashed}^{{tree}}")
+            if ok and tree:
+                return (tree, True)
+    tree, ok = git("rev-parse", "HEAD^{tree}")
+    return ((tree if ok and tree else default), dirty)
 
 
 def current_commit_sha(default: str = "0" * 40) -> str:

@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 238,
+    "dimension_rows": 257,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -9,7 +9,7 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 228,
+      "rows_deleted": 237,
       "version_after": 3,
       "version_before": 0
     }
@@ -27,12 +27,12 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "b72074addc5c9d104859e414ef661db3",
+  "hash": "152188a58529ca8647129ce219a2a148",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "d1e538736ef9c73dfb5855039e8f5af8",
+  "prev": "c1973a06709ee5fe076966eea9c31575",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,17 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "813a82b2dd458b9c7a4f55119e43451a4a8fef44",
-      "duration_s": 0.649,
+      "commit_sha": "2dceae30b4946bfaa6197d95ee817093f2a63eb0",
+      "duration_s": 0.682,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        11652279969080931842
+        15061738298936455995
       ],
-      "started_at": "2026-09-01T21:34:08+00:00"
+      "started_at": "2026-09-01T22:00:40+00:00",
+      "tree_dirty": true,
+      "tree_sha": "75efcd00e8c45722c7a83afa41a57150b6ac740a"
     }
   }
 }

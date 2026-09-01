@@ -16,7 +16,7 @@ import html
 from collections.abc import Sequence
 from typing import Any
 
-from samegold.domain.money import euros
+from samegold.domain.money import euros, signed_euros
 
 _STYLE = """
 :root { color-scheme: light dark; }
@@ -68,7 +68,13 @@ def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime)
                 f"<td>{euros(int(row['returns_cents']))}</td>"
                 f"<td>{euros(int(row['net_cents']))}</td>"
                 f'<td class="{"negative" if change < 0 else ""}">'
-                f"{'' if not restated else euros(change)}</td>"
+                # SIGNED. The refactor that consolidated money formatting into one module
+                # dropped the sign from this column: `euros()` takes an absolute value, and a
+                # restatement of -321,45 EUR rendered as a positive 321,45 in red. The module
+                # was written because money formatting had already been wrong twice and it was
+                # wrong a third time on the commit that created it, in the one place a person
+                # reads the number. tests/fast/test_money.py exists because of that.
+                f"{'' if not restated else signed_euros(change)}</td>"
                 f"<td>{html.escape(str(row['restatement_reason']))}</td>"
                 f"<td>{html.escape(str(row['restated_at'])[:10])}</td></tr>"
             )

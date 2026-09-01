@@ -16,7 +16,7 @@ figure by hand breaks a test rather than improving a README.
 > A return may arrive up to 45 days after the sale, and it is imputed to the month of the
 > **sale**. So a month finance has already closed can move. In the published run it moved in
 > <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of the closed months, the worst by
-> <!--sg:SG-04.artifact.worst_move_pct-->4.4851<!--/sg-->% of the figure that had been signed off.
+> <!--sg:SG-04.artifact.worst_move_pct-->5.3784<!--/sg-->% of the figure that had been signed off.
 > A pipeline that cannot restate would keep reporting the first number for ever, and be wrong
 > by exactly that much.
 
@@ -26,7 +26,7 @@ figure by hand breaks a test rather than improving a README.
 git clone https://github.com/marcosmatalab/samegold && cd samegold
 make demo      # ~10 s, no account, no credentials, no JVM
 make report    # one self-contained HTML page: the close, its versions, what moved
-make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->335<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->48.2<!--/sg--> s
+make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->345<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->52.8<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
 
@@ -34,16 +34,16 @@ make evidence  # regenerates every number except SG-07's (that one needs a JVM: 
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | **FAIL** | 333/334 (95% CI 98.3%-99.9%) | oss-local | local run, not reproduced in CI |
+| `SG-00` what this repository contains, counted | PASS | 343/343 (95% CI 98.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-03` mutation campaign | **FAIL** | 49/50 (95% CI 89.5%-99.6%) | oss-local | local run, not reproduced in CI |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 51/51 (95% CI 93.0%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-07` the close survives a crash at each structural point | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-03` mutation campaign | **FAIL** | 49/50 (95% CI 89.5%-99.6%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 61/61 (95% CI 94.1%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 
 <!-- samegold:end claims -->
 
@@ -92,7 +92,7 @@ the window is, what the dedup key is, whether the close cut is on arrival or eve
 are the only mutants that can falsify the independence claim, and every one of them is killed
 by name.
 
-## Two bugs the two-implementation design caught
+## Three bugs the design caught, and one it could not
 
 **One return per run, five thousand cents.** The Spark implementation used
 `unix_timestamp()` to measure the 45-day window. It truncates to whole seconds, so a return
@@ -107,6 +107,15 @@ Under `Europe/Madrid` — the accounting timezone this project declares — the 
 an hour short of, or an hour past, 45 days across a daylight-saving boundary. Both implementations now compare seconds, and a
 test runs the reference under three timezones and asserts the same answer.
 
+**A refund rule that was not a rule.** Both implementations checked "a return cannot exceed
+the quantity sold" per RETURN EVENT. Three returns of three units each, against one sale of
+three, were all accepted: gross 3 000, refunds 9 000, **net minus 6 000**, and
+`returns_rejected_count` zero. Two implementations do not help here — they agreed — and no
+seed reaches it, because the generator emits at most one return per line. It was found by an
+adversarial review writing three records by hand, which is the honest answer to "what does
+differential testing not buy you": it buys agreement, and agreement is not correctness. The
+rule is cumulative now, in all three lanes, and the shape is in the adversarial matrix.
+
 ## What is NOT claimed
 
 Written before the results, because it is the part most portfolio projects leave out.
@@ -114,7 +123,8 @@ Written before the results, because it is the part most portfolio projects leave
 - **Not exactly-once.** Re-delivering identical content under a new path leaves the close
   unchanged (SG-02). That is at-least-once delivery plus content-keyed deduplication.
 - **Not "the pipeline is correct".** Two implementations agreeing means they agree. Both were
-  written by one person from one contract, and the specification mutants exist to price that.
+  written by one person from one contract; the specification mutants exist to price that, and
+  the cumulative-refund bug above is what it costs when the price comes due.
 - **Not "crash-safe".** The campaign reaches the points a writer owns. The points inside a
   Delta commit or a state-store checkpoint belong to the engine, are listed in
   `faults/points.py` with `reachable=False`, and are reported as NOT COVERED.
@@ -165,12 +175,12 @@ same on any machine:
 - compaction removed **<!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->%**
   of the files;
 - clustering by (month, sku) cut the share of the table a sku predicate has to read by
-  **<!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->%** — **and by nothing at all**
+  **<!--sg:SG-09.artifact.share_read_reduction_pct-->78.24<!--/sg-->%** — **and by nothing at all**
   at large file sizes, where the two files it produces cover the whole key range. Both are
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
 - deleting one month copied
-  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->10.99<!--/sg--> surviving rows per deleted
+  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->11.05<!--/sg--> surviving rows per deleted
   row**, which is the argument for deletion vectors in one number.
 
 ## Two runtimes, one parity matrix
@@ -208,7 +218,7 @@ of a refutation run: neither is a statement about the data.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->335<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->48.2<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->345<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->52.8<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->52<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

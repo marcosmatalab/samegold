@@ -248,6 +248,7 @@ def test_a_fork_is_not_told_its_evidence_is_forged(tmp_path: Path) -> None:
 # --------------------------------------------------------------- the real files
 
 
+@pytest.mark.evidence_dependent
 def test_the_repository_evidence_chain_verifies() -> None:
     store = EvidenceStore(REPO / "evidence")
     assert store.verify_chain(REPO) == []
@@ -280,6 +281,7 @@ def test_every_claim_cited_in_the_documents_exists() -> None:
                     assert token[:5] in known, f"{name} cites unknown claim {token}"
 
 
+@pytest.mark.evidence_dependent
 def test_the_evidence_directory_is_committed() -> None:
     """A repository whose evidence is gitignored is a repository with no evidence."""
     gitignore = (REPO / ".gitignore").read_text()

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from samegold.domain.bitemporal import collapse_versions
 from samegold.domain.contract import ACCOUNTING_TIMEZONE, CURRENCY, QuarantineReason
 from samegold.domain.rules import accounting_month, is_return_within_window
 
@@ -225,37 +226,11 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     },
                 )
             )
-        versions.sort(key=lambda v: str(v["valid_from"]))
-        # Two collapses, both of them the contract's, not conveniences:
-        #
-        #   * versions sharing a valid_from are one fact arriving twice; the last wins;
-        #   * ADJACENT versions with identical attributes are one version. A Type 2 dimension
-        #     records changes, not heartbeats, which is what domain.bitemporal states and what
-        #     both engines now do. The ledger did only the first collapse, so on every seed it
-        #     claimed a few more rows than a correct implementation produces (80 against 77 on
-        #     one seed, 88 against 78 on another) - and `Ledger.dim_customer` is documented as
-        #     "what the pipeline must produce, known by construction". It survived five review
-        #     rounds because nothing read it: the SCD2 claims compare the two engines with each
-        #     other and never with the ledger. tests/fast now compares all three.
-        # TWO passes, because one is wrong in a way that is hard to see. Doing both collapses
-        # in a single loop replaces `collapsed[-1]` in place when two versions share a
-        # valid_from, and the replacement is then never compared with its NEW predecessor: the
-        # sequence A(t1,X), B(t2,Y), C(t2,X) collapses to [A(X), C(X)], an adjacent identical
-        # pair surviving the collapse the loop is performing. It needs a valid_from collision
-        # and an attribute round-trip in three versions, so no seed here produces it, which is
-        # exactly the argument for not writing it that way.
-        deduped: list[dict[str, Any]] = []
-        for v in versions:
-            if deduped and deduped[-1]["valid_from"] == v["valid_from"]:
-                deduped[-1] = v
-            else:
-                deduped.append(v)
-        collapsed: list[dict[str, Any]] = []
-        for v in deduped:
-            if collapsed and all(collapsed[-1][name] == v[name] for name in ("segment", "country")):
-                continue
-            collapsed.append(v)
-        ledger.dim_customer[cid] = collapsed
+        # The rule lives in domain/bitemporal.py, not here. It is the same rule the two
+        # engines apply, it has an ordering subtlety worth one function's worth of
+        # explanation, and while it was inline its regression test re-implemented it in the
+        # test body and passed against the buggy version.
+        ledger.dim_customer[cid] = collapse_versions(versions)
 
     # ---- orders, amendments, returns -------------------------------------------------
     # facts[(order_id, sku)] = dict with qty, price, sale_ts, arrival_ts of the sale
