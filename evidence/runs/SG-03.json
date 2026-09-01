@@ -131,16 +131,16 @@
       ]
     },
     "runs": {
-      "commit_sha": "f2659a2b7a52614edb6a840cca570e8e78a8970c",
-      "duration_s": 41.809,
+      "commit_sha": "080ba4bd2c43d4c979eb1abf96b13653ce324477",
+      "duration_s": 44.281,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_source": "commit",
       "seeds": [
-        8460651870575029619
+        1732729772208927286
       ],
-      "started_at": "2026-09-01T14:44:21+00:00"
+      "started_at": "2026-09-01T14:49:35+00:00"
     }
   }
 }
