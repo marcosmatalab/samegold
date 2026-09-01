@@ -14,6 +14,10 @@ dependencies = [
   "duckdb>=1.5,<2",
   "pyarrow>=21",
   "sqlglot>=27",
+  # delta-rs is a CORE dependency, not an extra: the governance purge and the cost lab are
+  # part of the fast lane and both read and write real Delta tables with it. It is a wheel
+  # with no JVM behind it, which is what makes that possible.
+  "deltalake>=1.6,<2",
 ]
 
 [project.optional-dependencies]
@@ -28,8 +32,8 @@ spark = [
   "googleapis-common-protos>=1.65",
   "zstandard>=0.25",
 ]
-# Independent Delta reader/writer (no JVM). Used as a third-party witness of the Delta log.
-rust = ["deltalake==1.6.3"]
+# Kept as an extra name so older instructions still work; delta-rs is a core dependency now.
+rust = ["deltalake>=1.6,<2"]
 dev = ["pytest>=8", "pytest-xdist>=3", "hypothesis>=6.100", "ruff>=0.6", "mypy>=1.11"]
 
 [project.scripts]

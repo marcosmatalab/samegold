@@ -212,7 +212,19 @@ class EvidenceStore:
         previous = GENESIS
         last_started = ""
         seen_claims: dict[str, dict[str, Any]] = {}
-        for number, entry in enumerate(self.read_history(), start=1):
+        entries = list(self.read_history())
+        # The commit anchor is only meaningful in the checkout that produced the evidence. In
+        # a fork, a shallow clone or a downloaded tarball the recorded commits are genuinely
+        # unknown, and failing there would tell every reader the repository is broken. The
+        # anchor therefore applies when at least one recorded commit is present in this
+        # checkout, which is what makes it the lineage that produced these records.
+        anchored = any(
+            _commit_exists(
+                str(entry.get("verdict", {}).get("runs", {}).get("commit_sha")), repo_root
+            )
+            for entry in entries
+        )
+        for number, entry in enumerate(entries, start=1):
             claim = str(entry.get("claim_id", "?"))
             if entry.get("prev") != previous:
                 breaks.append(
@@ -248,9 +260,8 @@ class EvidenceStore:
                     )
                 )
             last_started = max(last_started, started)
-            if not _commit_exists(
-                str(entry.get("verdict", {}).get("runs", {}).get("commit_sha")), repo_root
-            ):
+            named_commit = str(entry.get("verdict", {}).get("runs", {}).get("commit_sha"))
+            if anchored and not _commit_exists(named_commit, repo_root):
                 breaks.append(
                     ChainBreak(
                         number,

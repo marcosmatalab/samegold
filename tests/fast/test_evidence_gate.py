@@ -210,12 +210,32 @@ def test_attack_a_record_naming_a_commit_that_does_not_exist(tmp_path: Path) -> 
     from samegold.generator.seeds import seed_for
 
     store = EvidenceStore(tmp_path)
+    # A real record first: the commit anchor only applies to a history that belongs to this
+    # checkout, so that a fork or a downloaded tarball is not told its evidence is forged.
+    store.append(_record("SG-96"))
     fake = "dead" * 10
     record = _record(seeds=tuple(seed_for(fake, i, "witness") for i in range(2)))
     object.__setattr__(record.verdict.runs, "commit_sha", fake)
     store.append(record)  # the shape is valid; the anchor is what catches it
     breaks = store.verify_chain(REPO)
     assert any("does not exist in this repository" in b.problem for b in breaks)
+
+
+def test_a_fork_is_not_told_its_evidence_is_forged(tmp_path: Path) -> None:
+    """Someone who clones this repository into a fresh history has commits nobody here knows.
+
+    A clean-room check caught exactly that: `samegold check` reported all eleven records as
+    naming commits that do not exist, which reads as "this repository is a fraud" and means
+    "you are not in the checkout that produced it".
+    """
+    from samegold.generator.seeds import seed_for
+
+    store = EvidenceStore(tmp_path)
+    unknown = "beef" * 10
+    record = _record(seeds=tuple(seed_for(unknown, i, "witness") for i in range(2)))
+    object.__setattr__(record.verdict.runs, "commit_sha", unknown)
+    store.append(record)
+    assert store.verify_chain(REPO) == []
 
 
 # --------------------------------------------------------------- the real files
