@@ -128,10 +128,17 @@ def deduplicate(df: DataFrame) -> DataFrame:
         ),
         256,
     )
+    # NULLS LAST, explicitly. Spark's default for ASC is NULLS FIRST, and a timestamp the
+    # producer wrote as something that is not a timestamp is NULL here, so among two copies
+    # of one event_id the BROKEN copy won the window and the good one was discarded: a sale
+    # the reference booked and Spark did not. The reference excludes an unparseable event_ts
+    # before it deduplicates, which is the same decision expressed differently; both now
+    # prefer a record the pipeline can read, and only fall back to the broken one when there
+    # is nothing else.
     window = Window.partitionBy("event_id").orderBy(
-        _ts("event_ts").asc(),
-        _ts("arrival_ts").asc(),
-        payload_hash.asc(),
+        _ts("event_ts").asc_nulls_last(),
+        _ts("arrival_ts").asc_nulls_last(),
+        payload_hash.asc_nulls_last(),
     )
     return (
         df.where(F.col("event_id").isNotNull())
@@ -488,7 +495,10 @@ def revenue_versions(snapshots: list[tuple[str, DataFrame]]) -> DataFrame:
     )
     closed = union.where(as_of_month > F.col("accounting_month"))
     fingerprint = F.concat_ws("|", *[F.col(c).cast("string") for c in value_columns])
-    ordered = Window.partitionBy("accounting_month").orderBy("as_of")
+    # Ordered by the INSTANT the close happened at, not by the text of the timestamp. Two
+    # closes written with different UTC offsets sort one way as strings and the other way as
+    # instants, and the version numbers would then follow the spelling.
+    ordered = Window.partitionBy("accounting_month").orderBy(F.col("as_of").cast("timestamp"))
     changed = (
         closed.withColumn("_fp", fingerprint)
         .withColumn("_previous", F.lag("_fp").over(ordered))

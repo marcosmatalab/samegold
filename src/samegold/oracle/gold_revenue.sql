@@ -34,6 +34,10 @@
 --     quarantined in the other - a divergence no seed could produce, because the generator
 --     writes the types the contract asks for. `json_type` is what distinguishes an integer
 --     from a float from a string, which is exactly the distinction Spark's schema makes.
+--     The conversion is TRY_CAST, not CAST: json_type reports 2^63 as UBIGINT, which the
+--     guard admits and a plain CAST then fails on, aborting the whole close - the very
+--     "record with no door" this file removed two paragraphs above, reintroduced by its own
+--     fix. Spark's declared LongType nulls the same value.
 --
 --  4. Timestamps are TRY_CAST, not CAST. A single malformed event_ts used to abort the whole
 --     close with a conversion error, in both engines: the one record shape for which the
@@ -69,11 +73,11 @@ WITH raw AS (
 typed AS (
     SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
            CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(qty AS BIGINT) END AS qty,
+                THEN TRY_CAST(qty AS BIGINT) END AS qty,
            CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(new_qty AS BIGINT) END AS new_qty,
+                THEN TRY_CAST(new_qty AS BIGINT) END AS new_qty,
            CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
-                THEN CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+                THEN TRY_CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
     FROM raw
 ),
 arrived AS (

@@ -878,6 +878,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # than one derivation with itself.
     parseable_event_ids: set[str] = set()
     duplicate_lines = 0
+    unparseable_lines = 0
     try:
         for arrival, rec in events:
             key = int(arrival.timestamp()) // bucket
@@ -897,6 +898,8 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             assert handle is not None
             handle.write(line + "\n")
             written += 1
+            if raw is not None:
+                unparseable_lines += 1
             if raw is None:
                 event_id = str(rec.get("event_id", ""))
                 if event_id in parseable_event_ids:
@@ -916,6 +919,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         # actually written. They differ, and the difference is informative: a duplicate is
         # drawn with replacement, so drawing the same original twice writes three copies of
         # one event rather than two copies of two.
+        "unparseable_lines": unparseable_lines,
         "duplicates_planned": n_dup,
         "unique_originals": len(originals),
         "duplicates_late": duplicates_late,

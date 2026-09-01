@@ -2,9 +2,9 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "96491d764287d6b20443a59d6314baeb",
-      "44f0c3c4a587b7fc677c0eb957c4a6b3",
-      "ed0761402fd673464c15015683f92f91"
+      "a70695c44563da8211234a0db20a5ba5",
+      "3ac3ede87a0b21d847cb50253f245d11",
+      "aed46c530639c0dbf01ee12e25aaf624"
     ]
   },
   "ci_commit_sha": null,
@@ -20,11 +20,11 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "44bd882375f2d40906dc4766e776d589",
+  "hash": "da8eebac816c2404deb50ba99a54d72d",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "709576e4901b8b01dff6b98e9e3e7a96",
+  "prev": "44bd882375f2d40906dc4766e776d589",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,19 +41,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "297c50608e2559a8bfcb03ca1faeec434d897089",
-      "duration_s": 1.844,
+      "commit_sha": "13a7e717c2f4b4fab35bb78df3c2d62756d7c2e3",
+      "duration_s": 1.685,
       "n": 3,
       "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        17375201270348115800,
-        14643819106035036010,
-        15148478238899546004
+        1858455377788245113,
+        12407709417807977602,
+        10898830945254739665
       ],
-      "started_at": "2026-09-01T19:55:01+00:00"
+      "started_at": "2026-09-01T20:19:19+00:00"
     }
   }
 }

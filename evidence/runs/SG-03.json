@@ -63,11 +63,15 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "f1402ac9e0eaff4f33b723e0cf69a796",
-        "digest_reversed": "f1402ac9e0eaff4f33b723e0cf69a796",
+        "digest_forward": "046240f63bb2211a37415b42d28f8cff",
+        "digest_reversed": "046240f63bb2211a37415b42d28f8cff",
+        "order_flip_mutants_run": [
+          "SQL-011"
+        ],
         "rows": 2,
+        "same_multiset_of_rows": true,
         "statement": "every comparison in this project is over a keyed mapping or a canonical digest that sorts by the projection's total order before hashing, so the order rows come out of the reference in cannot change any published answer. Probed by permuting a result and re-digesting it",
-        "verdict": "holds: the digest of a permuted result is identical, so the final ORDER BY cannot change a published answer"
+        "verdict": "holds: the digest of a permuted result is identical, and flipping the final ORDER BY produces the same multiset of rows, so the clause is presentation"
       },
       {
         "assumption": "orphan-returns-are-excluded-downstream",
@@ -85,7 +89,7 @@
     },
     "marginal": {
       "invariants": 0,
-      "ledger": 42,
+      "ledger": 43,
       "runtime": 0
     },
     "matrix": {
@@ -127,7 +131,7 @@
       "mutants_total": 74,
       "per_witness": {
         "invariants": {
-          "killed": 6,
+          "killed": 5,
           "marginal": []
         },
         "ledger": {
@@ -142,6 +146,7 @@
             "SQL-005",
             "SQL-007",
             "SQL-008",
+            "SQL-009",
             "SQL-010",
             "SQL-015",
             "SQL-017",
@@ -197,7 +202,7 @@
     ],
     "mutants_total": 74,
     "per_witness": {
-      "invariants": 6,
+      "invariants": 5,
       "ledger": 48,
       "runtime": 0
     },
@@ -216,12 +221,12 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "08bd2dbc76dade8ad7d2c85313a74fb5",
+  "hash": "a5f8ab4dcc3bde9abda5132359228d85",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "f3b6536c155d4f22aa4fcc46d2397f35",
+  "prev": "7675ad73b8c9e5d9d5005f420f3269e1",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -238,17 +243,17 @@
       ]
     },
     "runs": {
-      "commit_sha": "297c50608e2559a8bfcb03ca1faeec434d897089",
-      "duration_s": 33.244,
+      "commit_sha": "13a7e717c2f4b4fab35bb78df3c2d62756d7c2e3",
+      "duration_s": 92.884,
       "n": 1,
       "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        12623389569737159635
+        3913440759439486663
       ],
-      "started_at": "2026-09-01T19:53:40+00:00"
+      "started_at": "2026-09-01T20:26:21+00:00"
     }
   }
 }
