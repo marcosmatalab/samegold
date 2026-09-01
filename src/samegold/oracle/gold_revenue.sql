@@ -140,6 +140,7 @@ amendments AS (
                row_number() OVER (PARTITION BY order_id, sku
                                   ORDER BY event_ts DESC, event_id DESC) AS rn
         FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
+                     AND new_qty > 0
                      AND order_id IS NOT NULL AND sku IS NOT NULL
     ) WHERE rn = 1
 ),

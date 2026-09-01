@@ -40,6 +40,12 @@ RENDERED_FILES = (
     # figures change on every commit, and hand-typed ones are stale by the next one: they
     # were invented in the first draft and stale again two commits after being corrected.
     "docs/postmortem-2026-03-06.md",
+    # No anchors in these two, so rendering them is a no-op. They are here for the OTHER half
+    # of the check: they cite claim ids in prose, and `check_readme` refuses a number written
+    # by hand beside one. A document that is not checked is a document that drifts, and these
+    # are the two the claims module's own docstring says cite it.
+    "PARITY.md",
+    "EXAM_MAP.md",
 )
 
 

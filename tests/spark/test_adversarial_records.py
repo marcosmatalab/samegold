@@ -276,3 +276,90 @@ def test_a_line_the_parser_could_not_read_gets_a_reason(spark, tmp_path) -> None
     classified = classify(read_bronze(spark, str(tmp_path / "bronze")))
     reasons = sorted(row["quarantine_reason"] for row in classified.collect())
     assert reasons == ["accepted", "unparseable_json"]
+
+
+def test_the_databricks_rules_and_the_oss_case_agree_record_by_record(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The two derivations of the closed enum, evaluated on the same records.
+
+    The Databricks lane declares its rules as expectation predicates so the pipeline event log
+    reports pass and fail counts per rule; the OSS lane writes them as one CASE. That is two
+    implementations of one contract, which is the whole method of this repository applied to
+    the quality rules instead of to the close, and until now nothing compared them: the check
+    that existed was a substring grep over the source, and it passed while the Databricks side
+    accepted a record with a NULL `event_type` that the OSS side quarantined.
+    """
+    import re as _re
+
+    from pyspark.sql import functions as F
+
+    from samegold.pipelines.schema import bronze_schema
+    from samegold.pipelines.transform import quarantine_reason
+
+    source = Path(__file__).resolve().parents[2] / "databricks" / "src" / "silver_expectations.py"
+    text = source.read_text(encoding="utf-8")
+    namespace: dict[str, object] = {}
+    for name, body in _re.findall(
+        r"^(_[A-Z_]+)(?:\s*:[^=]+)?\s*=\s*\((.*?)^\)", text, _re.DOTALL | _re.MULTILINE
+    ):
+        namespace[name] = eval(f"({body})", {"__builtins__": {}}, namespace)
+    block = text[text.index("RULES = {") + len("RULES = {") : text.index("\n}\n")]
+    rules: dict[str, str] = eval("{" + block + "}", {"__builtins__": {}}, namespace)
+
+    ts, arrived = "2026-01-10T10:00:00+00:00", "2026-01-10T10:05:00+00:00"
+
+    def event(**overrides: object) -> dict[str, object]:
+        base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
+        base.update(
+            event_id="e",
+            event_type="order_placed",
+            event_ts=ts,
+            arrival_ts=arrived,
+            order_id="O1",
+            customer_id="C1",
+            sku="S1",
+            qty=2,
+            new_qty=None,
+            unit_price_cents=1000,
+            currency="EUR",
+        )
+        base.update(overrides)
+        return base
+
+    rows = [
+        event(),
+        event(event_id=None),
+        event(event_type=None),
+        event(event_type="warehouse_pinged"),
+        event(event_ts="not-a-timestamp"),
+        event(currency=None),
+        event(currency="USD"),
+        event(unit_price_cents=None),
+        event(unit_price_cents=-1),
+        event(qty=None),
+        event(qty=0),
+        event(customer_id=None),
+        event(event_type="order_line_amended", new_qty=3),
+        event(event_type="order_line_amended", new_qty=None),
+        event(event_type="order_line_amended", new_qty=-5),
+        event(event_type="return_registered", qty=1),
+        event(event_type="return_registered", qty=None),
+        event(event_type="customer_upserted", customer_id=None),
+    ]
+    frame = spark.createDataFrame(rows, bronze_schema())
+
+    # The Databricks side, rebuilt from its own RULES dict in declaration order.
+    databricks = F.lit("accepted")
+    for name, predicate in reversed(list(rules.items())):
+        databricks = F.when(~F.expr(predicate), F.lit(name)).otherwise(databricks)
+
+    compared = frame.select(
+        F.col("event_id"),
+        quarantine_reason().alias("oss"),
+        databricks.alias("databricks"),
+    ).collect()
+    disagreements = [
+        (row["event_id"], row["oss"], row["databricks"])
+        for row in compared
+        if row["oss"] != row["databricks"]
+    ]
+    assert not disagreements, f"the two derivations disagree on {disagreements}"

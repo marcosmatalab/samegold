@@ -4,14 +4,16 @@
     "adrs": 9,
     "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
     "fast_lane_green": false,
-    "fast_lane_seconds": 49.7,
+    "fast_lane_seconds": 50.2,
     "markdown_documents": 17,
     "python_modules": 50,
-    "source_lines": 8287,
-    "test_lines": 3121,
+    "source_lines": 8421,
+    "test_lines": 3335,
     "tests_delta": 6,
-    "tests_fast": 325,
-    "tests_spark": 40
+    "tests_failed": 1,
+    "tests_fast": 331,
+    "tests_passed": 329,
+    "tests_spark": 41
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -26,11 +28,11 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "20ce895b180d761c45b3a2ddaab1096b",
+  "hash": "709e7f29db2c8a4787adf9757b06595e",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "3922f744ead19b8bb747f3f4f50d1e73",
+  "prev": "adf56dc56f482d3d66420d5110b256b0",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -39,24 +41,32 @@
       "claim_id": "SG-00",
       "description": "the fast lane is red",
       "payload": {
-        "tail": "me was right\\n\\n**Date of incident** 5 March 2026, 23:59 CET (t...icy, and an engineer who has not had this conversation with\\nfinance does not know what the bitemporal model is for.\\n'\nE            +  where '662 481,62' = <function test_the_postmortem_quotes_the_published_evidence.<locals>.spanish at 0x7f62104a71a0>(66248162)\n\ntests/fast/test_documentation.py:103: AssertionError\n=========================== short test summary info ============================\nFAILED tests/fast/test_documentation.py::test_the_postmortem_quotes_the_published_evidence\n1 failed, 323 passed, 1 deselected in 48.82s\n"
+        "tail": "[1].split(\"<!--/sg-->\", 1)[0]\n>           assert rendered == str(artifacts[field]), f\"{field}: {rendered!r} != {artifacts[field]!r}\"\nE           AssertionError: worst_first_close_eur: '662 481,62' != '643 468,28'\nE           assert '662 481,62' == '643 468,28'\nE             \nE             - 643 468,28\nE             + 662 481,62\n\ntests/fast/test_documentation.py:87: AssertionError\n=========================== short test summary info ============================\nFAILED tests/fast/test_documentation.py::test_the_postmortem_quotes_the_published_evidence\n1 failed, 329 passed, 1 deselected in 49.43s\n"
       },
-      "seed": 4550830575203104650
+      "seed": 17322390748533413571
     },
     "outcome": "fail",
-    "rate": null,
+    "rate": {
+      "point": 0.99697,
+      "successes": 329,
+      "trials": 330,
+      "wilson95": [
+        0.983037,
+        0.999465
+      ]
+    },
     "runs": {
-      "commit_sha": "8ae09424aaf351ddb6060b4dc090b469a309f5dd",
-      "duration_s": 51.788,
+      "commit_sha": "88b8301442a1e0388ca12bf01c790cd33363e0d2",
+      "duration_s": 52.336,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        4550830575203104650
+        17322390748533413571
       ],
-      "started_at": "2026-09-01T20:34:11+00:00"
+      "started_at": "2026-09-01T21:03:14+00:00"
     }
   }
 }

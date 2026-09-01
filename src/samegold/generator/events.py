@@ -54,6 +54,10 @@ class Profile:
     # Fraction of returns that land in the long tail (30-60 days): these are the ones that
     # reopen a closed month, and a few of them fall outside the 45-day window on purpose.
     late_return_share: float = 0.35
+    # Fraction of returns that claim MORE units than were sold. Small, and not zero: the
+    # contract has a reason for it, all three implementations have a branch for it, and
+    # until this knob existed no run could reach any of them.
+    over_return_rate: float = 0.04
     amend_rate: float = 0.10
     customer_change_rate: float = 0.25
     duplicate_rate: float = 0.12
@@ -77,6 +81,7 @@ class Profile:
             max_lines_per_order=self.max_lines_per_order,
             return_rate=self.return_rate,
             late_return_share=self.late_return_share,
+            over_return_rate=self.over_return_rate,
             amend_rate=self.amend_rate,
             customer_change_rate=self.customer_change_rate,
             duplicate_rate=self.duplicate_rate,
@@ -221,11 +226,25 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 )
             )
         versions.sort(key=lambda v: str(v["valid_from"]))
-        # Collapse versions that share a valid_from (the pipeline keeps the last one).
+        # Two collapses, both of them the contract's, not conveniences:
+        #
+        #   * versions sharing a valid_from are one fact arriving twice; the last wins;
+        #   * ADJACENT versions with identical attributes are one version. A Type 2 dimension
+        #     records changes, not heartbeats, which is what domain.bitemporal states and what
+        #     both engines now do. The ledger did only the first collapse, so on every seed it
+        #     claimed a few more rows than a correct implementation produces (80 against 77 on
+        #     one seed, 88 against 78 on another) - and `Ledger.dim_customer` is documented as
+        #     "what the pipeline must produce, known by construction". It survived five review
+        #     rounds because nothing read it: the SCD2 claims compare the two engines with each
+        #     other and never with the ledger. tests/fast now compares all three.
         collapsed: list[dict[str, Any]] = []
         for v in versions:
             if collapsed and collapsed[-1]["valid_from"] == v["valid_from"]:
                 collapsed[-1] = v
+            elif collapsed and all(
+                collapsed[-1][name] == v[name] for name in ("segment", "country")
+            ):
+                continue
             else:
                 collapsed.append(v)
         ledger.dim_customer[cid] = collapsed
@@ -331,7 +350,18 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     return_ts = sale_ts + dt.timedelta(days=offset_days, hours=rng.randrange(0, 24))
                     r_arrival = return_ts + _delay(rng, profile)
                     eff_qty = int(facts[(order_id, sku)]["qty"])
-                    r_qty = rng.randrange(1, eff_qty + 1) if eff_qty > 0 else 1
+                    # A small share of returns is for MORE units than were sold, so that
+                    # `return_exceeds_sold_qty` is a reason some run actually produces. It
+                    # was unreachable by construction: `randrange(1, eff_qty + 1)` makes
+                    # `r_qty <= eff_qty` a tautology, so the branch existed in all three
+                    # implementations and was exercised by none of them, while the test that
+                    # checks "every reason is reachable" passed by grepping the source for
+                    # the literal string. A reason nobody can produce is a reason nobody
+                    # maintains, and grepping for its name is not producing it.
+                    if eff_qty > 0 and rng.random() < profile.over_return_rate:
+                        r_qty = eff_qty + rng.randrange(1, 4)
+                    else:
+                        r_qty = rng.randrange(1, eff_qty + 1) if eff_qty > 0 else 1
                     events.append(
                         (
                             r_arrival,
@@ -690,11 +720,20 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "arrival_ts": close0 + dt.timedelta(hours=1),
         }
 
-        # 9. An AMENDMENT that arrives after the close of the month its line belongs to. This
-        #    is the only shape that can tell "the quantity known at the close" apart from
-        #    "the final quantity", and without it specification mutant SPEC-06 survives at
-        #    the small profile while dying at the large one - a mutation score that depends
-        #    on how much data you happened to generate is a score that measures the data.
+        # 9. An AMENDMENT that arrives after a close and changes a quantity that close had
+        #    already reported. This is the only shape that can tell "the quantity known at
+        #    the close" apart from "the final quantity", and without it specification mutant
+        #    SPEC-06 survives at the small profile while dying at the large one - a mutation
+        #    score that depends on how much data you happened to generate is a score that
+        #    measures the data.
+        #
+        #    The comment used to say "after the close OF THE MONTH ITS LINE BELONGS TO",
+        #    which is not what the arithmetic below does: the sale is three days before the
+        #    first close and therefore in the month BEFORE it, whose own close is a month
+        #    later. The case works - the quantity differs between close 0 and close 1, which
+        #    is what SPEC-06 needs - and the sentence explaining it described a different
+        #    case. A comment that is nearly right about a boundary case is the reason the
+        #    next reader trusts the next one.
         boundary_seq += 1
         oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
         sale_ts = close0 - dt.timedelta(days=3)
@@ -739,7 +778,12 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "arrival_ts": sale_ts + dt.timedelta(minutes=5),
             "amendments": [
                 {
-                    "event_id": f"am-{oid}-{sku}-0",
+                    # The id the EVENT carries, not a suffixed one. The ledger said
+                    # "am-...-0" while the event written said "am-...", which is harmless
+                    # only because this line has a single amendment and nothing ties on it:
+                    # a ledger that records a different key from the data it describes is one
+                    # tie away from being a wrong answer nobody can explain.
+                    "event_id": f"am-{oid}-{sku}",
                     "event_ts": amend_ts,
                     "arrival_ts": close0 + dt.timedelta(hours=2),
                     "qty": 7,

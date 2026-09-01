@@ -7,8 +7,15 @@ once per (month, version). Putting it in the pipeline would recompute it on ever
 """
 
 # COMMAND ----------
+import re
+
 dbutils.widgets.text("as_of", "")
 as_of = dbutils.widgets.get("as_of")
+# Validated, not trusted. The value is interpolated into a TIMESTAMP literal below, and a
+# quote in it would break out of that literal in the one job that writes the signed-off close
+# table. A widget is user input like any other.
+if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?", as_of):
+    raise ValueError(f"as_of must be an ISO timestamp without a zone offset, got {as_of!r}")
 catalog = spark.conf.get("samegold.catalog", "samegold")
 
 # COMMAND ----------

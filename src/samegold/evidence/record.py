@@ -52,9 +52,16 @@ def environment_fingerprint() -> dict[str, str]:
 def artifact_digest(paths: list[Path]) -> str:
     """Digest of the deployable artefact (pipeline code + bundle + SQL).
 
-    Used to prove that the fault-injection runs and the clean runs executed the same
-    program. If instrumenting the pipeline required editing it, this digest changes and the
-    corresponding claim is refused at render time.
+    Recorded so that a reader can check that the fault-injection runs and the clean runs
+    executed the same program: if instrumenting the pipeline required editing it, this digest
+    changes.
+
+    RECORDED, not enforced. An earlier version of this docstring said the corresponding claim
+    was "refused at render time", and the renderer's own docstring said such a record would be
+    printed as UNVERIFIABLE. Neither was true: the word appeared in one docstring and nowhere
+    else in the repository, and this field was written into records and read by nothing. Both
+    sentences are corrected rather than implemented, because a field that is written and never
+    read is a comment wearing a check's clothes, and this repository is about the difference.
     """
     hasher = hashlib.blake2b(digest_size=16)
     for path in sorted(paths):

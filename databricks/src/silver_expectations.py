@@ -55,28 +55,76 @@ RULES = {
         f" AND ({_PRESENT_FOR_TYPE})"
     ),
     "non_positive_quantity": (
-        "event_type NOT IN ('order_placed','return_registered') OR qty > 0"
+        "(event_type NOT IN ('order_placed','return_registered') OR qty > 0)"
+        # An amendment to a quantity of zero or less is the same fault by another name, and
+        # no lane rejected it: `NON_POSITIVE_QUANTITY` was gated on the two event types that
+        # carry `qty` and an `order_line_amended` carries `new_qty`. All three lanes agreed,
+        # so no parity test could see it, and the generator's `max(1, ...)` guaranteed no
+        # seed would produce it. An amendment to -5 drove gross revenue negative.
+        " AND (event_type <> 'order_line_amended' OR new_qty > 0)"
     ),
     "negative_price": "event_type <> 'order_placed' OR unit_price_cents >= 0",
     "unknown_currency": "event_type <> 'order_placed' OR currency = 'EUR'",
 }
 
 
+# The classification, as a column, over EVERY row. This table is what gold reads.
+#
+# The lane used to have only `silver_events` (expectations, rows dropped) and
+# `silver_quarantine` (the dropped rows, with a reason), and `gold_close.py` then selected
+# `quarantine_reason` from `silver_events` - a column that table does not have, because an
+# expectation drops a row and does not annotate it. The whole gold close would have failed
+# analysis on its first refresh. Its statements parse, which is what the parse test checked;
+# they did not resolve, which is a different question and is now asked too.
+#
+# There is a second reason to read the classified table rather than the filtered one, and it
+# is the reason the OSS lane is built that way: deduplication runs over the WHOLE population
+# and validity is applied after it. Deduplicating only the survivors lets a good copy of a
+# duplicated event win here and an invalid copy win there, which is a divergence no parity
+# test could see because the two lanes would be computing different things.
+_REASON = (
+    "CASE"
+    " WHEN event_id IS NULL THEN 'unparseable_json'"
+    " WHEN event_type IS NULL OR event_type NOT IN ('order_placed','order_line_amended',"
+    "'return_registered','customer_upserted') THEN 'unknown_event_type'"
+    " WHEN try_to_timestamp(event_ts) IS NULL OR try_to_timestamp(arrival_ts) IS NULL"
+    " THEN 'missing_required_field'"
+    f" WHEN NOT ({_PRESENT_FOR_TYPE}) THEN 'missing_required_field'"
+    " WHEN event_type IN ('order_placed','return_registered') AND qty <= 0"
+    " THEN 'non_positive_quantity'"
+    " WHEN event_type = 'order_line_amended' AND new_qty <= 0 THEN 'non_positive_quantity'"
+    " WHEN event_type = 'order_placed' AND unit_price_cents < 0 THEN 'negative_price'"
+    " WHEN event_type = 'order_placed' AND currency <> 'EUR' THEN 'unknown_currency'"
+    " ELSE 'accepted' END"
+)
+
+
+@dp.table(name="silver_classified", comment="Every event, tagged with why it was accepted.")
+def silver_classified():
+    return spark.readStream.table("bronze_events").withColumn(
+        "quarantine_reason", F.expr(_REASON)
+    )
+
+
 @dp.table(name="silver_events", comment="Validated events. Duplicates are resolved in gold.")
 @dp.expect_all_or_drop(RULES)
 def silver_events():
+    """The same rules as `_REASON`, declared as expectations.
+
+    This table exists for the EVENT LOG: expectations are what make pass and fail counts per
+    rule appear there and on the dashboard, which is the piece open-source SDP does not have
+    and the reason this lane exists at all. Gold reads `silver_classified`, not this one, so
+    the two derivations of the same rules are compared rather than trusted: a difference
+    shows up as a row count that does not match `silver_classified` where the reason is
+    'accepted'.
+    """
     return spark.readStream.table("bronze_events")
 
 
 @dp.table(name="silver_quarantine", comment="Everything silver_events dropped, with the reason.")
 def silver_quarantine():
-    stream = spark.readStream.table("bronze_events")
-    reason = F.lit("accepted")
-    # Reversed so the FIRST rule in RULES wins, which is the order the OSS CASE evaluates in:
-    # a record that breaks three rules leaves through one door, and it must be the same door
-    # on both lanes or the two quarantine tables cannot be compared.
-    for name, predicate in reversed(list(RULES.items())):
-        reason = F.when(~F.expr(predicate), F.lit(name)).otherwise(reason)
-    return stream.withColumn("quarantine_reason", reason).where(
-        F.col("quarantine_reason") != "accepted"
+    return (
+        spark.readStream.table("silver_classified")
+        .where(F.col("quarantine_reason") != "accepted")
+        .select("event_id", "event_type", "arrival_ts", "quarantine_reason")
     )

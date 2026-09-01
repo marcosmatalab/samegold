@@ -11,8 +11,14 @@ Three defences, in the order a forger meets them:
      canonical serialisation. Editing, inserting or deleting a line anywhere in
      ``history.jsonl`` breaks every hash after it, and ``verify_chain`` says which line.
   2. **Seed derivation.** A record names the commit its seeds came from and the purpose they
-     were drawn for. The gate recomputes them and refuses the record if they do not match, so
-     "I ran it with 333 lucky seeds" cannot be written down.
+     were drawn for. The gate recomputes them and refuses the record if they do not match,
+     and the purpose must be one of a closed set, so neither the numbers nor the label of the
+     stream is the author's to choose: "I ran it with 333 lucky seeds" cannot be written down
+     and neither can "I ran it 333 times under 333 names".
+  2b. **Identity.** The claim id must be one claims.py defines, the title must be the title
+     that claim declares, and the verdict inside the record must be about the same claim. A
+     gate that checks only how a record was produced will happily publish "SG-DOES-NOT-EXIST:
+     999/999".
   3. **Provenance shape.** ``ci_run_url`` must be a real GitHub Actions run URL for the
      repository the record names, and a record that claims CI must also carry the commit the
      workflow ran on. It cannot prove the run exists - nothing offline can - but it can stop
@@ -62,8 +68,78 @@ def record_hash(payload: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def _validate(payload: dict[str, Any]) -> None:
+def _known_claims() -> dict[str, str]:
+    """The claim ids and titles this repository defines, from claims.py.
+
+    Imported lazily so the store stays importable without the claim implementations (the
+    Databricks lane writes records from a notebook that has none of them).
+    """
+    from samegold.evidence.registry import CLAIM_TITLES
+
+    return dict(CLAIM_TITLES)
+
+
+def _seed_purposes() -> set[str]:
+    from samegold.evidence.registry import SEED_PURPOSES
+
+    return set(SEED_PURPOSES)
+
+
+def _finite(value: Any, path: str) -> None:
+    """Refuse NaN and Infinity anywhere in a record.
+
+    ``json.dumps`` writes them as the bare tokens ``NaN`` and ``Infinity``, which are not
+    JSON. A record with one of them was accepted, the chain verified, and the append-only
+    file the whole argument rests on could no longer be read by `jq`, `JSON.parse`,
+    `serde_json` or Go's `encoding/json`: intact according to itself and unreadable to
+    everyone else. `verify/digest.py` had refused non-finite floats since its first review;
+    the store had not.
+    """
+    if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
+        raise EvidenceRejected(f"non-finite number at {path}: {value!r}. Evidence must be JSON.")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _finite(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _finite(item, f"{path}[{index}]")
+
+
+def _validate(payload: dict[str, Any], *, historical: bool = False) -> None:
+    """Refuse a record. ``historical`` relaxes the checks that are about PUBLISHING now.
+
+    The chain is a history: a record written before a claim was renamed still names the
+    title it had, and re-validating the whole file must not turn a legitimate past into a
+    forgery. So the title comparison applies when appending and not when verifying, while
+    everything about identity, seeds and provenance applies to both.
+    """
     from samegold.generator.seeds import seeds_from_commit
+
+    claim_id = str(payload.get("claim_id", ""))
+    # A record for a claim that does not exist used to be accepted, given its own runs/ file
+    # and rendered as a table row: the gate checked how a record was produced and never what
+    # it was about, so "SG-DOES-NOT-EXIST: 999/999" was a valid publication. The registry is
+    # claims.py, which is also what the documents cite.
+    known = _known_claims()
+    if claim_id not in known:
+        raise EvidenceRejected(
+            f"{claim_id!r} is not a claim this repository defines. The claims are "
+            f"{sorted(known)}; add it to claims.py before publishing evidence for it."
+        )
+    if not historical and payload.get("title") != known[claim_id]:
+        raise EvidenceRejected(
+            f"{claim_id}: the record's title is {payload.get('title')!r} and claims.py says "
+            f"{known[claim_id]!r}. A record that renames its own claim is a record about "
+            f"something else."
+        )
+    verdict_claim = str(payload.get("verdict", {}).get("claim_id", claim_id))
+    if verdict_claim != claim_id:
+        raise EvidenceRejected(
+            f"{claim_id}: the verdict inside this record is for {verdict_claim!r}. The record "
+            f"and its verdict must be about the same claim."
+        )
+    _finite(payload.get("artifacts"), f"{claim_id}.artifacts")
+    _finite(payload.get("verdict"), f"{claim_id}.verdict")
 
     runs = payload.get("verdict", {}).get("runs", {})
     sha = str(runs.get("commit_sha", ""))
@@ -91,6 +167,19 @@ def _validate(payload: dict[str, Any]) -> None:
             raise EvidenceRejected(
                 f"{payload.get('claim_id')}: the record does not say what purpose its seeds "
                 f"were drawn for, so they cannot be recomputed"
+            )
+        # And the purpose comes from a CLOSED SET. Recomputing the seeds from (commit,
+        # purpose) stops an author choosing the numbers; it does not stop them choosing the
+        # LABEL, and each label is a fresh gate-approved draw at a fixed commit. A review
+        # appended two hundred records at one commit under the purposes
+        # "witness-attempt-0" ... "witness-attempt-199" and the gate accepted all two
+        # hundred. "I ran it with 333 lucky seeds" was still writable, one rename at a time.
+        if purpose not in _seed_purposes():
+            raise EvidenceRejected(
+                f"{payload.get('claim_id')}: seed purpose {purpose!r} is not one of the "
+                f"purposes this repository draws seeds for. Each purpose is a distinct seed "
+                f"stream, so an unlisted one is a fresh draw at a fixed commit, which is "
+                f"exactly what deriving the seeds is supposed to prevent."
             )
         # An override run must never be recomputed against the commit: its seeds are, by
         # design, not derived from it. Those records are kept but never back a published
@@ -149,9 +238,11 @@ class EvidenceStore:
         payload["prev"] = self.head_hash()
         payload["hash"] = record_hash(payload)
         with self.history.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+            handle.write(json.dumps(payload, sort_keys=True, allow_nan=False) + "\n")
         latest = self.runs_dir / f"{record.claim_id}.json"
-        latest.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        latest.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, allow_nan=False), encoding="utf-8"
+        )
 
     def head_hash(self) -> str:
         last = None
@@ -246,7 +337,7 @@ class EvidenceStore:
                     )
                 )
             try:
-                _validate(entry)
+                _validate(entry, historical=True)
             except EvidenceRejected as exc:
                 breaks.append(ChainBreak(number, claim, str(exc)))
             started = str(entry.get("verdict", {}).get("runs", {}).get("started_at", ""))

@@ -237,6 +237,8 @@ classified AS (
             WHEN event_type IN ('order_placed','return_registered')
                  AND CAST(qty AS BIGINT) <= 0
                 THEN 'non_positive_quantity'
+            WHEN event_type = 'order_line_amended' AND CAST(new_qty AS BIGINT) <= 0
+                THEN 'non_positive_quantity'
             WHEN event_type = 'order_placed' AND CAST(unit_price_cents AS BIGINT) < 0
                 THEN 'negative_price'
             WHEN event_type = 'order_placed' AND currency <> 'EUR'

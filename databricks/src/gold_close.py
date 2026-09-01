@@ -54,8 +54,11 @@ dp.create_auto_cdc_flow(
 @dp.temporary_view(name="silver_events_customers")
 def silver_events_customers():
     return (
-        spark.readStream.table("silver_events")
-        .where(F.col("event_type") == "customer_upserted")
+        spark.readStream.table("silver_classified")
+        .where(
+            (F.col("event_type") == "customer_upserted")
+            & (F.col("quarantine_reason") == "accepted")
+        )
         .select("customer_id", "segment", "country", "event_ts", "event_id")
     )
 
@@ -83,14 +86,14 @@ def revenue_by_month():
                                           COALESCE(currency, ''), COALESCE(return_id, ''),
                                           COALESCE(reason, ''), COALESCE(segment, ''),
                                           COALESCE(country, '')), 256)) AS rn
-                FROM silver_events
-                WHERE quarantine_reason = 'accepted'
+                FROM silver_classified
             ) WHERE rn = 1
         ),
         lines AS (
             SELECT order_id, sku, customer_id, qty AS qty0, unit_price_cents,
                    try_to_timestamp(event_ts) AS sale_ts
-            FROM dedup WHERE event_type = 'order_placed'
+            FROM dedup
+            WHERE event_type = 'order_placed' AND quarantine_reason = 'accepted'
         ),
         amendments AS (
             SELECT order_id, sku, qty FROM (
@@ -98,7 +101,9 @@ def revenue_by_month():
                        row_number() OVER (PARTITION BY order_id, sku
                                           ORDER BY try_to_timestamp(event_ts) DESC,
                                                    event_id DESC) AS rn
-                FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
+                FROM dedup
+                WHERE event_type = 'order_line_amended' AND quarantine_reason = 'accepted'
+                  AND new_qty IS NOT NULL AND new_qty > 0
             ) WHERE rn = 1
         ),
         effective AS (
@@ -111,7 +116,8 @@ def revenue_by_month():
                    try_to_timestamp(d.event_ts) AS return_ts,
                    e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
             FROM dedup d LEFT JOIN effective e USING (order_id, sku)
-            WHERE d.event_type = 'return_registered' AND d.qty IS NOT NULL AND d.qty > 0
+            WHERE d.event_type = 'return_registered' AND d.quarantine_reason = 'accepted'
+              AND d.qty IS NOT NULL AND d.qty > 0
         ),
         returns_classified AS (
             SELECT *,

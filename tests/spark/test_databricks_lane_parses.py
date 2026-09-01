@@ -124,7 +124,11 @@ def _expectations() -> list[tuple[str, str]]:
             r"^(_[A-Z_]+)(?:\s*:[^=]+)?\s*=\s*\((.*?)^\)", source, re.DOTALL | re.MULTILINE
         )
         for name, body in helpers:
-            module[name] = eval(f"({body})", {"__builtins__": {}}, {})
+            # Evaluated INTO the same namespace, in source order, because one helper is
+            # built from another. An empty namespace per helper raised NameError at import
+            # time, which is a collection error: it takes down the very test written to stop
+            # this module going quietly vacuous.
+            module[name] = eval(f"({body})", {"__builtins__": {}}, module)
         for block in blocks:
             rules = eval("{" + block.group(1) + "}", {"__builtins__": {}}, module)
             for name, predicate in rules.items():
@@ -199,3 +203,101 @@ def test_the_statement_parses(spark, name: str, statement: str) -> None:  # type
         parser.parsePlan(statement)
     except Exception as error:  # pragma: no cover - the failure message is the point
         pytest.fail(f"{name} does not parse: {error}")
+
+
+# --------------------------------------------------------------------------- analysis
+#
+# Parsing says a statement is a statement. It does not say the columns exist. An adversarial
+# review found `gold_close.py` selecting `quarantine_reason` from `silver_events`, a table
+# whose definition is `readStream.table("bronze_events")` decorated with expectations: an
+# expectation DROPS a row, it does not annotate one. The whole gold close would have failed
+# on its first refresh, and the parser was perfectly happy with it.
+#
+# So the lane's tables are declared here as empty views with the schema they will have, and
+# the statements are ANALYSED against them. That still cannot run the pipeline, but it does
+# answer "does every column this lane reads exist", which is the question that was open.
+
+BRONZE_COLUMNS = (
+    "event_id STRING, event_type STRING, event_ts STRING, arrival_ts STRING, "
+    "order_id STRING, customer_id STRING, sku STRING, qty BIGINT, new_qty BIGINT, "
+    "unit_price_cents BIGINT, currency STRING, return_id STRING, reason STRING, "
+    "segment STRING, country STRING, boundary STRING, "
+    "_rescued_data STRING, _ingest_file STRING, _ingested_at TIMESTAMP"
+)
+LANE_TABLES = {
+    "bronze_events": BRONZE_COLUMNS,
+    "silver_classified": BRONZE_COLUMNS + ", quarantine_reason STRING",
+    "silver_events": BRONZE_COLUMNS,
+    "t": BRONZE_COLUMNS,  # the wrapper the expectation predicates are analysed in
+    "revenue_by_month": (
+        "accounting_month STRING, gross_cents BIGINT, returns_cents BIGINT, net_cents BIGINT, "
+        "line_count BIGINT, return_count BIGINT, returns_rejected_count BIGINT"
+    ),
+    "revenue_closed": (
+        "accounting_month STRING, close_version INT, gross_cents BIGINT, returns_cents BIGINT, "
+        "net_cents BIGINT, line_count BIGINT, return_count BIGINT, "
+        "returns_rejected_count BIGINT, restated_at TIMESTAMP, restatement_reason STRING"
+    ),
+}
+
+# Statements this check cannot reach, each for a stated reason. The list is closed and the
+# test below fails if it grows, because "the analyser could not see it" is the excuse that
+# would put the next missing column back.
+NOT_ANALYSABLE = {
+    # event_log() is a Databricks table-valued function with no OSS equivalent.
+    "databricks/src/publish_evidence.py#0::0",
+    "databricks/src/publish_evidence.py#1::0",
+    "databricks/src/publish_evidence.py#2::0",
+    # is_account_group_member() and current_user_country() are Unity Catalog functions. The
+    # policy statements are parsed; their bodies call routines that do not exist outside a
+    # workspace, and docs/limits.md already says these policies are demonstrated rather than
+    # enforced on Free Edition.
+    "databricks/sql/policies.sql::0",
+    "databricks/sql/policies.sql::1",
+}
+
+
+@pytest.fixture(scope="module")
+def lane_tables(spark):  # type: ignore[no-untyped-def]
+    for name, schema in LANE_TABLES.items():
+        spark.createDataFrame([], schema).createOrReplaceTempView(name)
+    yield spark
+
+
+def _single_part(statement: str) -> str:
+    """`samegold.main.revenue_by_month` -> `revenue_by_month`.
+
+    Unity Catalog's three-part names are not resolvable by the local session catalog, which
+    rejects them before it looks at a single column. Flattening them is a rewrite of the
+    NAMESPACE only: every column reference, join and predicate the statement makes is left
+    exactly as written, which is what this check is about.
+    """
+    return statement.replace("samegold.main.", "")
+
+
+ANALYSABLE = [(name, part) for name, part in STATEMENTS if name not in NOT_ANALYSABLE]
+
+
+def test_almost_every_statement_is_analysable() -> None:
+    """The exclusion list is closed, and every entry names a Databricks-only routine."""
+    excluded = {name for name, _ in STATEMENTS} & NOT_ANALYSABLE
+    assert len(ANALYSABLE) >= 9, [name for name, _ in ANALYSABLE]
+    assert excluded <= NOT_ANALYSABLE
+
+
+@pytest.mark.spark
+@pytest.mark.parametrize("name,statement", ANALYSABLE, ids=[n for n, _ in ANALYSABLE])
+def test_every_column_the_statement_reads_exists(lane_tables, name: str, statement: str) -> None:  # type: ignore[no-untyped-def]
+    head = statement.strip().upper()
+    if head.startswith(("CREATE", "ALTER")):
+        pytest.skip("DDL declares the schema rather than reading it")
+    if head.startswith("MERGE"):
+        # A MERGE needs a real Delta table as its target, which needs jars this container
+        # cannot reach. Its SOURCE is the half that reads columns, so that half is analysed.
+        source = statement.split("USING", 1)[1].rsplit(") AS s", 1)[0]
+        lane_tables.sql(_single_part(source.strip().lstrip("(")))
+        return
+    try:
+        lane_tables.sql(_single_part(statement)).schema  # noqa: B018 - analysis is the assertion
+    except Exception as error:  # pragma: no cover - the message is the point
+        pytest.fail(f"{name} does not resolve: {error}")

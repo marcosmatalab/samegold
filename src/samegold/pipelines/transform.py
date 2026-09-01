@@ -204,6 +204,15 @@ def quarantine_reason() -> Column:
             (F.col("event_type").isin("order_placed", "return_registered")) & (F.col("qty") <= 0),
             F.lit("non_positive_quantity"),
         )
+        # An amendment to a quantity of zero or less is the same fault under another column
+        # name, and no lane rejected it: the rule was gated on the two event types that carry
+        # `qty`, and an order_line_amended carries `new_qty`. All three implementations agreed,
+        # so no parity test could see it, and the generator's `max(1, ...)` guaranteed no seed
+        # would produce it. An amendment to -5 drove gross revenue negative.
+        .when(
+            (F.col("event_type") == "order_line_amended") & (F.col("new_qty") <= 0),
+            F.lit("non_positive_quantity"),
+        )
         .when(
             (F.col("event_type") == "order_placed") & (F.col("unit_price_cents") < 0),
             F.lit("negative_price"),
