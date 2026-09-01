@@ -4,7 +4,7 @@
     "adrs": 9,
     "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
     "fast_lane_green": true,
-    "fast_lane_seconds": 41.4,
+    "fast_lane_seconds": 42.8,
     "markdown_documents": 17,
     "python_modules": 50,
     "source_lines": 7570,
@@ -26,11 +26,11 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "0b16c8941df16f347509bd3396646a83",
+  "hash": "7f3872611f490e4c1d49c7b852d978ab",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "a48eb8fbebb006ef6f7c6f874a48e0ae",
+  "prev": "0b16c8941df16f347509bd3396646a83",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -47,17 +47,17 @@
       ]
     },
     "runs": {
-      "commit_sha": "7414fe98cbaf38183f59cba8bd4899fcb05d64e9",
-      "duration_s": 44.044,
+      "commit_sha": "297c50608e2559a8bfcb03ca1faeec434d897089",
+      "duration_s": 45.179,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        12179186928514851977
+        3923885496469409972
       ],
-      "started_at": "2026-09-01T19:00:49+00:00"
+      "started_at": "2026-09-01T19:02:05+00:00"
     }
   }
 }

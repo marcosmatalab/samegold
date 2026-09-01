@@ -4,7 +4,7 @@
 -- names, the 45-day window, the accounting timezone) with the Spark implementation and shares
 -- no code with it. What it can and cannot catch is measured in mutation/witness_matrix.py.
 --
--- Three details here exist because an adversarial review broke the previous version:
+-- Five details here exist because an adversarial review broke the previous version:
 --
 --  1. The columns are DECLARED, not inferred. With union_by_name, a batch that happens to
 --     contain no order_line_amended event does not create the new_qty column, and the whole
@@ -17,7 +17,28 @@
 --     disagreement between the two implementations, on a real seed.
 --  3. Deduplication has a TOTAL order. Ordering only by (event_ts, arrival_ts) leaves ties
 --     undefined, and an undefined tie makes the answer depend on the physical order of rows
---     in the files. The tie is broken by a hash of the whole record.
+--     in the files. The tie is broken by a hash of the whole payload.
+--     Two properties of that hash were wrong until an adversarial review measured them.
+--     It used md5 here and sha2(...,256) in Spark: different functions induce different
+--     lexicographic orders, so on a pair of rows sharing an event_id with different payloads
+--     the two engines picked DIFFERENT copies, on 48% of such pairs. And it covered six
+--     fields, so for a customer_upserted (where all six are NULL) both copies hashed to the
+--     same value and the winner was decided by the shuffle. The function is now sha256 on
+--     both sides, over EVERY payload column. The generator never emits a colliding pair, so
+--     nothing but a deliberate test would ever have noticed.
+--
+--  5. The three integer columns are read as JSON, not as BIGINT, and converted in the
+--     `typed` CTE below. DuckDB's BIGINT coercion accepts `"qty": 2.0` and `"qty": "2"`;
+--     Spark's declared LongType under PERMISSIVE mode nulls both and rescues the record.
+--     So a producer sending a float or a quoted number booked revenue in one engine and was
+--     quarantined in the other - a divergence no seed could produce, because the generator
+--     writes the types the contract asks for. `json_type` is what distinguishes an integer
+--     from a float from a string, which is exactly the distinction Spark's schema makes.
+--
+--  4. Timestamps are TRY_CAST, not CAST. A single malformed event_ts used to abort the whole
+--     close with a conversion error, in both engines: the one record shape for which the
+--     pipeline had no door at all. It is now a NULL timestamp, which the filters below
+--     exclude, and which the Spark side counts as missing_required_field.
 --
 -- Parameters: $glob (bronze files), $as_of (ISO instant of the close being reproduced).
 
@@ -34,9 +55,9 @@ WITH raw AS (
                                 'order_id': 'VARCHAR',
                                 'customer_id': 'VARCHAR',
                                 'sku': 'VARCHAR',
-                                'qty': 'BIGINT',
-                                'new_qty': 'BIGINT',
-                                'unit_price_cents': 'BIGINT',
+                                'qty': 'JSON',
+                                'new_qty': 'JSON',
+                                'unit_price_cents': 'JSON',
                                 'currency': 'VARCHAR',
                                 'return_id': 'VARCHAR',
                                 'reason': 'VARCHAR',
@@ -45,22 +66,37 @@ WITH raw AS (
                                 'boundary': 'VARCHAR'
                             })
 ),
+typed AS (
+    SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
+           CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(qty AS BIGINT) END AS qty,
+           CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(new_qty AS BIGINT) END AS new_qty,
+           CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+    FROM raw
+),
 arrived AS (
-    SELECT * FROM raw
+    SELECT * FROM typed
     WHERE event_id IS NOT NULL
       AND arrival_ts IS NOT NULL
-      AND CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
+      AND TRY_CAST(event_ts AS TIMESTAMPTZ) IS NOT NULL
+      AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
 ),
 dedup AS (
     SELECT * EXCLUDE (rn) FROM (
         SELECT *, row_number() OVER (
                      PARTITION BY event_id
-                     ORDER BY CAST(event_ts AS TIMESTAMPTZ),
-                              CAST(arrival_ts AS TIMESTAMPTZ),
-                              md5(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
-                                  || COALESCE(sku, '') || '|' || COALESCE(CAST(qty AS VARCHAR), '')
-                                  || '|' || COALESCE(CAST(new_qty AS VARCHAR), '') || '|'
-                                  || COALESCE(CAST(unit_price_cents AS VARCHAR), ''))
+                     ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
+                              TRY_CAST(arrival_ts AS TIMESTAMPTZ),
+                              sha256(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
+                                  || COALESCE(customer_id, '') || '|' || COALESCE(sku, '') || '|'
+                                  || COALESCE(CAST(qty AS VARCHAR), '') || '|'
+                                  || COALESCE(CAST(new_qty AS VARCHAR), '') || '|'
+                                  || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
+                                  || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
+                                  || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
+                                  || COALESCE(country, ''))
                   ) AS rn
         FROM arrived
     ) WHERE rn = 1
@@ -69,20 +105,21 @@ lines AS (
     SELECT order_id, customer_id, sku,
            qty AS qty0,
            unit_price_cents,
-           CAST(event_ts AS TIMESTAMPTZ) AS sale_ts
+           TRY_CAST(event_ts AS TIMESTAMPTZ) AS sale_ts
     FROM dedup
     WHERE event_type = 'order_placed'
       AND order_id IS NOT NULL AND sku IS NOT NULL AND customer_id IS NOT NULL
       AND qty > 0
-      AND unit_price_cents >= 0
+      AND unit_price_cents IS NOT NULL AND unit_price_cents >= 0
       AND currency = 'EUR'
 ),
 amendments AS (
     SELECT order_id, sku, qty FROM (
         SELECT order_id, sku, new_qty AS qty,
                row_number() OVER (PARTITION BY order_id, sku
-                                  ORDER BY CAST(event_ts AS TIMESTAMPTZ) DESC, event_id DESC) AS rn
+                                  ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ) DESC, event_id DESC) AS rn
         FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
+                     AND order_id IS NOT NULL AND sku IS NOT NULL
     ) WHERE rn = 1
 ),
 effective AS (
@@ -92,11 +129,12 @@ effective AS (
 ),
 return_candidates AS (
     SELECT d.order_id, d.sku, d.qty AS return_qty,
-           CAST(d.event_ts AS TIMESTAMPTZ) AS return_ts,
+           TRY_CAST(d.event_ts AS TIMESTAMPTZ) AS return_ts,
            e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
     FROM dedup d
     LEFT JOIN effective e ON e.order_id = d.order_id AND e.sku = d.sku
     WHERE d.event_type = 'return_registered' AND d.qty IS NOT NULL AND d.qty > 0
+      AND d.order_id IS NOT NULL AND d.sku IS NOT NULL
 ),
 returns_classified AS (
     SELECT *,

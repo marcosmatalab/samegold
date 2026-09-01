@@ -22,9 +22,16 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from samegold.domain.bitemporal import accounting_month_of
 from samegold.evidence.record import EvidenceRecord
 from samegold.generator.events import CI, FAST, FULL, Profile, generate
 from samegold.generator.seeds import current_commit_sha, seed_source, seeds_from_commit
+from samegold.mutation.assumption_probe import (
+    probe_data_assumption,
+    probe_order_free_comparison,
+    probe_orphan_returns_are_excluded,
+    probe_structural_assumption,
+)
 from samegold.mutation.runner import run_mutation_campaign
 from samegold.oracle.duckdb_gold import DuckDBWitness, reference_counts, scd2_as_of
 from samegold.verify.digest import (
@@ -34,6 +41,7 @@ from samegold.verify.digest import (
 )
 from samegold.verify.invariants import (
     conservation,
+    conservation_against_ledger,
     net_identity,
     restatement_monotonic,
     returns_never_exceed_sales,
@@ -327,6 +335,19 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
         REFERENCE_SQL.read_text(encoding="utf-8"), root / "bronze", ledger, closes
     )
     matrix = run.matrix.to_json()
+    # Every equivalence class carries an assumption id, and every assumption gets a control
+    # here rather than only inside a unit test. Publishing them is the difference between
+    # "these mutants are harmless" and "these mutants are harmless while this named property
+    # holds, and here is the run that tries to break it". An adversarial review pointed out
+    # that CLAIMS.md promised the second and the record contained neither.
+    reference_sql = REFERENCE_SQL.read_text(encoding="utf-8")
+    last_close = result.ledger.closes[-1]
+    probes = [
+        probe_data_assumption(reference_sql),
+        probe_structural_assumption(root / "bronze", last_close),
+        probe_order_free_comparison(reference_sql, root / "bronze", last_close),
+        probe_orphan_returns_are_excluded(reference_sql, root / "bronze", last_close),
+    ]
     scored, killed = int(matrix["mutants_scored"]), int(matrix["killed"])
     total = int(matrix["mutants_total"])
     rate = Rate(killed, scored)
@@ -360,6 +381,17 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
             "per_witness": {k: v["killed"] for k, v in matrix["per_witness"].items()},
             "marginal": {k: len(v["marginal"]) for k, v in matrix["per_witness"].items()},
             "matrix": matrix,
+            "assumption_probes": probes,
+            # Named, not hidden: a mutant whose assumption the probe could not falsify keeps
+            # its classification and is published as unfalsified, because "I could not break
+            # it" and "it cannot be broken" are different statements.
+            "mutants_the_probe_could_not_falsify": sorted(
+                {
+                    mutant
+                    for probe in probes
+                    for mutant in probe.get("mutants_the_probe_could_not_falsify", [])
+                }
+            ),
         },
         not_claimed=(
             "that a high score means the pipeline is correct: mutants are a lower bound on "
@@ -392,7 +424,10 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
         # appear. At the close of January, February exists with one day of data in it;
         # measuring how much February "moved" from that partial figure produces percentages
         # over 100% that mean nothing. The baseline is the first close after the month ends.
-        if as_of[:7] <= month:
+        # In the accounting timezone, like every other month key in this project: a close
+        # just after midnight in Madrid is still the previous month in UTC, and the string
+        # prefix would drop a real close.
+        if accounting_month_of(as_of) <= month:
             continue
         by_month.setdefault(month, []).append((as_of, values))
     by_month = {m: series for m, series in by_month.items() if len(series) >= 2}
@@ -461,13 +496,21 @@ def claim_dimension_invariants(
         scd2 = scd2_as_of(root / "bronze", as_of)
         revenue = _versioned_rows(root / "bronze", closes)
         counts = reference_counts(root / "bronze")
+        ledger_counts = json.loads(
+            (root / "truth" / "ledger.json").read_text(encoding="utf-8")
+        )["counts"]
         violations = (
             scd2_well_formed(scd2)
             + net_identity(revenue)
             + restatement_monotonic(revenue)
             + returns_never_exceed_sales(revenue)
             + conservation(
-                ingested=counts["raw_lines"],
+                # ingested comes from the GENERATOR's ledger, not from the same query that
+                # produces the other four. Taking all five from `reference_counts` makes the
+                # identity algebraic - substitute the SQL definitions and the sum reduces to
+                # raw_lines for any input at all - so it passed on every seed the way 1 = 1
+                # passes. An adversarial review did the substitution. This version can fail.
+                ingested=int(ledger_counts["events_written"]),
                 accepted=counts["accepted"],
                 quarantined=counts["rejected_by_rule"]
                 + counts["unparseable"]
@@ -475,6 +518,7 @@ def claim_dimension_invariants(
                 rescued=0,
                 deduplicated=counts["duplicates"],
             )
+            + conservation_against_ledger(ledger_counts, counts)
         )
         checks += 1
         if not violations:
@@ -641,7 +685,7 @@ def claim_crash_campaign(
         verdict = Pass("SG-07", runset, rate, "negative control detected, no divergences")
     return EvidenceRecord(
         claim_id="SG-07",
-        title="the close survives a crash at each structural point",
+        title="the silver writer survives a crash at each of its structural points",
         verdict=verdict,
         runtime="oss-local",
         artifacts=payload,

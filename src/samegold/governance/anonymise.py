@@ -22,6 +22,9 @@ import datetime as dt
 import hashlib
 import hmac
 from collections.abc import Mapping
+from zoneinfo import ZoneInfo
+
+from samegold.domain.contract import ACCOUNTING_TIMEZONE
 
 SUPPRESSED = "[suppressed]"
 
@@ -66,13 +69,24 @@ def generalize_country(country: str | None) -> str:
 
 
 def generalize_timestamp(value: dt.datetime, precision: str = "month") -> str:
-    """Reduce a timestamp to a period. 'day' keeps more utility and less protection."""
+    """Reduce a timestamp to a period. 'day' keeps more utility and less protection.
+
+    The period is taken in the ACCOUNTING timezone, like every other period in this project.
+    Reading the calendar fields off the raw value instead put `2026-03-31T22:30Z` in March
+    while `rules.accounting_month` put it in April, so an anonymised aggregate would fail to
+    reconcile with the close at every month boundary - twice a day for two hours, every
+    month, in exactly the timezone the contract names. A naive value is treated as UTC,
+    which is what every producer here emits.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.UTC)
+    local = value.astimezone(ZoneInfo(ACCOUNTING_TIMEZONE))
     if precision == "month":
-        return f"{value.year:04d}-{value.month:02d}"
+        return f"{local.year:04d}-{local.month:02d}"
     if precision == "day":
-        return value.date().isoformat()
+        return local.date().isoformat()
     if precision == "year":
-        return f"{value.year:04d}"
+        return f"{local.year:04d}"
     raise ValueError(f"unknown precision {precision!r}")
 
 

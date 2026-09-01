@@ -1,8 +1,10 @@
 name: fast
 
-# The lane that must stay under twenty seconds. If it ever needs a JVM, a network call or a
-# credential, something has been put in the wrong layer and tests/fast/test_architecture.py
-# is the thing that will say so.
+# The lane that runs on every push, in under a minute. Its cost discipline is not the clock,
+# it is the dependencies: if it ever needs a JVM, a network call or a credential, something
+# has been put in the wrong layer and tests/fast/test_architecture.py is the thing that will
+# say so. The measured duration is published by SG-00 rather than asserted here, because a
+# number in a comment is a number nobody re-measures.
 
 on:
   push:

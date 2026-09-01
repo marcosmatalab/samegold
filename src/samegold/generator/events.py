@@ -869,6 +869,15 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     current_key: int | None = None
     handle = None
     written = 0
+    # Counted at WRITE time, over the lines that actually reach the files, because that is
+    # the quantity the reference can recount independently. `len(originals)` looked like the
+    # same number and is not: it is taken before the corrupt records are appended, so it
+    # under-counts every parseable-but-invalid record by construction. The cross-check in
+    # verify/invariants.conservation_against_ledger found the gap the first time it ran,
+    # which is the entire argument for making an invariant compare two derivations rather
+    # than one derivation with itself.
+    parseable_event_ids: set[str] = set()
+    duplicate_lines = 0
     try:
         for arrival, rec in events:
             key = int(arrival.timestamp()) // bucket
@@ -888,6 +897,12 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             assert handle is not None
             handle.write(line + "\n")
             written += 1
+            if raw is None:
+                event_id = str(rec.get("event_id", ""))
+                if event_id in parseable_event_ids:
+                    duplicate_lines += 1
+                else:
+                    parseable_event_ids.add(event_id)
     finally:
         if handle is not None:
             handle.close()
@@ -895,8 +910,14 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     ledger.quarantine = dict(sorted(quarantine_counts.items()))
     ledger.counts = {
         "events_written": written,
-        "unique_events": len(originals),
-        "duplicates": n_dup,
+        "unique_events": len(parseable_event_ids),
+        "duplicates": duplicate_lines,
+        # The two figures the noise generator INTENDED, kept beside the two that were
+        # actually written. They differ, and the difference is informative: a duplicate is
+        # drawn with replacement, so drawing the same original twice writes three copies of
+        # one event rather than two copies of two.
+        "duplicates_planned": n_dup,
+        "unique_originals": len(originals),
         "duplicates_late": duplicates_late,
         "corrupt": n_corrupt,
         "order_lines": len(facts),

@@ -5,7 +5,7 @@ rewrite an earlier close, they add a version. This module contains the pure book
 turns "what the close said at each instant" into "the versions of that month", with no engine
 and no I/O, so the rule can be tested in microseconds and mutated cheaply.
 
-The rules, all three of them consequential:
+The rules, all four of them consequential:
 
   * A version is recorded only when the value CHANGES. A close that repeats the previous
     figures is not a restatement and must not create a version, or every month would
@@ -15,12 +15,23 @@ The rules, all three of them consequential:
   * ``restated_at`` is the close instant that produced the version, never the wall clock.
     Using ``now()`` would make the table non-deterministic and unhashable, and would make a
     re-run of history produce different data from the original run.
+  * "Is this month closed yet?" is answered in the ACCOUNTING timezone. This used to slice
+    the ISO string (``as_of[:7]``), which reads the month in whatever offset the caller's
+    string happened to carry: a close at 2026-02-01 00:30 Europe/Madrid is
+    ``2026-01-31T23:30:00+00:00``, whose prefix is "2026-01", so January was declared still
+    open and the whole January close vanished. Passing the SAME INSTANT rendered as a
+    Madrid-local string produced a version. An answer that depends on the representation of
+    a timestamp rather than on the timestamp is not an answer.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
+from zoneinfo import ZoneInfo
+
+from samegold.domain.contract import ACCOUNTING_TIMEZONE
 
 VALUE_COLUMNS = (
     "gross_cents",
@@ -35,13 +46,27 @@ FIRST_CLOSE = "first close"
 RESTATED = "late arrivals after close"
 
 
+def accounting_month_of(instant: str) -> str:
+    """The accounting month an ISO instant falls in, in the accounting timezone.
+
+    Accepts a trailing ``Z`` because that is what the pipeline writes, and treats a naive
+    string as UTC because that is what every producer in this project emits.
+    """
+    text = instant.replace("Z", "+00:00")
+    moment = dt.datetime.fromisoformat(text)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.UTC)
+    return moment.astimezone(ZoneInfo(ACCOUNTING_TIMEZONE)).strftime("%Y-%m")
+
+
 def versions_from_snapshots(
     snapshots: Sequence[tuple[str, Mapping[str, Mapping[str, int]]]],
     month_is_closed: Any = None,
 ) -> list[dict[str, Any]]:
     """Collapse per-close snapshots into the versioned close table.
 
-    ``snapshots`` is an ordered sequence of ``(as_of, {month: values})``. ``month_is_closed``
+    ``snapshots`` is a sequence of ``(as_of, {month: values})``, sorted here by ``as_of`` so
+    the result is a function of the set rather than of the caller's order. ``month_is_closed``
     is an optional predicate ``(month, as_of) -> bool``; the default treats a month as closed
     from the first close that happens after the month ends, which is what makes the partial
     view of the current month stop generating spurious "restatements".
@@ -49,12 +74,17 @@ def versions_from_snapshots(
     if month_is_closed is None:
 
         def month_is_closed(month: str, as_of: str) -> bool:
-            return as_of[:7] > month
+            return accounting_month_of(as_of) > month
 
     versions: list[dict[str, Any]] = []
     last: dict[str, tuple[int, ...]] = {}
     counters: dict[str, int] = {}
-    for as_of, months in snapshots:
+    # Sorted, not taken as given. The Spark twin orders by as_of inside a window, so a
+    # caller who passed the closes in any other order got a version history running
+    # backwards from Python and forwards from Spark, with both digests claiming to be "the
+    # same bookkeeping". A history is a function of the SET of closes; it may not depend on
+    # the order the caller happened to hold them in.
+    for as_of, months in sorted(snapshots, key=lambda item: item[0]):
         for month in sorted(months):
             if not month_is_closed(month, as_of):
                 continue

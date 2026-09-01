@@ -161,6 +161,7 @@ def mutate_sql(sql: str, dialect: str = "duckdb") -> list[Mutant]:
             and node.is_number
             and not _is_in_function(node)
             and not _is_ordinal_position(node)
+            and not _is_hash_width(node)
         ):
             emit(
                 "number:+1",
@@ -212,6 +213,22 @@ def _is_in_function(node: exp.Expression) -> bool:
     """True when a literal is an argument of a function call (read_json's options, md5's
     separator). Bumping those produces a binder error, not a fault in the business logic."""
     return isinstance(node.parent, exp.Anonymous | exp.Kwarg)
+
+
+def _is_hash_width(node: exp.Expression) -> bool:
+    """True for the 256 in sha256(x), which sqlglot parses as SHA2(x, 256).
+
+    Bumping it produces `sha2(x, 257)`, which DuckDB refuses outright with "DuckDB only
+    supports SHA256 hashing algorithm". That is not a specification change and it is not a
+    fault the pipeline could have: it is an invalid program, in the same category as
+    `GROUP BY 2`, and scoring it means the campaign publishes either a free kill (if the
+    error counts) or a phantom survivor (if it does not). It arrived the moment the
+    deduplication tie-break moved from md5 to sha256 and it showed up immediately as a
+    surviving mutant, which is the system working: an unexplained survivor is a thing to
+    explain, not a thing to reclassify as equivalent.
+    """
+    parent = node.parent
+    return isinstance(parent, exp.SHA2) and node is parent.args.get("length")
 
 
 def _is_ordinal_position(node: exp.Expression) -> bool:

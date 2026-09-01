@@ -10,18 +10,39 @@
 -- Parameters: $glob, $as_of
 
 WITH raw AS (
-    SELECT * FROM read_json($glob, format = 'newline_delimited', union_by_name = true,
-                            ignore_errors = true, filename = true)
+    SELECT * FROM read_json($glob, format = 'newline_delimited',
+                            ignore_errors = true, filename = true,
+                            columns = {
+                                'event_id': 'VARCHAR', 'event_type': 'VARCHAR',
+                                'event_ts': 'VARCHAR', 'arrival_ts': 'VARCHAR',
+                                'order_id': 'VARCHAR', 'customer_id': 'VARCHAR',
+                                'sku': 'VARCHAR', 'qty': 'JSON', 'new_qty': 'JSON',
+                                'unit_price_cents': 'JSON', 'currency': 'VARCHAR',
+                                'return_id': 'VARCHAR', 'reason': 'VARCHAR',
+                                'segment': 'VARCHAR', 'country': 'VARCHAR',
+                                'boundary': 'VARCHAR'
+                            })
 ),
 arrived AS (
     SELECT * FROM raw
     WHERE event_type = 'customer_upserted'
       AND customer_id IS NOT NULL
-      AND CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
+      AND TRY_CAST(event_ts AS TIMESTAMPTZ) IS NOT NULL
+      AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
 ),
+-- The same TOTAL order as the revenue reference, for the same reason: ordering only by
+-- event_ts leaves ties, and for two copies of one customer_upserted the tie was decided by
+-- the physical order of the rows. The tie-break hashes the payload columns that exist on
+-- this event, with sha256 on both sides so the two engines break the tie the SAME way.
 dedup AS (
     SELECT * EXCLUDE (rn) FROM (
-        SELECT *, row_number() OVER (PARTITION BY event_id ORDER BY CAST(event_ts AS TIMESTAMPTZ)) AS rn
+        SELECT *, row_number() OVER (
+                     PARTITION BY event_id
+                     ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
+                              TRY_CAST(arrival_ts AS TIMESTAMPTZ),
+                              sha256(COALESCE(event_type, '') || '|' || COALESCE(customer_id, '')
+                                  || '|' || COALESCE(segment, '') || '|' || COALESCE(country, ''))
+                  ) AS rn
         FROM arrived
     ) WHERE rn = 1
 ),
@@ -31,12 +52,31 @@ dedup AS (
 collapsed AS (
     SELECT customer_id, valid_from, segment, country FROM (
         SELECT customer_id,
-               CAST(event_ts AS TIMESTAMPTZ) AS valid_from,
+               TRY_CAST(event_ts AS TIMESTAMPTZ) AS valid_from,
                segment, country,
                row_number() OVER (PARTITION BY customer_id, CAST(event_ts AS TIMESTAMPTZ)
                                   ORDER BY event_id DESC) AS rn
         FROM dedup
     ) WHERE rn = 1
+),
+-- A Type 2 dimension records CHANGES. An upsert that repeats the attributes the customer
+-- already had opens no new interval: it is a heartbeat, and a dimension that stores one row
+-- per heartbeat is a log with extra columns. This CTE is the reference's derivation of the
+-- rule that domain.bitemporal.scd2_from_versions states in Python; until an adversarial
+-- review compared the three, only the Python one applied it and the three implementations
+-- disagreed on any customer whose upsert repeated its segment and country.
+changed AS (
+    SELECT customer_id, valid_from, segment, country FROM (
+        SELECT customer_id, valid_from, segment, country,
+               LAG(segment) OVER w AS previous_segment,
+               LAG(country) OVER w AS previous_country,
+               LAG(valid_from) OVER w AS previous_valid_from
+        FROM collapsed
+        WINDOW w AS (PARTITION BY customer_id ORDER BY valid_from)
+    )
+    WHERE previous_valid_from IS NULL
+       OR segment IS DISTINCT FROM previous_segment
+       OR country IS DISTINCT FROM previous_country
 )
 -- Timestamps leave as canonical UTC strings on purpose. Two reasons, both learned the hard
 -- way: returning TIMESTAMPTZ to Python makes DuckDB import pytz (an undeclared dependency
@@ -50,5 +90,5 @@ SELECT customer_id,
        segment,
        country,
        LEAD(valid_from) OVER (PARTITION BY customer_id ORDER BY valid_from) IS NULL AS is_current
-FROM collapsed
+FROM changed
 ORDER BY customer_id, valid_from;

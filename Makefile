@@ -1,10 +1,13 @@
 # samegold - make targets, ordered by how long they take.
 #
-# fast      no JVM, no network, no credentials.        ~15 s
-# spark     adds a local Spark session (JVM).           ~70 s
-# delta     adds the Delta jars from Maven Central.     ~2 min first time
-# faults    the crash campaign.                         ~4 min for one repetition
-# evidence  runs every claim and appends evidence.      ~90 s
+# fast      no JVM, no network, no credentials.        ~45 s
+# spark     adds a local Spark session (JVM).           ~2 min
+# delta     adds the Delta jars from Maven Central.     ~3 min first time
+# faults    the crash campaign, ten repetitions.        ~20 min
+# evidence  every claim except SG-07.                   ~2 min
+#
+# The durations are the ones measured on the machine that wrote this file, not a target.
+# `make doctor` prints what the fast lane actually took on yours.
 #
 # Every target is runnable by a stranger with a clone and a Python 3.11. Nothing here needs
 # a Databricks account; the Databricks lane is a separate target and is clearly marked.

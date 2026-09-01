@@ -89,8 +89,8 @@ SPEC_MUTANTS: tuple[SpecMutant, ...] = (
         "known, which quietly gives the close perfect foresight and erases every "
         "restatement. A month would never reopen and the bitemporal model would look "
         "unnecessary - a very comfortable bug.",
-        find="AND CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)",
-        replace="AND CAST(event_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)",
+        find="AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)",
+        replace="AND TRY_CAST(event_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)",
     ),
     SpecMutant(
         "SPEC-05",
@@ -104,8 +104,8 @@ SPEC_MUTANTS: tuple[SpecMutant, ...] = (
         "Quantity reported at a close is the final quantity, not the one known then",
         "Assumes perfect foresight about amendments still in flight. Half the restatements "
         "disappear and the close looks stable.",
-        find="""      AND CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)""",
+        find="""      AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)""",
         replace="""      AND (event_type = 'order_line_amended'
-           OR CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ))""",
+           OR TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ))""",
     ),
 )

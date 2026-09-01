@@ -53,6 +53,18 @@ ASSUMPTIONS: dict[str, str] = {
         "effective. It is asserted over every generated dataset anyway, because a structural "
         "argument that nobody re-checks after a refactor is a comment"
     ),
+    "comparison-is-order-free": (
+        "every comparison in this project is over a keyed mapping or a canonical digest that "
+        "sorts by the projection's total order before hashing, so the order rows come out of "
+        "the reference in cannot change any published answer. Probed by permuting a result "
+        "and re-digesting it"
+    ),
+    "orphan-returns-are-excluded-downstream": (
+        "a return whose (order_id, sku) matches no accepted sale contributes to no output "
+        "column: the classification labels it return_without_order and every aggregate "
+        "filters it out. Probed by computing a close with and without an orphan return "
+        "present and requiring the two to be identical"
+    ),
 }
 
 
@@ -65,6 +77,7 @@ EQUIVALENCES: tuple[Equivalence, ...] = (
             "every comparison in this project is over a keyed mapping or a canonical digest "
             "that sorts by the projection's total order before hashing."
         ),
+        assumption="comparison-is-order-free",
     ),
     Equivalence(
         operator="number:+1",
@@ -74,6 +87,7 @@ EQUIVALENCES: tuple[Equivalence, ...] = (
             "presentation only: ORDER BY 1 becomes ORDER BY 2. Same reason as the ORDER BY "
             "flip above."
         ),
+        assumption="comparison-is-order-free",
     ),
     Equivalence(
         operator="number:+1",
@@ -139,6 +153,7 @@ EQUIVALENCES: tuple[Equivalence, ...] = (
             "those rows 'return_without_order' and excludes them from every output column. "
             "A classic: the WHERE clause was already doing the join's work."
         ),
+        assumption="orphan-returns-are-excluded-downstream",
     ),
 )
 

@@ -19,10 +19,19 @@ Duplicated: every derivation. `src/samegold/pipelines/transform.py` is Python Da
 `oracle/gold_revenue.sql` is SQL written against the same document, not translated from the
 Python.
 
-`domain/rules.py` is shared by the Spark implementation and by the generator's ledger, and is
-**not** shared with the DuckDB reference. That asymmetry is the whole source of the
-reference's independent value, and it is why the witness matrix reports a per-witness
-marginal kill count instead of one number.
+`domain/rules.py` holds the rules as pure Python, and it is imported by the **generator's
+ledger only**. Neither the Spark implementation nor the DuckDB reference calls it: both
+re-derive the window, the imputation month and the net from the contract constants in their
+own idiom.
+
+An earlier version of this ADR said `domain/rules.py` was shared with the Spark side and
+built an argument on that asymmetry. It was not true: `grep` finds exactly one importer, and
+an adversarial review pointed at it. The corrected statement is a stronger one anyway. There
+are **three** independent derivations of the same rules - the generator's ledger, the Spark
+pipeline, the DuckDB reference - and the ledger is the one that says what the answer should
+be *by construction* rather than by computation. That is why the witness matrix reports a
+per-witness marginal kill count instead of one number: the witnesses are genuinely different
+programs.
 
 ## What this bought, twice
 

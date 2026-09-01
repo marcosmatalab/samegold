@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import pytest
 
+from samegold.pipelines.schema import bronze_schema
 from samegold.pipelines.transform import classify, quarantine_reason
 
 pytestmark = pytest.mark.spark
@@ -42,18 +43,50 @@ def test_assert_dataframe_equal_on_the_quarantine_rules(spark) -> None:  # type:
     """A unit test of one transformation, in the shape the exam guide asks for."""
     from pyspark.testing import assertDataFrameEqual
 
+    ts, arrived = "2026-01-10T10:00:00+00:00", "2026-01-10T10:05:00+00:00"
+
+    def event(**overrides: object) -> dict[str, object]:
+        """A record with every bronze column present, then the one thing under test changed.
+
+        Built from `bronze_schema()` rather than from an ad-hoc column list on purpose. The
+        classification reads columns that only some event types carry (`new_qty` for an
+        amendment), so a frame with a convenient subset of columns does not type-check
+        against the expression, and a test that quietly used a subset would be testing a
+        different function from the one the pipeline runs.
+        """
+        base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
+        base.update(
+            event_id="e",
+            event_type="order_placed",
+            event_ts=ts,
+            arrival_ts=arrived,
+            order_id="O1",
+            customer_id="C1",
+            sku="S1",
+            qty=2,
+            unit_price_cents=1000,
+            currency="EUR",
+        )
+        base.update(overrides)
+        return base
+
     rows = [
-        ("e1", "order_placed", "O1", "C1", "S1", 2, 1000, "EUR"),
-        ("e2", "order_placed", "O2", "C1", "S1", 0, 1000, "EUR"),  # non-positive quantity
-        ("e3", "order_placed", "O3", "C1", "S1", 1, -1, "EUR"),  # negative price
-        ("e4", "warehouse_pinged", None, None, None, None, None, None),  # unknown type
-        ("e5", "order_placed", "O5", "C1", "S1", 1, 1000, "USD"),  # unknown currency
+        event(event_id="e1"),
+        event(event_id="e2", qty=0),  # non-positive quantity
+        event(event_id="e3", unit_price_cents=-1),  # negative price
+        event(event_id="e4", event_type="warehouse_pinged"),  # unknown type
+        event(event_id="e5", currency="USD"),  # unknown currency
+        # The four shapes an adversarial review found accepted, because a comparison with a
+        # NULL is NULL rather than false: they used to come out of this expression as
+        # "accepted" and book revenue the DuckDB reference refused to count.
+        event(event_id="e6", currency=None),
+        event(event_id="e7", unit_price_cents=None),
+        event(event_id="e8", event_ts="not-a-timestamp"),
+        event(event_id=None),
     ]
-    schema = (
-        "event_id STRING, event_type STRING, order_id STRING, customer_id STRING, "
-        "sku STRING, qty BIGINT, unit_price_cents BIGINT, currency STRING"
+    actual = classify(spark.createDataFrame(rows, bronze_schema())).select(
+        "event_id", "quarantine_reason"
     )
-    actual = classify(spark.createDataFrame(rows, schema)).select("event_id", "quarantine_reason")
     expected = spark.createDataFrame(
         [
             ("e1", "accepted"),
@@ -61,6 +94,10 @@ def test_assert_dataframe_equal_on_the_quarantine_rules(spark) -> None:  # type:
             ("e3", "negative_price"),
             ("e4", "unknown_event_type"),
             ("e5", "unknown_currency"),
+            ("e6", "missing_required_field"),
+            ("e7", "missing_required_field"),
+            ("e8", "missing_required_field"),
+            (None, "unparseable_json"),
         ],
         "event_id STRING, quarantine_reason STRING",
     )
@@ -75,12 +112,20 @@ def test_the_quarantine_expression_has_exactly_one_outcome_per_row(spark) -> Non
     """
     from pyspark.sql import functions as F
 
-    rows = [("e1", "order_placed", "O1", "C1", "S1", 0, -5, "USD")]
-    frame = spark.createDataFrame(
-        rows,
-        "event_id STRING, event_type STRING, order_id STRING, customer_id STRING, "
-        "sku STRING, qty BIGINT, unit_price_cents BIGINT, currency STRING",
+    row: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
+    row.update(
+        event_id="e1",
+        event_type="order_placed",
+        event_ts="2026-01-10T10:00:00+00:00",
+        arrival_ts="2026-01-10T10:05:00+00:00",
+        order_id="O1",
+        customer_id="C1",
+        sku="S1",
+        qty=0,
+        unit_price_cents=-5,
+        currency="USD",
     )
+    frame = spark.createDataFrame([row], bronze_schema())
     reasons = frame.withColumn("r", quarantine_reason()).select(F.col("r")).collect()
     assert len(reasons) == 1
     # Three rules apply to this row; the first one in the CASE wins and the others are not

@@ -34,6 +34,10 @@ implementation reading tables in the format the Spark lane writes.
 
 A negative result, which the claim treats as a check that has to pass rather than as a
 footnote: clustering by (month, sku) does nothing
-for a sku predicate when the table has three files, because three files cover the whole key
-range. At a smaller target file size the same clustering skips 85% of the bytes. Publishing
+for a sku predicate when the clustered table has two files, because two files cover the whole key
+range. At a smaller target file size the same clustering cuts the share of its own table that has
+to be read by 78.25%. The figure is a SHARE, not a byte ratio between the two arms: Z-ORDER
+rewrites and recompresses, so a cross-arm byte ratio (which comes out at 85%) quietly takes
+credit for the compression as if it were skipping. An earlier version of this document
+published the 85%; that is the number this project says elsewhere must not be used. Publishing
 both numbers is what stops the second one from being a lie by omission.
