@@ -28,6 +28,6 @@ classification and refusing it.
 
 The first campaign scored 0.71 and its survivors turned out to be holes in the **generator**,
 not in the harness: no zero-cent line, no return exactly on the 45th day, no sale arriving
-after a close. Eight boundary cases were added, and two specification mutants that had
+after a close. Nine boundary cases were added, and two specification mutants that had
 survived (SPEC-04 and SPEC-06, both about what a close knew at the time) started dying. A
 hand-picked mutant set would have found none of that.

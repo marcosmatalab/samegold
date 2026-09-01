@@ -55,9 +55,10 @@ Result: <!--sg:SG-03.rate-->37/37 (95% CI 90.6%-100.0%)<!--/sg--> of the scored 
 **What the campaign changed about the project.** The first run killed 71% and the survivors
 were not harness holes, they were **generator** holes: the data never contained a line sold
 for zero cents, a return exactly on the 45th day, a return at the instant of the sale, or a
-sale that happened before a close and arrived after it. Eight boundary cases were added and
-the score moved to its published value. The mutants were measuring the generator, and saying
-so is more useful than the number.
+sale that happened before a close and arrived after it, and no amendment that arrived after
+one. Nine boundary cases were added and the score moved to its published value. The mutants
+were measuring the generator rather than the pipeline, and saying so is more useful than the
+number itself.
 
 **Does not show** correctness. A mutation score is a lower bound on what a suite can see.
 Two survivors classes remain and are named in `mutation/equivalents.py` with written
@@ -69,7 +70,7 @@ says it is, which is a dependency worth knowing about.
 **Experiment.** For every month that has been closed at least twice, compare the net revenue
 at its own close (day 5 of the following month) with its final value.
 Result: <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of closed months moved, worst
-<!--sg:SG-04.artifact.worst_move_pct-->6.7819<!--/sg-->%.
+<!--sg:SG-04.artifact.worst_move_pct-->4.9264<!--/sg-->%.
 
 **Does not show** anything about real retail. The return rate and the lateness distribution
 are set high on purpose so the rare paths appear often enough to measure.
