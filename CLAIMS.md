@@ -70,7 +70,7 @@ says it is, which is a dependency worth knowing about.
 **Experiment.** For every month that has been closed at least twice, compare the net revenue
 at its own close (day 5 of the following month) with its final value.
 Result: <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of closed months moved, worst
-<!--sg:SG-04.artifact.worst_move_pct-->4.9264<!--/sg-->%.
+<!--sg:SG-04.artifact.worst_move_pct-->5.0104<!--/sg-->%.
 
 **Does not show** anything about real retail. The return rate and the lateness distribution
 are set high on purpose so the rare paths appear often enough to measure.

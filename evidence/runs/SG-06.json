@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "commit_sha": "f2659a2b7a52614edb6a840cca570e8e78a8970c",
+    "commit_sha": "080ba4bd2c43d4c979eb1abf96b13653ce324477",
     "seed_source": "commit"
   },
   "ci_run_url": null,
@@ -21,7 +21,7 @@
   "title": "seeds are derived from the commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "seeds derived from f2659a2b7a52",
+    "note": "seeds derived from 080ba4bd2c43",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -33,18 +33,18 @@
       ]
     },
     "runs": {
-      "commit_sha": "f2659a2b7a52614edb6a840cca570e8e78a8970c",
-      "duration_s": 0.007,
+      "commit_sha": "080ba4bd2c43d4c979eb1abf96b13653ce324477",
+      "duration_s": 0.008,
       "n": 3,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_source": "commit",
       "seeds": [
-        7175214706021341775,
-        13572201424029327362,
-        17981347302708647902
+        6436541802625247643,
+        4693274504139116514,
+        7931925381925715149
       ],
-      "started_at": "2026-09-01T14:44:25+00:00"
+      "started_at": "2026-09-01T14:49:38+00:00"
     }
   }
 }

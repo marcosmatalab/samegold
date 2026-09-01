@@ -4,22 +4,22 @@
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -2922289,
-        "delta_pct": -4.9264,
-        "final_net_cents": 56396703,
-        "first_close_net_cents": 59318992,
+        "delta_cents": -3166943,
+        "delta_pct": -5.0104,
+        "final_net_cents": 60040554,
+        "first_close_net_cents": 63207497,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -920096,
-        "delta_pct": -3.2916,
-        "final_net_cents": 27032459,
-        "first_close_net_cents": 27952555,
+        "delta_cents": -1044092,
+        "delta_pct": -3.6601,
+        "final_net_cents": 27482397,
+        "first_close_net_cents": 28526489,
         "versions": 2
       }
     ],
-    "worst_move_pct": 4.9264
+    "worst_move_pct": 5.0104
   },
   "ci_run_url": null,
   "claim_id": "SG-04",
@@ -40,7 +40,7 @@
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 4.93% of the first close",
+    "note": "largest move 5.01% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -52,16 +52,16 @@
       ]
     },
     "runs": {
-      "commit_sha": "f2659a2b7a52614edb6a840cca570e8e78a8970c",
-      "duration_s": 0.584,
+      "commit_sha": "080ba4bd2c43d4c979eb1abf96b13653ce324477",
+      "duration_s": 0.324,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_source": "commit",
       "seeds": [
-        840185522575019933
+        1455801225007181042
       ],
-      "started_at": "2026-09-01T14:44:22+00:00"
+      "started_at": "2026-09-01T14:49:35+00:00"
     }
   }
 }

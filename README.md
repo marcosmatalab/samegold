@@ -14,7 +14,7 @@ if a number in this file and the evidence behind it disagree.
 > A return may arrive up to 45 days after the sale, and it is imputed to the month of the
 > **sale**. So a month finance has already closed can move. In the published run it moved in
 > <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of the closed months, the worst by
-> <!--sg:SG-04.artifact.worst_move_pct-->4.9264<!--/sg-->% of the figure that had been signed
+> <!--sg:SG-04.artifact.worst_move_pct-->5.0104<!--/sg-->% of the figure that had been signed
 > off. A pipeline that cannot restate would keep reporting the first number for ever, and be
 > wrong by exactly that much.
 
