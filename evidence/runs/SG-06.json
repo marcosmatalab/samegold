@@ -1,0 +1,50 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "commit_sha": "0000000000000000000000000000000000000000",
+    "seed_source": "commit"
+  },
+  "ci_run_url": null,
+  "claim_id": "SG-06",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "not_claimed": [],
+  "runtime": "oss-local",
+  "title": "seeds are derived from the commit",
+  "verdict": {
+    "claim_id": "SG-06",
+    "note": "seeds derived from 000000000000",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 1,
+      "trials": 1,
+      "wilson95": [
+        0.206549,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "0000000000000000000000000000000000000000",
+      "duration_s": 0.008,
+      "n": 3,
+      "profile": "n/a",
+      "runtime": "oss-local",
+      "seed_source": "commit",
+      "seeds": [
+        9007367254972934545,
+        12741275574994899934,
+        14147058673193664046
+      ],
+      "started_at": "2026-09-01T14:25:29+00:00"
+    }
+  }
+}

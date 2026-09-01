@@ -1,0 +1,52 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "files_duplicated": "all"
+  },
+  "ci_run_url": null,
+  "claim_id": "SG-02",
+  "environment": {
+    "delta_rs": "1.6.3",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.11.15",
+    "sqlglot": "30.17.0"
+  },
+  "not_claimed": [
+    "exactly-once processing: this is at-least-once plus content-keyed dedup",
+    "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
+  ],
+  "runtime": "oss-local",
+  "title": "re-delivery under a new path is a no-op",
+  "verdict": {
+    "claim_id": "SG-02",
+    "note": "digest unchanged after full re-delivery",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 3,
+      "trials": 3,
+      "wilson95": [
+        0.438503,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "0000000000000000000000000000000000000000",
+      "duration_s": 3.051,
+      "n": 3,
+      "profile": "ci",
+      "runtime": "oss-local",
+      "seed_source": "commit",
+      "seeds": [
+        17213373710178072051,
+        3581563014642280478,
+        8068067609474669222
+      ],
+      "started_at": "2026-09-01T14:24:39+00:00"
+    }
+  }
+}

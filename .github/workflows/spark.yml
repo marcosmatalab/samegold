@@ -1,0 +1,75 @@
+name: spark
+
+# Two jobs on purpose. The first needs no network beyond PyPI and proves the transformations
+# agree with the reference; the second resolves the Delta jars from Maven Central and is the
+# only place the Delta-specific claims can be earned.
+
+on:
+  push:
+    paths:
+      - "src/samegold/pipelines/**"
+      - "src/samegold/faults/**"
+      - "src/samegold/ingest/**"
+      - "tests/spark/**"
+      - "tests/delta/**"
+      - ".github/workflows/spark.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  spark-no-delta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SAMEGOLD_STORAGE: parquet
+      SPARK_LOCAL_IP: 127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - name: cache the built pyspark wheel
+        # pyspark 4.2.0 publishes an sdist, not a wheel: building it costs about four minutes
+        # and 450 MB, every single run, unless the wheel cache is kept.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip/wheels
+          key: ${{ runner.os }}-pysparkwheel-4.2.0
+      - run: pip install -e ".[spark,rust,dev]"
+      - run: pytest tests/spark -q -m spark
+
+  delta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SPARK_LOCAL_IP: 127.0.0.1
+      SAMEGOLD_IVY_HOME: /home/runner/.ivy2.5.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - name: cache jars and wheels
+        # Ivy 2.5.3 caches under ~/.ivy2.5.2, NOT ~/.ivy2. A cache keyed on ~/.ivy2 never hits
+        # and the job silently re-resolves every dependency on every run.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ivy2.5.2/cache
+            ~/.ivy2.5.2/jars
+            ~/.m2/repository
+            ~/.cache/pip/wheels
+          key: ${{ runner.os }}-jars-spark4.2.0-delta4.4.0-${{ hashFiles('pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-jars-spark4.2.0-delta4.4.0-
+      - run: pip install -e ".[spark,rust,dev]"
+      - name: free disk before the Delta lane
+        # ubuntu-latest gives 14 GB of disk. Spark plus Delta plus checkpoints plus the
+        # generated data fits, but not with the preinstalled toolchains sitting there.
+        run: sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/share/dotnet /usr/local/lib/android || true
+      - run: pytest tests/spark tests/delta -q

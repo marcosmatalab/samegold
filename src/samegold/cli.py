@@ -1,0 +1,316 @@
+"""Command line interface.
+
+Design rules, taken from having watched people bounce off other people's repositories:
+
+  * ``samegold demo`` must produce something interesting in under ten seconds, with no
+    account, no credentials and no arguments. It is the second thing anyone does after
+    reading the first line of the README, and if it is slow or asks for a token they leave.
+  * every error names the exact command that fixes it;
+  * nothing prints a stack trace unless ``--debug`` is passed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from samegold import claims as claim_module
+from samegold.evidence.record import EvidenceRecord
+from samegold.evidence.render import check_readme, render_readme
+from samegold.evidence.store import EvidenceStore
+from samegold.generator.events import CI, FAST, FULL
+from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+from samegold.oracle.duckdb_gold import DuckDBWitness
+from samegold.verify.invariants import scd2_well_formed
+
+PROFILES = {"fast": FAST, "ci": CI, "full": FULL}
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RENDERED_FILES = ("README.md", "CLAIMS.md")
+
+
+class UserError(Exception):
+    """An error with a fix attached. Printed without a traceback."""
+
+    def __init__(self, message: str, fix: str) -> None:
+        super().__init__(message)
+        self.fix = fix
+
+
+def _work_dir(explicit: str | None) -> Path:
+    if explicit:
+        path = Path(explicit)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(tempfile.mkdtemp(prefix="samegold-"))
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    started = time.monotonic()
+    work = _work_dir(args.work)
+    seed = seeds_from_commit(1, purpose="demo")[0]
+    from samegold.generator.events import generate
+
+    result = generate(work / "demo", seed=seed, profile=FAST)
+    witness = DuckDBWitness()
+    closes = result.ledger.closes
+    first, last = dt.datetime.fromisoformat(closes[0]), dt.datetime.fromisoformat(closes[-1])
+    at_close = witness.revenue(work / "demo" / "bronze", first)
+    final = witness.revenue(work / "demo" / "bronze", last)
+    month = sorted(at_close)[0]
+    before, after = at_close[month]["net_cents"], final[month]["net_cents"]
+    delta = after - before
+    scd2_ok = not scd2_well_formed(witness.scd2(work / "demo" / "bronze", last))
+    print(f"samegold demo - {result.event_count} events, {len(result.files)} files, seed {seed}")
+    print()
+    print(
+        f"  Month {month} was closed at {first:%Y-%m-%d} reporting "
+        f"{before / 100:,.2f} EUR of net revenue."
+    )
+    print(
+        f"  By {last:%Y-%m-%d}, late returns and late amendments had moved it to "
+        f"{after / 100:,.2f} EUR."
+    )
+    pct = (100.0 * delta / before) if before else 0.0
+    print(
+        f"  That is {delta / 100:+,.2f} EUR, {pct:+.2f}% of a month that finance had "
+        f"already signed off."
+    )
+    print()
+    print(f"  The customer dimension is well formed: {'yes' if scd2_ok else 'NO'}.")
+    print("  Two implementations of that number are compared on this data by `samegold evidence`.")
+    print()
+    print(
+        f"  {time.monotonic() - started:.1f}s, no account, no credentials, nothing installed "
+        f"beyond this package."
+    )
+    if not args.work:
+        shutil.rmtree(work, ignore_errors=True)
+    return 0
+
+
+def cmd_generate(args: argparse.Namespace) -> int:
+    from samegold.generator.events import generate
+
+    out = Path(args.out)
+    seed = args.seed if args.seed is not None else seeds_from_commit(1, purpose="generator")[0]
+    result = generate(out, seed=seed, profile=PROFILES[args.profile])
+    print(f"{result.event_count} events in {len(result.files)} files under {out}")
+    print(f"ledger: {out / 'truth' / 'ledger.json'}")
+    return 0
+
+
+def _run_claims(names: list[str], profile: str, work: Path) -> list[EvidenceRecord]:
+    records: list[EvidenceRecord] = []
+    for name in names:
+        if name == "SG-01":
+            records.append(claim_module.claim_witness_agreement(work, profile))
+        elif name == "SG-02":
+            records.append(claim_module.claim_redelivery_is_a_noop(work, profile))
+        elif name == "SG-03":
+            records.append(claim_module.claim_mutation_campaign(work, profile))
+        elif name == "SG-04":
+            records.append(claim_module.claim_restatement_magnitude(work, profile))
+        elif name == "SG-05":
+            records.append(claim_module.claim_dimension_invariants(work, profile))
+        elif name == "SG-06":
+            records.append(claim_module.claim_seed_provenance())
+        else:
+            raise UserError(
+                f"unknown claim {name}",
+                f"pick from: {', '.join(claim_module.ALL_CLAIMS)}",
+            )
+    return records
+
+
+def cmd_evidence(args: argparse.Namespace) -> int:
+    work = _work_dir(args.work)
+    names = args.claims or list(claim_module.ALL_CLAIMS)
+    store = EvidenceStore(Path(args.evidence_dir))
+    failures = 0
+    for record in _run_claims(names, args.profile, work):
+        store.append(record)
+        verdict = record.verdict
+        mark = "PASS" if verdict.ok else "FAIL"
+        rate = getattr(verdict, "rate", None)
+        detail = rate.render() if rate else ""
+        print(f"{mark:>4}  {record.claim_id}  {record.title:<52} {detail}")
+        if not verdict.ok:
+            failures += 1
+            print(f"        counterexample: {verdict.counterexample.description}")  # type: ignore[union-attr]
+    if not args.work:
+        shutil.rmtree(work, ignore_errors=True)
+    print(f"\nevidence written to {args.evidence_dir}/ ({store.counts()})")
+    return 1 if failures and not args.allow_failures else 0
+
+
+def cmd_readme(args: argparse.Namespace) -> int:
+    store = EvidenceStore(Path(args.evidence_dir))
+    latest = store.latest()
+    if not latest:
+        raise UserError(
+            "there is no evidence to render from",
+            "run `make evidence` first (about 60 seconds, no credentials needed)",
+        )
+    for name in RENDERED_FILES:
+        path = REPO_ROOT / name
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        path.write_text(render_readme(text, latest), encoding="utf-8")
+        print(f"rendered {name}")
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    store = EvidenceStore(Path(args.evidence_dir))
+    latest = store.latest()
+    drifts = []
+    for name in RENDERED_FILES:
+        path = REPO_ROOT / name
+        if path.exists():
+            drifts.extend(check_readme(path, latest))
+    if drifts:
+        for drift in drifts:
+            print(f"DRIFT {drift}")
+        raise UserError(
+            f"{len(drifts)} places where the documents and the evidence disagree",
+            "run `make readme` to regenerate them from evidence/history.jsonl",
+        )
+    print(f"documents match the evidence ({len(latest)} claims)")
+    return 0
+
+
+def cmd_refute(args: argparse.Namespace) -> int:
+    """Run the claims with a seed the author never saw."""
+    os.environ["SAMEGOLD_SEED_OVERRIDE"] = str(args.seed)
+    work = _work_dir(args.work)
+    print(
+        f"refutation run with seed override {args.seed!r} (evidence is marked as such and "
+        f"never counts towards a published claim)\n"
+    )
+    failures = 0
+    for record in _run_claims(list(claim_module.ALL_CLAIMS), args.profile, work):
+        ok = record.verdict.ok
+        # SG-06 is expected to fail here: it asserts that seeds come from the commit, and
+        # this run deliberately overrides them. Saying so is better than special-casing it.
+        expected = " (expected: this run overrides the seeds)" if record.claim_id == "SG-06" else ""
+        print(f"{'PASS' if ok else 'FAIL'}  {record.claim_id}  {record.title}{expected}")
+        if not ok and record.claim_id != "SG-06":
+            failures += 1
+    shutil.rmtree(work, ignore_errors=True)
+    if failures:
+        print(
+            f"\n{failures} claim(s) failed under your seed. That is a refutation: please "
+            f"open an issue with the seed and the output."
+        )
+    return 1 if failures else 0
+
+
+def cmd_doctor(_: argparse.Namespace) -> int:
+    print(f"commit            {current_commit_sha()[:12]}")
+    print(f"python            {sys.version.split()[0]}")
+    for module, label in (
+        ("duckdb", "duckdb"),
+        ("pyarrow", "pyarrow"),
+        ("sqlglot", "sqlglot"),
+        ("pyspark", "pyspark"),
+        ("delta", "delta-spark"),
+        ("deltalake", "delta-rs"),
+    ):
+        try:
+            mod = __import__(module)
+            print(f"{label:<17} {getattr(mod, '__version__', 'unknown')}")
+        except Exception:
+            print(f"{label:<17} absent    (fast lane does not need it)")
+    java = shutil.which("java")
+    if java:
+        out = subprocess.run([java, "-version"], capture_output=True, text=True, check=False)
+        first = (out.stderr or out.stdout).splitlines()[0] if (out.stderr or out.stdout) else "?"
+        print(f"java              {first}")
+    else:
+        print("java              absent    (needed only by the Spark lane)")
+    print(f"databricks cli    {shutil.which('databricks') or 'absent'}")
+    print(
+        "\nThe fast lane needs none of the optional entries above. "
+        "Run `make fast` (about 15 s) to confirm."
+    )
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="samegold",
+        description="A month-end close you can falsify.",
+    )
+    parser.add_argument("--debug", action="store_true", help="show tracebacks")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    demo = sub.add_parser("demo", help="ten seconds, no credentials, one business finding")
+    demo.add_argument("--work", default=None)
+    demo.set_defaults(func=cmd_demo)
+
+    gen = sub.add_parser("generate", help="write bronze events and the ledger")
+    gen.add_argument("--out", required=True)
+    gen.add_argument("--profile", choices=sorted(PROFILES), default="fast")
+    gen.add_argument("--seed", type=int, default=None)
+    gen.set_defaults(func=cmd_generate)
+
+    ev = sub.add_parser("evidence", help="run the claims and append evidence records")
+    ev.add_argument("--profile", choices=sorted(PROFILES), default="fast")
+    ev.add_argument("--claims", nargs="*", default=None)
+    ev.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
+    ev.add_argument("--work", default=None)
+    ev.add_argument(
+        "--allow-failures",
+        action="store_true",
+        help="record failing claims without failing the command",
+    )
+    ev.set_defaults(func=cmd_evidence)
+
+    rd = sub.add_parser("readme", help="render the documents from the evidence")
+    rd.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
+    rd.set_defaults(func=cmd_readme)
+
+    ck = sub.add_parser("check", help="fail if the documents and the evidence disagree")
+    ck.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
+    ck.set_defaults(func=cmd_check)
+
+    rf = sub.add_parser("refute", help="run every claim with a seed of your choosing")
+    rf.add_argument("--seed", required=True)
+    rf.add_argument("--profile", choices=sorted(PROFILES), default="fast")
+    rf.add_argument("--work", default=None)
+    rf.set_defaults(func=cmd_refute)
+
+    dr = sub.add_parser("doctor", help="what is installed and what each lane needs")
+    dr.set_defaults(func=cmd_doctor)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except UserError as exc:
+        print(f"\nerror: {exc}\n  fix: {exc.fix}\n", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        if args.debug:
+            raise
+        print(
+            f"\nerror: {type(exc).__name__}: {exc}\n"
+            f"  fix: re-run with --debug for the traceback, and open an issue with it\n",
+            file=sys.stderr,
+        )
+        return 2
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

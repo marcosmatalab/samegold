@@ -1,0 +1,37 @@
+name: fast
+
+# The lane that must stay under twenty seconds. If it ever needs a JVM, a network call or a
+# credential, something has been put in the wrong layer and tests/fast/test_architecture.py
+# is the thing that will say so.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the seeds are derived from the commit SHA; a shallow clone still
+                          # has HEAD, but the full history makes `git rev-parse` unambiguous
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: tests
+        run: pytest tests/fast -q
+      - name: lint and types
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+          mypy
+      - name: documents match the evidence
+        run: samegold check
