@@ -25,7 +25,7 @@ figure by hand breaks a test rather than improving a README.
 ```bash
 git clone https://github.com/marcosmatalab/samegold && cd samegold
 make demo      # ~10 s, no account, no credentials, no JVM
-make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->287<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->36.5<!--/sg--> s
+make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->288<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->37.1<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
 
@@ -33,7 +33,7 @@ make evidence  # regenerates every number except SG-07's (that one needs a JVM: 
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 287/287 (95% CI 98.7%-100.0%) | oss-local | local run, not reproduced in CI |
+| `SG-00` what this repository contains, counted | PASS | 288/288 (95% CI 98.7%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-03` mutation campaign | PASS | 48/48 (95% CI 92.6%-100.0%) | oss-local | local run, not reproduced in CI |
@@ -199,7 +199,7 @@ the seed.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->287<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->36.5<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->288<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->37.1<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->10<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |
