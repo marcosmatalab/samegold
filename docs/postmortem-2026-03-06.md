@@ -2,18 +2,18 @@
 
 **Date of incident** 5 March 2026, 23:59 CET (the February close)
 **Detected** by the close report, before anyone in finance opened it
-**Impact** the signed January close was overstated by <!--sg:SG-04.artifact.worst_delta_eur-->32 070,07<!--/sg--> EUR, <!--sg:SG-04.artifact.worst_move_pct-->5.8381<!--/sg-->% of net revenue
+**Impact** the signed January close was overstated by <!--sg:SG-04.artifact.worst_delta_eur-->32 532,78<!--/sg--> EUR, <!--sg:SG-04.artifact.worst_move_pct-->6.4809<!--/sg-->% of net revenue
 **Data loss** none
 **Status** closed; two actions done, one open
 
 ## What happened
 
-January was closed on 5 February with net revenue of <!--sg:SG-04.artifact.worst_first_close_eur-->549 321,46<!--/sg--> EUR. Between that close and
+January was closed on 5 February with net revenue of <!--sg:SG-04.artifact.worst_first_close_eur-->501 980,52<!--/sg--> EUR. Between that close and
 the February one, returns arrived for January sales, along with order-line amendments that had
 been in flight when January closed. Under the contract a return is imputed to the month of the
 **sale**, so all of them belonged to January: a month that finance had already signed.
 
-At the February close the pipeline recorded a new version of January at <!--sg:SG-04.artifact.worst_final_eur-->517 251,39<!--/sg--> EUR, with
+At the February close the pipeline recorded a new version of January at <!--sg:SG-04.artifact.worst_final_eur-->469 447,74<!--/sg--> EUR, with
 `restatement_reason = "late arrivals after close"`. Version 0 was not touched. Both versions
 are in `gold.revenue_by_month`, and the close report shows them side by side.
 
@@ -35,9 +35,9 @@ mid-March. The alternative designs were considered and rejected:
 
 | when | what |
 |---|---|
-| 5 Feb 23:59 | January closed, version 0, <!--sg:SG-04.artifact.worst_first_close_eur-->549 321,46<!--/sg--> EUR |
+| 5 Feb 23:59 | January closed, version 0, <!--sg:SG-04.artifact.worst_first_close_eur-->501 980,52<!--/sg--> EUR |
 | 6 Feb - 4 Mar | late returns and amendments arrive for January sales |
-| 5 Mar 23:59 | February close runs; a new January version is recorded, <!--sg:SG-04.artifact.worst_final_eur-->517 251,39<!--/sg--> EUR |
+| 5 Mar 23:59 | February close runs; a new January version is recorded, <!--sg:SG-04.artifact.worst_final_eur-->469 447,74<!--/sg--> EUR |
 | 6 Mar 09:10 | the close report shows the restatement; finance notified before they asked |
 
 ## What went well
@@ -51,7 +51,7 @@ mid-March. The alternative designs were considered and rejected:
 
 - **Nobody was told automatically.** The restatement was visible; nothing pushed it. Finance
   found out because someone opened the report. That is luck, not a process.
-- **The size of a restatement is not bounded anywhere.** A <!--sg:SG-04.artifact.worst_move_pct-->5.8381<!--/sg-->% move is normal for this
+- **The size of a restatement is not bounded anywhere.** A <!--sg:SG-04.artifact.worst_move_pct-->6.4809<!--/sg-->% move is normal for this
   business; a 40% move would mean something is broken upstream, and nothing would have said so.
 
 ## Actions

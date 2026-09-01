@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 255,
+    "dimension_rows": 250,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -9,7 +9,7 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 241,
+      "rows_deleted": 235,
       "version_after": 3,
       "version_before": 0
     }
@@ -27,12 +27,12 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "e1d66f7f6d2fb0c64fe976664c720531",
+  "hash": "099bc39321d480fe035d6ca7092a752b",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "06a3049d6cd250f67bfb4d3839212a9d",
+  "prev": "ea947863b3fdb10e08d321032938d7dc",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "bef164c967d85650d02c5192126c99f85fdfd453",
-      "duration_s": 0.557,
+      "commit_sha": "8f521422aa579d07a2d516354b2454bfe4975618",
+      "duration_s": 0.661,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        10855103992684713809
+        9705702874692509775
       ],
-      "started_at": "2026-09-01T22:35:45+00:00",
+      "started_at": "2026-09-01T23:12:18+00:00",
       "tree_dirty": true,
-      "tree_sha": "0583426b4740064b48f0d26b65cbd6d9c49566e9"
+      "tree_sha": "4e9cb71c0c23d2c024f06630a3e2ea3344c98f40"
     }
   }
 }
