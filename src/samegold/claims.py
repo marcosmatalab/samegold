@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,27 @@ def _versioned_rows(bronze: Path, closes: list[dt.datetime]) -> list[dict[str, A
 
 
 # --------------------------------------------------------------------- SG-00
+
+
+def _pytest_counts(output: str) -> tuple[int, int]:
+    """Passed and failed, read off pytest's summary line.
+
+    Parsed rather than inferred, because "how many tests passed" is the number the claim is
+    about and the exit code only says whether it equalled the total. A summary line the parser
+    does not recognise returns (0, 0), which makes the published rate 0/0 - visibly wrong
+    rather than quietly optimistic.
+    """
+    line = next(
+        (
+            row
+            for row in reversed(output.splitlines())
+            if any(word in row for word in (" passed", " failed", " error"))
+        ),
+        "",
+    )
+    passed = re.search(r"(\d+) passed", line)
+    failed = re.search(r"(\d+) (?:failed|error)", line)
+    return (int(passed.group(1)) if passed else 0, int(failed.group(1)) if failed else 0)
 
 
 def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
@@ -160,14 +182,18 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
         "adrs": len(list((root / "docs" / "adr").glob("*.md"))),
         "deselected_in_this_run": deselected,
     }
+    # PASSED over COLLECTED, parsed from pytest's own summary line, not collected over
+    # collected. The rate used to be Rate(tests_fast, tests_fast), which reads like a pass
+    # rate and is 100% by construction for any suite, however red - and on a failing run the
+    # Fail branch carried no rate at all, so the number vanished rather than falling. A
+    # published figure that cannot move is decoration.
+    passed, failed = _pytest_counts(fast_run.stdout)
+    facts["tests_passed"] = passed
+    facts["tests_failed"] = failed
     runset = _runset(seeds, "n/a", started, "oss-local", "facts")
+    rate = Rate(passed, passed + failed)
     verdict: Verdict = (
-        Pass(
-            "SG-00",
-            runset,
-            Rate(int(facts["tests_fast"]), int(facts["tests_fast"])),
-            "fast lane green",
-        )
+        Pass("SG-00", runset, rate, "fast lane green")
         if fast_run.returncode == 0
         else Fail(
             "SG-00",
@@ -175,6 +201,7 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
             Counterexample(
                 "SG-00", seeds[0], "the fast lane is red", {"tail": fast_run.stdout[-600:]}
             ),
+            rate,
         )
     )
     return EvidenceRecord(
@@ -323,11 +350,26 @@ def _assert_mutation_shapes_exist(root: Path, result: Any, profile_name: str) ->
     The same discipline as the cost lab's probe-existence guard. A mutant that survives
     because the dataset contains none of the shape it changes is not evidence about the
     witnesses; it is evidence about the generator, and publishing it as a survivor sends a
-    reader looking for a bug that is not there. The one shape that has actually bitten is a
-    line with two amendments at distinct event times, which is what separates "the last
-    amendment wins" from "the first one does".
+    reader looking for a bug that is not there.
+
+    The shape that has actually bitten is SQL-053: a line with two amendments that the
+    campaign can tell apart. All four conditions matter, and the first version of this guard
+    checked one of them:
+
+      * the amendments must have ARRIVED before the last close, or the as-of cut removes one
+        of them and the window has a single row either way;
+      * their event times must be different INSTANTS, not different strings: "…+00:00" and
+        "…+01:00" can spell the same moment;
+      * their new_qty must differ, or first and last give the same answer;
+      * the line itself must be one the close counts.
     """
-    amendments: dict[tuple[str, str], set[str]] = {}
+    from samegold.domain.bitemporal import instant_of
+
+    last_close = instant_of(result.ledger.closes[-1]) if result.ledger.closes else None
+    if last_close is None:
+        raise ValueError(f"profile {profile_name!r} produced no closes to compare")
+
+    arrived: dict[tuple[str, str], set[tuple[float, int]]] = {}
     for path in sorted((root / "bronze").rglob("*.json")):
         for line in path.read_text(encoding="utf-8").splitlines():
             if '"order_line_amended"' not in line:
@@ -336,16 +378,28 @@ def _assert_mutation_shapes_exist(root: Path, result: Any, profile_name: str) ->
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if record.get("new_qty") is None:
+                continue
+            try:
+                event_at = instant_of(str(record["event_ts"]))
+                arrival_at = instant_of(str(record["arrival_ts"]))
+            except (KeyError, ValueError):
+                continue
+            if arrival_at > last_close:
+                continue
             key = (str(record.get("order_id")), str(record.get("sku")))
-            amendments.setdefault(key, set()).add(str(record.get("event_ts")))
-    if not any(len(times) >= 2 for times in amendments.values()):
+            arrived.setdefault(key, set()).add((event_at.timestamp(), int(record["new_qty"])))
+    scorable = any(
+        len({instant for instant, _ in pairs}) >= 2 and len({qty for _, qty in pairs}) >= 2
+        for pairs in arrived.values()
+    )
+    if not scorable:
         raise ValueError(
-            f"profile {profile_name!r} produced no order line with two amendments at distinct "
-            f"event times, so the amendment-ordering mutants cannot be scored on it. Use a "
+            f"profile {profile_name!r} produced no order line with two amendments that "
+            f"arrived before the last close, at distinct instants, carrying distinct "
+            f"quantities. The amendment-ordering mutants cannot be scored on it: use a "
             f"larger profile rather than publishing them as survivors."
         )
-    if not result.ledger.closes:
-        raise ValueError(f"profile {profile_name!r} produced no closes to compare")
 
 
 def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceRecord:
@@ -391,7 +445,11 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
     scored, killed = int(matrix["mutants_scored"]), int(matrix["killed"])
     total = int(matrix["mutants_total"])
     rate = Rate(killed, scored)
-    runset = _runset(seeds, profile_name, started, "oss-local", "mutation")
+    # The profile the campaign RAN on, not the one the caller asked for. The record used to
+    # say "fast" for a run whose dataset was the ci profile: in a repository whose central
+    # defence is that a record names the data it came from, that is the worst kind of small
+    # error.
+    runset = _runset(seeds, campaign_profile, started, "oss-local", "mutation")
     survivors = list(matrix["survivors"])
     verdict = (
         Pass("SG-03", runset, rate, f"{len(matrix['equivalent'])} classified equivalent")
@@ -445,6 +503,16 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
 # --------------------------------------------------------------------- SG-04
 
 
+def _euros(cents: int) -> str:
+    """Cents as the document writes money: a space groups the thousands, a comma the decimals.
+
+    Plain ASCII, deliberately. A non-breaking space looks identical in a rendered document
+    and would make any comparison against it compare two things a reader cannot tell apart.
+    """
+    whole, fraction = divmod(abs(int(cents)), 100)
+    return f"{whole:,}".replace(",", " ") + f",{fraction:02d}"
+
+
 def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> EvidenceRecord:
     """SG-04. How much of a closed month moves after it is closed. A business number.
 
@@ -496,12 +564,32 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
     rate = Rate(len(moved), len(by_month))
     runset = _runset(seeds, profile_name, started, "oss-local", "restatement")
     worst = max((abs(m["delta_pct"] or 0.0) for m in moved), default=0.0)
+    # The worst month, flattened and pre-formatted, so docs/postmortem-2026-03-06.md can
+    # carry it as rendered anchors instead of hand-typed euros. Every seed is derived from
+    # the commit, so these figures move on every commit, and a document that quotes them by
+    # hand is a document that is wrong by the next commit: the post-mortem's numbers were
+    # invented in the first draft, corrected by hand in the second, and stale again two
+    # commits later. A number that appears in prose has to be rendered or it will drift.
+    heaviest = max(moved, key=lambda m: abs(m["delta_pct"] or 0.0), default=None)
+    flattened: dict[str, Any] = {}
+    if heaviest is not None:
+        flattened = {
+            "worst_month": heaviest["accounting_month"],
+            "worst_first_close_eur": _euros(int(heaviest["first_close_net_cents"])),
+            "worst_final_eur": _euros(int(heaviest["final_net_cents"])),
+            "worst_delta_eur": _euros(abs(int(heaviest["delta_cents"]))),
+            "worst_versions": int(heaviest["versions"]),
+        }
     return EvidenceRecord(
         claim_id="SG-04",
         title="a closed month moves after it is closed",
         verdict=Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close"),
         runtime="oss-local",
-        artifacts={"months_that_moved": moved, "worst_move_pct": round(worst, 4)},
+        artifacts={
+            "months_that_moved": moved,
+            "worst_move_pct": round(worst, 4),
+            **flattened,
+        },
         not_claimed=(
             "that these percentages describe real retail: they describe this simulation, "
             "whose return rate is deliberately higher than a real one",

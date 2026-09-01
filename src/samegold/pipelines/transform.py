@@ -266,7 +266,15 @@ def effective_lines(silver_df: DataFrame) -> DataFrame:
     )
     amendments = (
         silver_df.where(
-            (F.col("event_type") == "order_line_amended") & F.col("new_qty").isNotNull()
+            (F.col("event_type") == "order_line_amended")
+            # ACCEPTED, like every other consumer of silver. This branch was the one place
+            # that read quarantined records: an amendment whose event_ts the producer wrote
+            # as something that is not a timestamp still won its window and moved 3000 cents
+            # of booked revenue, while the reference had dropped the record before it got
+            # anywhere near the amendments CTE. A quarantined record must not change a
+            # number; that is what the word means.
+            & (F.col("quarantine_reason") == ACCEPTED)
+            & F.col("new_qty").isNotNull()
         )
         .withColumn("_rn", F.row_number().over(amend_window))
         .where(F.col("_rn") == 1)
@@ -306,8 +314,8 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
         F.when(F.col("sale_ts").isNull(), F.lit("return_without_order"))
         .when(F.col("return_ts") < F.col("sale_ts"), F.lit("return_outside_window"))
         # Seconds, not INTERVAL 45 DAY: interval arithmetic over a timestamp is calendar
-        # arithmetic in the session timezone, so the window silently becomes 44h23 or 45h01
-        # long across a daylight-saving boundary.
+        # arithmetic in the session timezone, so across a daylight-saving boundary the
+        # window silently comes out an hour short of, or an hour past, 45 days.
         #
         # And a cast to DOUBLE, not unix_timestamp(). unix_timestamp truncates to whole
         # seconds, so a return exactly one microsecond outside the window came back as

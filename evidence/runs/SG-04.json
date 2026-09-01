@@ -4,22 +4,27 @@
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -4281796,
-        "delta_pct": -6.3652,
-        "final_net_cents": 62987546,
-        "first_close_net_cents": 67269342,
+        "delta_cents": -3940198,
+        "delta_pct": -5.9476,
+        "final_net_cents": 62307964,
+        "first_close_net_cents": 66248162,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -1166293,
-        "delta_pct": -3.9943,
-        "final_net_cents": 28032502,
-        "first_close_net_cents": 29198795,
+        "delta_cents": -987923,
+        "delta_pct": -3.3488,
+        "final_net_cents": 28512920,
+        "first_close_net_cents": 29500843,
         "versions": 3
       }
     ],
-    "worst_move_pct": 6.3652
+    "worst_delta_eur": "39 401,98",
+    "worst_final_eur": "623 079,64",
+    "worst_first_close_eur": "662 481,62",
+    "worst_month": "2026-01",
+    "worst_move_pct": 5.9476,
+    "worst_versions": 3
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -34,16 +39,16 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "b97ec7748d5e1caab647527d78c911d9",
+  "hash": "cd9e21f38db1aa85556065f92f48f6a6",
   "not_claimed": [
     "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one"
   ],
-  "prev": "c3bbf703236f7985b2aebdf2d824ae77",
+  "prev": "c2ecd5a91f3e119b6d8894f375c953d8",
   "runtime": "oss-local",
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 6.37% of the first close",
+    "note": "largest move 5.95% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -55,17 +60,17 @@
       ]
     },
     "runs": {
-      "commit_sha": "d25e59b404d53844fd356fe3ad3cae6084a8bddd",
-      "duration_s": 0.438,
+      "commit_sha": "8ae09424aaf351ddb6060b4dc090b469a309f5dd",
+      "duration_s": 0.317,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "restatement",
       "seed_source": "commit",
       "seeds": [
-        12033534070024416604
+        16593325311887660012
       ],
-      "started_at": "2026-09-01T17:45:26+00:00"
+      "started_at": "2026-09-01T20:51:59+00:00"
     }
   }
 }

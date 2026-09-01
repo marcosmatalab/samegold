@@ -4,7 +4,7 @@
 -- names, the 45-day window, the accounting timezone) with the Spark implementation and shares
 -- no code with it. What it can and cannot catch is measured in mutation/witness_matrix.py.
 --
--- Five details here exist because an adversarial review broke the previous version:
+-- Six details here exist because an adversarial review broke the previous version:
 --
 --  1. The columns are DECLARED, not inferred. With union_by_name, a batch that happens to
 --     contain no order_line_amended event does not create the new_qty column, and the whole
@@ -12,7 +12,7 @@
 --     schema depends on which files arrived is not a pipeline.
 --  2. The 45-day window is compared in SECONDS, not with INTERVAL 45 DAY. DuckDB's interval
 --     arithmetic on TIMESTAMPTZ is calendar arithmetic in the session timezone, so under
---     Europe/Madrid the window is 44h23 or 45h01 long across a daylight-saving boundary,
+--     Europe/Madrid the window is an hour short of or an hour past 45 days across a daylight-saving boundary,
 --     while the Python rule uses an absolute timedelta. That mismatch produced a real
 --     disagreement between the two implementations, on a real seed.
 --  3. Deduplication has a TOTAL order. Ordering only by (event_ts, arrival_ts) leaves ties
@@ -38,6 +38,14 @@
 --     guard admits and a plain CAST then fails on, aborting the whole close - the very
 --     "record with no door" this file removed two paragraphs above, reintroduced by its own
 --     fix. Spark's declared LongType nulls the same value.
+--
+--  6. A timestamp is converted ONCE, in the `stamped` CTE, and only if it matches an ISO
+--     SHAPE. TRY_CAST alone is too generous: DuckDB accepts the keywords 'epoch' (which
+--     becomes 1970-01-01) and 'infinity', both of which Spark's try_to_timestamp rejects. A
+--     single record stamped "infinity" produced an accounting month literally called
+--     "infinity"; two copies of one event_id, one of them "epoch", had different winners in
+--     the two engines even after NULLS LAST. The regex is the set of spellings the two
+--     engines agree on, and tests/spark checks the list case by case.
 --
 --  4. Timestamps are TRY_CAST, not CAST. A single malformed event_ts used to abort the whole
 --     close with a conversion error, in both engines: the one record shape for which the
@@ -80,19 +88,28 @@ typed AS (
                 THEN TRY_CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
     FROM raw
 ),
+stamped AS (
+    SELECT * EXCLUDE (event_ts, arrival_ts),
+           CASE WHEN regexp_full_match(event_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(event_ts AS TIMESTAMPTZ) END AS event_ts,
+           CASE WHEN regexp_full_match(arrival_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(arrival_ts AS TIMESTAMPTZ) END AS arrival_ts
+    FROM typed
+),
 arrived AS (
-    SELECT * FROM typed
+    SELECT * FROM stamped
     WHERE event_id IS NOT NULL
       AND arrival_ts IS NOT NULL
-      AND TRY_CAST(event_ts AS TIMESTAMPTZ) IS NOT NULL
-      AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
+      AND event_ts IS NOT NULL
+      AND arrival_ts <= CAST($as_of AS TIMESTAMPTZ)
 ),
 dedup AS (
     SELECT * EXCLUDE (rn) FROM (
         SELECT *, row_number() OVER (
                      PARTITION BY event_id
-                     ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
-                              TRY_CAST(arrival_ts AS TIMESTAMPTZ),
+                     ORDER BY event_ts, arrival_ts,
                               sha256(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
                                   || COALESCE(customer_id, '') || '|' || COALESCE(sku, '') || '|'
                                   || COALESCE(CAST(qty AS VARCHAR), '') || '|'
@@ -109,7 +126,7 @@ lines AS (
     SELECT order_id, customer_id, sku,
            qty AS qty0,
            unit_price_cents,
-           TRY_CAST(event_ts AS TIMESTAMPTZ) AS sale_ts
+           event_ts AS sale_ts
     FROM dedup
     WHERE event_type = 'order_placed'
       AND order_id IS NOT NULL AND sku IS NOT NULL AND customer_id IS NOT NULL
@@ -121,7 +138,7 @@ amendments AS (
     SELECT order_id, sku, qty FROM (
         SELECT order_id, sku, new_qty AS qty,
                row_number() OVER (PARTITION BY order_id, sku
-                                  ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ) DESC, event_id DESC) AS rn
+                                  ORDER BY event_ts DESC, event_id DESC) AS rn
         FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
                      AND order_id IS NOT NULL AND sku IS NOT NULL
     ) WHERE rn = 1
@@ -133,7 +150,7 @@ effective AS (
 ),
 return_candidates AS (
     SELECT d.order_id, d.sku, d.qty AS return_qty,
-           TRY_CAST(d.event_ts AS TIMESTAMPTZ) AS return_ts,
+           d.event_ts AS return_ts,
            e.sale_ts, e.unit_price_cents, e.qty AS sold_qty
     FROM dedup d
     LEFT JOIN effective e ON e.order_id = d.order_id AND e.sku = d.sku

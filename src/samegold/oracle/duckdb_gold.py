@@ -176,12 +176,21 @@ typed AS (
 -- reported zero accepted records for a close that booked two thousand cents. Applying the
 -- fix to two of the three queries was worse than not applying it at all, because the two
 -- that agreed made the third look verified.
+stamped AS (
+    SELECT * EXCLUDE (event_ts, arrival_ts),
+           CASE WHEN regexp_full_match(event_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(event_ts AS TIMESTAMPTZ) END AS event_ts,
+           CASE WHEN regexp_full_match(arrival_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(arrival_ts AS TIMESTAMPTZ) END AS arrival_ts
+    FROM typed
+),
 tagged AS (
     SELECT *,
            row_number() OVER (
                PARTITION BY event_id
-               ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
-                        TRY_CAST(arrival_ts AS TIMESTAMPTZ),
+               ORDER BY event_ts, arrival_ts,
                         sha256(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
                             || COALESCE(customer_id, '') || '|' || COALESCE(sku, '') || '|'
                             || COALESCE(CAST(qty AS VARCHAR), '') || '|'
@@ -191,7 +200,7 @@ tagged AS (
                             || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
                             || COALESCE(country, ''))
            ) AS rn
-    FROM typed WHERE event_id IS NOT NULL
+    FROM stamped WHERE event_id IS NOT NULL
 ),
 unique_events AS (SELECT * FROM tagged WHERE rn = 1),
 -- The SAME closed enum as the quarantine_reason() expression in
@@ -210,8 +219,7 @@ classified AS (
                  OR event_type NOT IN ('order_placed','order_line_amended',
                                        'return_registered','customer_upserted')
                 THEN 'unknown_event_type'
-            WHEN TRY_CAST(event_ts AS TIMESTAMPTZ) IS NULL
-                 OR TRY_CAST(arrival_ts AS TIMESTAMPTZ) IS NULL
+            WHEN event_ts IS NULL OR arrival_ts IS NULL
                 THEN 'missing_required_field'
             WHEN event_type = 'order_placed' AND (order_id IS NULL OR sku IS NULL
                                                   OR customer_id IS NULL OR qty IS NULL

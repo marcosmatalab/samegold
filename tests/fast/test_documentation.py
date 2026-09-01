@@ -67,39 +67,27 @@ def test_the_readme_does_not_state_a_test_count_by_hand() -> None:
 
 
 def test_the_postmortem_quotes_the_published_evidence() -> None:
-    """The euro figures in the post-mortem are SG-04's, or the test fails.
+    """The euro figures in the post-mortem are SG-04's, and they are ANCHORS, not prose.
 
-    The first draft of that document invented all four of them: an incident report with made-up
-    numbers, in a repository whose entire argument is that numbers come from runs. An
-    adversarial review checked them against `evidence/runs/SG-04.json` and none matched. This
-    test is the reason it cannot happen again, and it is deliberately exact rather than
-    approximate: a post-mortem that is nearly right about the money is wrong.
+    Three drafts of this document, three ways of being wrong about the money: the first
+    invented all four figures; the second copied them correctly from the evidence by hand;
+    the third was stale two commits later, because every seed derives from the commit SHA and
+    so does every figure computed from it. The fix is not a better habit, it is the renderer:
+    the numbers live inside `<!--sg:SG-04.artifact.*-->` anchors and `make readme` maintains
+    them. This test checks both halves - that the anchors are there, and that what they
+    currently show is what the record says.
     """
     record = json.loads((REPO / "evidence" / "runs" / "SG-04.json").read_text(encoding="utf-8"))
-    january = next(
-        month
-        for month in record["artifacts"]["months_that_moved"]
-        if month["accounting_month"] == "2026-01"
-    )
+    artifacts = record["artifacts"]
     text = (REPO / "docs" / "postmortem-2026-03-06.md").read_text(encoding="utf-8")
-
-    def spanish(cents: int) -> str:
-        """67269342 -> '672 693,42', the way the document writes money.
-
-        Spanish convention: a space groups the thousands and a comma separates the decimals.
-        Both are plain ASCII on purpose. A non-breaking space would look identical in the
-        rendered document and would make this test compare two things a reader cannot tell
-        apart, which is how a green assertion stops meaning anything.
-        """
-        whole, fraction = divmod(abs(int(cents)), 100)
-        grouped = f"{whole:,}".replace(",", " ")
-        return f"{grouped},{fraction:02d}"
-
-    for cents in (
-        january["first_close_net_cents"],
-        january["final_net_cents"],
-        january["delta_cents"],
-    ):
-        assert spanish(cents) in text, f"{spanish(cents)} EUR is not in the post-mortem"
-    assert f"{abs(january['delta_pct']):.2f}".replace(".", ",") in text
-    assert str(january["versions"]) in text
+    for field in ("worst_first_close_eur", "worst_final_eur", "worst_delta_eur", "worst_move_pct"):
+        anchor = f"<!--sg:SG-04.artifact.{field}-->"
+        assert anchor in text, f"{field} is quoted as prose rather than rendered"
+        rendered = text.split(anchor, 1)[1].split("<!--/sg-->", 1)[0]
+        assert rendered == str(artifacts[field]), f"{field}: {rendered!r} != {artifacts[field]!r}"
+    # And no hand-typed euro amount survives outside an anchor: a figure the renderer does
+    # not own is a figure that will be wrong again.
+    stripped = re.sub(r"<!--sg:[^>]+-->.*?<!--/sg-->", "", text, flags=re.DOTALL)
+    assert not re.search(r"\d{1,3}(?: \d{3})+,\d{2}", stripped), (
+        "an unrendered money figure is left in the post-mortem"
+    )

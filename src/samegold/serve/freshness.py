@@ -131,7 +131,11 @@ def close_deadline(month_key: str, close_day: int) -> dt.datetime:
     zone = ZoneInfo(ACCOUNTING_TIMEZONE)
     year, month = (int(part) for part in month_key.split("-"))
     year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    day = min(close_day, calendar.monthrange(year, month)[1])
+    # Clamped at BOTH ends. The first version clamped only the upper one, so a close_day of 0
+    # or a negative one still raised "day is out of range for month" and still took the whole
+    # freshness evaluation down - from the other side of the same mistake, in the same
+    # function, three lines below a docstring explaining why that must not happen.
+    day = min(max(close_day, 1), calendar.monthrange(year, month)[1])
     start_of_next_day = dt.datetime(year, month, day, tzinfo=zone) + dt.timedelta(days=1)
     return start_of_next_day.astimezone(dt.UTC)
 
@@ -148,7 +152,9 @@ def overdue_months(
     against, so only the most recent overdue month is reported.
 
     ``horizon`` is a hard stop on how far back the walk goes, so a single very old close
-    cannot turn one missing job into hundreds of alerts.
+    cannot turn one missing job into hundreds of alerts. It counts months stepped over, not
+    months reported: the first step is always the month in progress, whose deadline has not
+    passed, so at most ``horizon - 1`` months can be reported.
     """
     # Only well-formed month keys count. `floor = min(recorded)` is a lexicographic minimum,
     # so ONE malformed entry ("2026-1", a typo, anything) could sort below every real month
@@ -156,9 +162,17 @@ def overdue_months(
     # reported healthy. An input this rule cannot understand must never be the reason it says
     # nothing is wrong, so unparseable entries are dropped and the rest are used.
     recorded = {month for month in closed_months if MONTH_KEY.match(month)}
-    floor = min(recorded) if recorded else None
     zone = ZoneInfo(ACCOUNTING_TIMEZONE)
     local = now.astimezone(zone)
+    # The floor is the oldest close IN THE PAST. Filtering only for syntax was not enough: a
+    # single entry for a future month ("2030-01", or this month, recorded early) is the
+    # lexicographic minimum, the walk stops on its first step, and seven months with no close
+    # are reported as healthy. The principle is the one stated above and applied to half the
+    # problem: an input this rule cannot have meant must never be the reason it says nothing
+    # is wrong.
+    current = f"{local.year:04d}-{local.month:02d}"
+    past = {month for month in recorded if month < current}
+    floor = min(past) if past else None
     year, month = local.year, local.month
     out: list[tuple[str, dt.datetime]] = []
     for _ in range(horizon):

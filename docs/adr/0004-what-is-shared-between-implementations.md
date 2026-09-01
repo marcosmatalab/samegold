@@ -41,8 +41,8 @@ Two defects that no single-implementation test could have found, both at the sam
    seconds, so a return one microsecond outside the window came back as exactly 45 days and was
    accepted. One return per run, five thousand cents, every invariant green.
 2. The DuckDB side measured the same window with `INTERVAL 45 DAY` over a `TIMESTAMPTZ`, which
-   is calendar arithmetic in the session timezone: under `Europe/Madrid` the window is 44h23 or
-   45h01 long across a daylight-saving boundary. It only bites twice a year, and the accounting
+   is calendar arithmetic in the session timezone: under `Europe/Madrid` the window comes out an
+   hour short of, or an hour past, 45 days across a daylight-saving boundary. It only bites twice a year, and the accounting
    timezone this project declares is exactly the one where it bites.
 
 Both are now compared in seconds with sub-second precision, and a test runs the reference under

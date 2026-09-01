@@ -282,6 +282,11 @@ def probe_order_free_comparison(reference_sql: str, bronze_dir: Path, as_of: str
         for mutant in mutate_sql(reference_sql)
         if mutant.operator == "order:flip" and mutant.context == "final"
     ]
+    if not flipped:
+        raise ValueError(
+            "no order:flip mutant in the final context: the probe would report 'the same "
+            "multiset of rows' having compared nothing. Fix the operator or the anchor."
+        )
     same_rows = True
     for mutant in flipped:
         mutated = _run(mutant.source, bronze_dir)

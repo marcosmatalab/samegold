@@ -3,15 +3,15 @@
   "artifacts": {
     "adrs": 9,
     "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
-    "fast_lane_green": true,
-    "fast_lane_seconds": 42.8,
+    "fast_lane_green": false,
+    "fast_lane_seconds": 49.7,
     "markdown_documents": 17,
     "python_modules": 50,
-    "source_lines": 7570,
-    "test_lines": 2210,
+    "source_lines": 8287,
+    "test_lines": 3121,
     "tests_delta": 6,
-    "tests_fast": 304,
-    "tests_spark": 10
+    "tests_fast": 325,
+    "tests_spark": 40
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -26,38 +26,37 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "7f3872611f490e4c1d49c7b852d978ab",
+  "hash": "20ce895b180d761c45b3a2ddaab1096b",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "0b16c8941df16f347509bd3396646a83",
+  "prev": "3922f744ead19b8bb747f3f4f50d1e73",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
     "claim_id": "SG-00",
-    "note": "fast lane green",
-    "outcome": "pass",
-    "rate": {
-      "point": 1.0,
-      "successes": 304,
-      "trials": 304,
-      "wilson95": [
-        0.987521,
-        1.0
-      ]
+    "counterexample": {
+      "claim_id": "SG-00",
+      "description": "the fast lane is red",
+      "payload": {
+        "tail": "me was right\\n\\n**Date of incident** 5 March 2026, 23:59 CET (t...icy, and an engineer who has not had this conversation with\\nfinance does not know what the bitemporal model is for.\\n'\nE            +  where '662 481,62' = <function test_the_postmortem_quotes_the_published_evidence.<locals>.spanish at 0x7f62104a71a0>(66248162)\n\ntests/fast/test_documentation.py:103: AssertionError\n=========================== short test summary info ============================\nFAILED tests/fast/test_documentation.py::test_the_postmortem_quotes_the_published_evidence\n1 failed, 323 passed, 1 deselected in 48.82s\n"
+      },
+      "seed": 4550830575203104650
     },
+    "outcome": "fail",
+    "rate": null,
     "runs": {
-      "commit_sha": "297c50608e2559a8bfcb03ca1faeec434d897089",
-      "duration_s": 45.179,
+      "commit_sha": "8ae09424aaf351ddb6060b4dc090b469a309f5dd",
+      "duration_s": 51.788,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        3923885496469409972
+        4550830575203104650
       ],
-      "started_at": "2026-09-01T19:02:05+00:00"
+      "started_at": "2026-09-01T20:34:11+00:00"
     }
   }
 }

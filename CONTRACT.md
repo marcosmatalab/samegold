@@ -75,7 +75,7 @@ a quarantine reason as well would count it twice.
 
 | consumer | table | freshness | note |
 |---|---|---|---|
-| finance, monthly close | `gold.revenue_by_month` | closed at 23:59:59 on day 5 of the following month, Europe/Madrid | a close is signed off and never rewritten; restatements are new versions |
+| finance, monthly close | `gold.revenue_by_month` | closed at the end of day 5 of the following month, Europe/Madrid (the deadline instant is 00:00 on day 6, which is what `serve/freshness.close_deadline` computes) | a close is signed off and never rewritten; restatements are new versions |
 | returns operations | `gold.revenue_by_month` at its newest version | < 15 minutes from `arrival_ts` to gold visibility; the rule is `src/samegold/serve/freshness.py` and wiring it to a platform alert is milestone M16 | may be incomplete; never used for the signed close |
 
 ## Column classification
