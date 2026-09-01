@@ -23,25 +23,53 @@ WITH raw AS (
                                 'boundary': 'VARCHAR'
                             })
 ),
+typed AS (
+    SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
+           CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
+                THEN TRY_CAST(qty AS BIGINT) END AS qty,
+           CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
+                THEN TRY_CAST(new_qty AS BIGINT) END AS new_qty,
+           CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
+                THEN TRY_CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+    FROM raw
+),
+stamped AS (
+    SELECT * EXCLUDE (event_ts, arrival_ts),
+           CASE WHEN regexp_full_match(event_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(event_ts AS TIMESTAMPTZ) END AS event_ts,
+           CASE WHEN regexp_full_match(arrival_ts,
+                    '\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?\s*(Z|[+-]\d{2}:?\d{2})?')
+                THEN TRY_CAST(arrival_ts AS TIMESTAMPTZ) END AS arrival_ts
+    FROM typed
+),
 arrived AS (
-    SELECT * FROM raw
+    SELECT * FROM stamped
     WHERE event_type = 'customer_upserted'
       AND customer_id IS NOT NULL
-      AND TRY_CAST(event_ts AS TIMESTAMPTZ) IS NOT NULL
-      AND TRY_CAST(arrival_ts AS TIMESTAMPTZ) <= CAST($as_of AS TIMESTAMPTZ)
+      AND event_ts IS NOT NULL
+      AND arrival_ts <= CAST($as_of AS TIMESTAMPTZ)
 ),
 -- The same TOTAL order as the revenue reference, for the same reason: ordering only by
 -- event_ts leaves ties, and for two copies of one customer_upserted the tie was decided by
 -- the physical order of the rows. The tie-break hashes the payload columns that exist on
--- this event, with sha256 on both sides so the two engines break the tie the SAME way.
+-- EVERY payload column, with sha256, so the two engines break the tie the SAME way. Hashing
+-- only the four columns a customer_upserted carries looked equivalent and was not: same
+-- function, different input, therefore a different induced order, and the two engines chose
+-- different copies of a colliding pair. tests/spark compares the dimension across engines.
 dedup AS (
     SELECT * EXCLUDE (rn) FROM (
         SELECT *, row_number() OVER (
                      PARTITION BY event_id
-                     ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ),
-                              TRY_CAST(arrival_ts AS TIMESTAMPTZ),
-                              sha256(COALESCE(event_type, '') || '|' || COALESCE(customer_id, '')
-                                  || '|' || COALESCE(segment, '') || '|' || COALESCE(country, ''))
+                     ORDER BY event_ts, arrival_ts,
+                              sha256(COALESCE(event_type, '') || '|' || COALESCE(order_id, '') || '|'
+                              || COALESCE(customer_id, '') || '|' || COALESCE(sku, '') || '|'
+                              || COALESCE(CAST(qty AS VARCHAR), '') || '|'
+                              || COALESCE(CAST(new_qty AS VARCHAR), '') || '|'
+                              || COALESCE(CAST(unit_price_cents AS VARCHAR), '') || '|'
+                              || COALESCE(currency, '') || '|' || COALESCE(return_id, '') || '|'
+                              || COALESCE(reason, '') || '|' || COALESCE(segment, '') || '|'
+                              || COALESCE(country, ''))
                   ) AS rn
         FROM arrived
     ) WHERE rn = 1
@@ -52,9 +80,9 @@ dedup AS (
 collapsed AS (
     SELECT customer_id, valid_from, segment, country FROM (
         SELECT customer_id,
-               TRY_CAST(event_ts AS TIMESTAMPTZ) AS valid_from,
+               event_ts AS valid_from,
                segment, country,
-               row_number() OVER (PARTITION BY customer_id, CAST(event_ts AS TIMESTAMPTZ)
+               row_number() OVER (PARTITION BY customer_id, event_ts
                                   ORDER BY event_id DESC) AS rn
         FROM dedup
     ) WHERE rn = 1

@@ -44,8 +44,11 @@ _PRESENT_FOR_TYPE = (
 RULES = {
     "unparseable_json": "event_id IS NOT NULL",
     "unknown_event_type": (
-        "event_type IN ('order_placed','order_line_amended','return_registered',"
-        "'customer_upserted')"
+        # `IN` is NULL for a NULL left operand, and a NULL predicate does not drop the row:
+        # a record with no event_type at all was ACCEPTED on this lane and quarantined by
+        # both OSS engines. The same NULL-safety class as the rules below, missed once.
+        "event_type IS NOT NULL AND event_type IN ('order_placed','order_line_amended',"
+        "'return_registered','customer_upserted')"
     ),
     "missing_required_field": (
         f"try_to_timestamp(event_ts) IS NOT NULL AND try_to_timestamp(arrival_ts) IS NOT NULL"

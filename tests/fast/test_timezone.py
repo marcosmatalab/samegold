@@ -6,8 +6,8 @@ which is the fix, but nothing verified that the fix works or that it stays.
 
 The bug it guards against was real. `INTERVAL 45 DAY` over a TIMESTAMPTZ is calendar
 arithmetic in the session timezone, so under Europe/Madrid - the accounting timezone this
-project declares - the 45-day window is 44h23 or 45h01 long across a daylight-saving
-boundary, and the two implementations disagreed on a real seed.
+project declares - the 45-day window comes out an hour short or an hour long across a
+daylight-saving boundary, and the two implementations disagreed on a real seed.
 """
 
 from __future__ import annotations

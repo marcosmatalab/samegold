@@ -193,6 +193,44 @@ def test_both_engines_break_a_payload_tie_the_same_way(spark, tmp_path) -> None:
     _both_agree(spark, tmp_path, rows)
 
 
+def test_both_engines_pick_the_same_customer_version_from_a_colliding_pair(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The dimension's tie-break must be the SAME order on both sides, not merely a total one.
+
+    The SCD2 reference hashed four columns and the Spark side hashed twelve. Same function,
+    different input, so the induced orders differ and the two engines chose different copies
+    of a colliding customer_upserted. The test that existed compared Spark against ITSELF at
+    several partition counts, which the four-column hash passes: it is stable, it is just not
+    the same stability the reference has.
+    """
+    from samegold.oracle.duckdb_gold import scd2_as_of
+    from samegold.pipelines.transform import dim_customer_scd2
+
+    rows: list[dict[str, Any]] = []
+    for index in range(12):
+        base = {
+            "event_id": f"cu-{index}",
+            "event_type": "customer_upserted",
+            "event_ts": "2026-01-05T00:00:00+00:00",
+            "arrival_ts": "2026-01-05T00:05:00+00:00",
+            "customer_id": f"C{index}",
+            "segment": "SEG-0",
+            "country": "ES",
+        }
+        rows.append(base)
+        rows.append(dict(base, segment="SEG-1"))
+    bronze = _write(tmp_path, rows)
+    events = silver(as_of_cut(read_bronze(spark, str(bronze)), AS_OF))
+    from_spark = sorted(
+        (row["customer_id"], row["valid_from"], row["segment"], row["country"])
+        for row in dim_customer_scd2(events).collect()
+    )
+    from_duckdb = sorted(
+        (str(row["customer_id"]), str(row["valid_from"]), str(row["segment"]), str(row["country"]))
+        for row in scd2_as_of(bronze, AS_OF_DT)
+    )
+    assert from_spark == from_duckdb
+
+
 def test_a_customer_tie_is_broken_by_more_than_six_columns(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
     """For a customer_upserted the old six-column hash was constant, so the tie survived.
 

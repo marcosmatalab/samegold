@@ -898,14 +898,18 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             assert handle is not None
             handle.write(line + "\n")
             written += 1
-            if raw is not None:
+            # `unparseable_json` in the contract covers two shapes: a line that is not JSON,
+            # and a line that carries no event_id. The reference counts both through that one
+            # door and so does the Spark pipeline; the ledger counted only the first, so a
+            # well-formed record with no event_id made the cross-check disagree by one.
+            if raw is not None or rec.get("event_id") is None:
                 unparseable_lines += 1
-            if raw is None:
-                event_id = str(rec.get("event_id", ""))
-                if event_id in parseable_event_ids:
-                    duplicate_lines += 1
-                else:
-                    parseable_event_ids.add(event_id)
+                continue
+            event_id = str(rec["event_id"])
+            if event_id in parseable_event_ids:
+                duplicate_lines += 1
+            else:
+                parseable_event_ids.add(event_id)
     finally:
         if handle is not None:
             handle.close()

@@ -39,9 +39,17 @@ def _sql_calls(source: str) -> list[str]:
     for node in ast.walk(ast.parse(source)):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
             continue
-        if node.func.attr != "sql" or not node.args:
+        if node.func.attr != "sql":
             continue
-        out.append(_literal(node.args[0]))
+        # The query can be passed positionally or as `sqlQuery=`. Skipping the keyword form
+        # silently was how the first version of this walk collected four of six statements
+        # while the test asserted "at least five" and passed.
+        argument = node.args[0] if node.args else None
+        if argument is None:
+            argument = next((kw.value for kw in node.keywords if kw.arg == "sqlQuery"), None)
+        if argument is None:
+            raise AssertionError(f"spark.sql() with no readable query at line {node.lineno}")
+        out.append(_literal(argument))
     return out
 
 
@@ -102,24 +110,30 @@ def _expectations() -> list[tuple[str, str]]:
     for path in sorted(LANE.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
         module: dict[str, object] = {}
-        block = _RULES.search(source)
-        if block is None:
-            continue
+        blocks = list(_RULES.finditer(source))
+        if not blocks and "expect_all_or_drop" in source:
+            raise AssertionError(
+                f"{path.name} declares expectations this test cannot read: the rules must be a "
+                f"module-level dict literal named RULES"
+            )
         # Evaluate only the literals the rules are built from, never the module: importing it
         # would need pyspark.pipelines and a live session. The helper strings are plain
         # concatenations of literals, which ast.literal_eval-style execution handles safely
         # enough for a test that then throws the namespace away.
-        helpers = re.findall(r"^(_[A-Z_]+) = \((.*?)^\)", source, re.DOTALL | re.MULTILINE)
+        helpers = re.findall(
+            r"^(_[A-Z_]+)(?:\s*:[^=]+)?\s*=\s*\((.*?)^\)", source, re.DOTALL | re.MULTILINE
+        )
         for name, body in helpers:
             module[name] = eval(f"({body})", {"__builtins__": {}}, {})
-        rules = eval("{" + block.group(1) + "}", {"__builtins__": {}}, module)
-        for name, predicate in rules.items():
-            out.append(
-                (
-                    f"{path.relative_to(REPO)}::expectation:{name}",
-                    f"SELECT * FROM t WHERE {predicate}",
+        for block in blocks:
+            rules = eval("{" + block.group(1) + "}", {"__builtins__": {}}, module)
+            for name, predicate in rules.items():
+                out.append(
+                    (
+                        f"{path.relative_to(REPO)}::expectation:{name}",
+                        f"SELECT * FROM t WHERE {predicate}",
+                    )
                 )
-            )
     return out
 
 
@@ -132,7 +146,15 @@ DATABRICKS_ONLY = ("SET ROW FILTER", "ALTER COLUMN", "CLUSTER BY AUTO")
 
 
 def _is_databricks_only(statement: str) -> bool:
-    return any(construct in statement.upper() for construct in DATABRICKS_ONLY)
+    """Comments stripped first: a construct named in a comment is not a construct.
+
+    `-- we deliberately do not ALTER COLUMN here` would otherwise exclude the statement it
+    describes from the only check that reads it.
+    """
+    code = "\n".join(
+        line for line in statement.splitlines() if not line.strip().startswith("--")
+    ).upper()
+    return any(construct in code for construct in DATABRICKS_ONLY)
 
 
 ALL_STATEMENTS = [
@@ -155,9 +177,13 @@ def test_the_exclusions_are_the_ones_claimed() -> None:
     Without this, "the OSS parser does not understand it" becomes a way to make any
     inconvenient statement disappear from the check.
     """
-    assert len(EXCLUDED) <= 2, [name for name, _ in EXCLUDED]
-    for name, part in EXCLUDED:
-        assert _is_databricks_only(part), name
+    # An explicit list, not a re-application of the predicate that built it. Asserting
+    # `_is_databricks_only(part)` over a list filtered BY `_is_databricks_only` is a loop that
+    # can never fail, which is the shape of a test that exists to be counted.
+    assert [name for name, _ in EXCLUDED] == [
+        "databricks/sql/policies.sql::2",
+        "databricks/sql/policies.sql::3",
+    ], [name for name, _ in EXCLUDED]
 
 
 @pytest.mark.spark

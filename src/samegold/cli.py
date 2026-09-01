@@ -33,7 +33,14 @@ from samegold.verify.invariants import scd2_well_formed
 
 PROFILES = {"fast": FAST, "ci": CI, "full": FULL}
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RENDERED_FILES = ("README.md", "CLAIMS.md")
+RENDERED_FILES = (
+    "README.md",
+    "CLAIMS.md",
+    # The post-mortem quotes SG-04's euro figures. Seeds derive from the commit SHA, so those
+    # figures change on every commit, and hand-typed ones are stale by the next one: they
+    # were invented in the first draft and stale again two commits after being corrected.
+    "docs/postmortem-2026-03-06.md",
+)
 
 
 class UserError(Exception):

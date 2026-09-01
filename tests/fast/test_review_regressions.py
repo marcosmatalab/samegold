@@ -374,3 +374,165 @@ def test_the_databricks_expectations_use_the_contract_reasons_and_are_null_safe(
         f"rule names that are not contract quarantine reasons: {sorted(names)}"
     )
     assert "IS NULL OR" not in block, "a NULL-tolerant rule passes the record it should catch"
+
+
+# ------------------------------------------------------------------ the fifth review
+
+
+def test_the_payload_hash_covers_the_same_columns_in_every_engine() -> None:
+    """`PAYLOAD_COLUMNS` was called "the shared definition" and appeared in one file.
+
+    The reference SQL hand-wrote the list, the SCD2 reference hand-wrote a DIFFERENT one
+    (four columns instead of twelve), and nothing compared them: same hash function, different
+    input, therefore a different induced order, therefore two engines choosing different
+    copies of a colliding pair. A "total order" that is not the SAME order on both sides is
+    not the property the parity claim needs.
+    """
+    from samegold.pipelines.transform import PAYLOAD_COLUMNS
+
+    for name in ("gold_revenue.sql", "gold_scd2.sql"):
+        sql = (REPO / "src" / "samegold" / "oracle" / name).read_text(encoding="utf-8")
+        hashed = sql.split("sha256(", 1)[1]
+        found = [
+            column
+            for column in re.findall(r"COALESCE\((?:CAST\()?(\w+)", hashed[:900])
+            if column in PAYLOAD_COLUMNS
+        ]
+        assert found == list(PAYLOAD_COLUMNS), f"{name} hashes {found}"
+
+
+def test_the_two_hash_functions_really_did_disagree_about_half_the_time() -> None:
+    """The comment in transform.py quotes a measured rate; this is the measurement.
+
+    A figure that appears in a comment and is computed nowhere is a figure nobody can check,
+    which is the habit this whole repository argues against. Two hash functions induce two
+    independent orders on a pair of distinct payloads, so they should disagree on about half
+    of them; the point of running it is that "about half" is a claim about md5 and sha256 and
+    not an assumption.
+    """
+    import hashlib
+    import random
+
+    rng = random.Random(20260901)
+    disagreements = 0
+    pairs = 2000
+    for _ in range(pairs):
+        left = f"order_placed|O{rng.randrange(10**6)}|S{rng.randrange(10**6)}|1"
+        right = f"order_placed|O{rng.randrange(10**6)}|S{rng.randrange(10**6)}|3"
+        md5_order = hashlib.md5(left.encode()).hexdigest() < hashlib.md5(right.encode()).hexdigest()
+        sha_order = (
+            hashlib.sha256(left.encode()).hexdigest() < hashlib.sha256(right.encode()).hexdigest()
+        )
+        disagreements += md5_order != sha_order
+    share = disagreements / pairs
+    assert 0.44 < share < 0.56, f"{share:.2%} of {pairs} pairs, which is not 'about half'"
+
+
+def test_a_close_day_below_one_does_not_crash_the_freshness_rule() -> None:
+    """The clamp was applied to the upper end only, so 0 raised from the other side."""
+    # A day below one is clamped to the first, so all three name the same deadline.
+    assert (
+        close_deadline("2026-01", -5)
+        == close_deadline("2026-01", 0)
+        == close_deadline("2026-01", 1)
+    )
+    now = dt.datetime(2026, 4, 10, 12, tzinfo=dt.UTC)
+    assert evaluate_freshness(now - dt.timedelta(minutes=1), ["2026-03"], now, close_day=0) == []
+
+
+def test_a_close_recorded_for_a_future_month_does_not_silence_the_alert() -> None:
+    """Filtering the floor for SYNTAX was half the fix.
+
+    One entry for a month that has not happened is the lexicographic minimum, the walk stops
+    on its first step, and every month with no close is reported as healthy.
+    """
+    now = dt.datetime(2026, 9, 1, 12, tzinfo=dt.UTC)
+    with_future = [m for m, _ in overdue_months(now, ["2026-01", "2030-01"])]
+    without = [m for m, _ in overdue_months(now, ["2026-01"])]
+    assert with_future == without and len(without) == 6
+    # And a record that contains ONLY future months is no history at all, not a silence.
+    assert [m for m, _ in overdue_months(now, ["2030-01"])] == ["2026-07"]
+
+
+def test_the_repository_facts_rate_can_fall() -> None:
+    """It was Rate(collected, collected): 100% by construction for any suite, however red."""
+    from samegold.claims import _pytest_counts
+
+    assert _pytest_counts("3 failed, 320 passed in 47.04s") == (320, 3)
+    assert _pytest_counts("325 passed in 49.32s") == (325, 0)
+    assert _pytest_counts("1 error in 0.31s") == (0, 1)
+    assert _pytest_counts("something else entirely") == (0, 0)
+
+
+def test_the_amendment_shape_guard_is_not_satisfied_by_the_wrong_shapes(tmp_path: Path) -> None:
+    """It measured distinctness on the raw event_ts STRING and ignored arrival and quantity.
+
+    Three shapes satisfied it while leaving SQL-053 exactly as unscorable as before: an
+    amendment arriving after the last close, two amendments carrying the same new_qty, and
+    two amendments whose timestamps spell one instant in two offsets.
+    """
+    from dataclasses import dataclass
+
+    from samegold.claims import _assert_mutation_shapes_exist
+
+    @dataclass
+    class _Ledger:
+        closes: list[str]
+
+    @dataclass
+    class _Result:
+        ledger: _Ledger
+
+    result = _Result(_Ledger(["2026-02-01T00:00:00+00:00"]))
+
+    def amendment(**overrides: object) -> dict[str, object]:
+        base = {
+            "event_id": "am-1",
+            "event_type": "order_line_amended",
+            "event_ts": "2026-01-10T10:00:00+00:00",
+            "arrival_ts": "2026-01-10T10:05:00+00:00",
+            "order_id": "O1",
+            "sku": "S1",
+            "new_qty": 5,
+        }
+        base.update(overrides)
+        return base
+
+    unscorable = {
+        "arrives-after-the-close": [
+            amendment(),
+            amendment(
+                event_id="am-2",
+                event_ts="2026-01-11T10:00:00+00:00",
+                new_qty=9,
+                arrival_ts="2099-01-01T00:00:00+00:00",
+            ),
+        ],
+        "same-quantity": [
+            amendment(),
+            amendment(event_id="am-2", event_ts="2026-01-11T10:00:00+00:00"),
+        ],
+        "one-instant-two-spellings": [
+            amendment(event_ts="2026-01-10T10:00:00+00:00"),
+            amendment(event_id="am-2", event_ts="2026-01-10T11:00:00+01:00", new_qty=9),
+        ],
+    }
+    for name, rows in unscorable.items():
+        root = tmp_path / name
+        (root / "bronze" / "batch=1").mkdir(parents=True)
+        (root / "bronze" / "batch=1" / "part-00000.json").write_text(
+            "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="amendment-ordering"):
+            _assert_mutation_shapes_exist(root, result, "test")
+
+    scorable = tmp_path / "scorable"
+    (scorable / "bronze" / "batch=1").mkdir(parents=True)
+    (scorable / "bronze" / "batch=1" / "part-00000.json").write_text(
+        json.dumps(amendment())
+        + "\n"
+        + json.dumps(amendment(event_id="am-2", event_ts="2026-01-11T10:00:00+00:00", new_qty=9))
+        + "\n",
+        encoding="utf-8",
+    )
+    _assert_mutation_shapes_exist(scorable, result, "test")
