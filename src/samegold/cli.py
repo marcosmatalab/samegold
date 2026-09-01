@@ -262,6 +262,27 @@ def cmd_refute(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render the close as a single self-contained HTML page."""
+    from samegold.generator.events import generate
+    from samegold.oracle.duckdb_gold import revenue_versions
+    from samegold.serve.report import render_report
+
+    work = _work_dir(args.work)
+    seed = seeds_from_commit(1, purpose="report")[0]
+    result = generate(work / "report", seed=seed, profile=PROFILES[args.profile])
+    closes = [dt.datetime.fromisoformat(c) for c in result.ledger.closes]
+    versions = revenue_versions(work / "report" / "bronze", closes)
+    page = render_report(versions, dt.datetime.now(dt.UTC))
+    out = Path(args.out)
+    out.write_text(page, encoding="utf-8")
+    months = len({version["accounting_month"] for version in versions})
+    print(f"{out} ({len(versions)} versions of {months} months)")
+    if not args.work:
+        shutil.rmtree(work, ignore_errors=True)
+    return 0
+
+
 def cmd_doctor(_: argparse.Namespace) -> int:
     print(f"commit            {current_commit_sha()[:12]}")
     print(f"python            {sys.version.split()[0]}")
@@ -347,6 +368,12 @@ def build_parser() -> argparse.ArgumentParser:
     rf.add_argument("--profile", choices=sorted(PROFILES), default="ci")
     rf.add_argument("--work", default=None)
     rf.set_defaults(func=cmd_refute)
+
+    rp = sub.add_parser("report", help="render the close as one self-contained HTML page")
+    rp.add_argument("--out", default="close-report.html")
+    rp.add_argument("--profile", choices=sorted(PROFILES), default="ci")
+    rp.add_argument("--work", default=None)
+    rp.set_defaults(func=cmd_report)
 
     dr = sub.add_parser("doctor", help="what is installed and what each lane needs")
     dr.set_defaults(func=cmd_doctor)

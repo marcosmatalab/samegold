@@ -24,7 +24,7 @@ def delta_spark():  # type: ignore[no-untyped-def]
     """
     try:
         session = build_session("samegold-delta", mode=StorageMode.DELTA)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         pytest.skip(f"no Spark session available: {type(exc).__name__}: {exc}"[:300])
 
     extensions = session.conf.get("spark.sql.extensions", "")
@@ -38,7 +38,7 @@ def delta_spark():  # type: ignore[no-untyped-def]
         session.sql("SELECT 1").collect()
         probe = session.createDataFrame([(1,)], "x INT")
         probe.write.format("delta").mode("overwrite").save("/tmp/samegold-delta-probe")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         pytest.skip(
             f"the Delta jars could not be resolved ({type(exc).__name__}). This lane needs "
             f"Maven Central and the coordinate {DELTA_COORDINATE}. Detail: {exc}"[:400]
