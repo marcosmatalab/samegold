@@ -293,8 +293,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         print("java              absent    (needed only by the Spark lane)")
     print(f"databricks cli    {shutil.which('databricks') or 'absent'}")
     print(
-        "\nThe fast lane needs none of the optional entries above. "
-        "Run `make fast` (about 15 s) to confirm."
+        "\nThe fast lane needs none of the optional entries above: no JVM, no network, no "
+        "credentials. Run `make fast` to confirm; SG-00 publishes how long it took."
     )
     return 0
 

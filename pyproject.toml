@@ -34,7 +34,15 @@ spark = [
 ]
 # Kept as an extra name so older instructions still work; delta-rs is a core dependency now.
 rust = ["deltalake>=1.6,<2"]
-dev = ["pytest>=8", "pytest-xdist>=3", "hypothesis>=6.100", "ruff>=0.6", "mypy>=1.11"]
+dev = [
+  "pytest>=8",
+  "pytest-xdist>=3",
+  "hypothesis>=6.100",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  # the fast lane parses the declarative pipeline spec to check it against the code
+  "pyyaml>=6",
+]
 
 [project.scripts]
 samegold = "samegold.cli:main"
