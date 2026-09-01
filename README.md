@@ -191,9 +191,14 @@ make refute SEED=<anything>     # every claim, with a seed the author never saw
 ```
 
 Seeds are derived from the commit SHA, so choosing a favourable one means changing the code,
-which changes the seed. A run with `SEED=` is marked `seed_source=override` and can never back
-a published number. If a claim fails under your seed, that is a refutation: open an issue with
-the seed.
+which changes the seed. An override run is refused by the evidence store outright and written
+to `evidence/refutations.jsonl` instead, which is committed: a repository that invites
+refutation should show the ones it has already survived. If a claim fails under your seed,
+that is a refutation, and an issue with the seed in it is the most useful thing anyone can
+send this project.
+
+SG-00 (which counts the repository) and SG-06 (which verifies the evidence chain) are not part
+of a refutation run: neither is a statement about the data.
 
 ## Repository state
 
