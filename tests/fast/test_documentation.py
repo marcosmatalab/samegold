@@ -8,6 +8,7 @@ executes. These tests execute it.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -63,3 +64,42 @@ def test_the_readme_does_not_state_a_test_count_by_hand() -> None:
             assert not re.search(r"\b\d{2,4}\s+tests\b", line), (
                 f"a hand-written test count in the README: {line.strip()}"
             )
+
+
+def test_the_postmortem_quotes_the_published_evidence() -> None:
+    """The euro figures in the post-mortem are SG-04's, or the test fails.
+
+    The first draft of that document invented all four of them: an incident report with made-up
+    numbers, in a repository whose entire argument is that numbers come from runs. An
+    adversarial review checked them against `evidence/runs/SG-04.json` and none matched. This
+    test is the reason it cannot happen again, and it is deliberately exact rather than
+    approximate: a post-mortem that is nearly right about the money is wrong.
+    """
+    record = json.loads((REPO / "evidence" / "runs" / "SG-04.json").read_text(encoding="utf-8"))
+    january = next(
+        month
+        for month in record["artifacts"]["months_that_moved"]
+        if month["accounting_month"] == "2026-01"
+    )
+    text = (REPO / "docs" / "postmortem-2026-03-06.md").read_text(encoding="utf-8")
+
+    def spanish(cents: int) -> str:
+        """67269342 -> '672 693,42', the way the document writes money.
+
+        Spanish convention: a space groups the thousands and a comma separates the decimals.
+        Both are plain ASCII on purpose. A non-breaking space would look identical in the
+        rendered document and would make this test compare two things a reader cannot tell
+        apart, which is how a green assertion stops meaning anything.
+        """
+        whole, fraction = divmod(abs(int(cents)), 100)
+        grouped = f"{whole:,}".replace(",", " ")
+        return f"{grouped},{fraction:02d}"
+
+    for cents in (
+        january["first_close_net_cents"],
+        january["final_net_cents"],
+        january["delta_cents"],
+    ):
+        assert spanish(cents) in text, f"{spanish(cents)} EUR is not in the post-mortem"
+    assert f"{abs(january['delta_pct']):.2f}".replace(".", ",") in text
+    assert str(january["versions"]) in text

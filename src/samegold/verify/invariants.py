@@ -81,6 +81,18 @@ def conservation(
     ingested = accepted + quarantined + rescued + deduplicated. This is the invariant that
     catches the failure nobody notices: records that vanish because a filter dropped them
     and no counter moved.
+
+    A WARNING about how to use it, learned from an adversarial review that pointed out this
+    function was doing nothing. If all five arguments come from the same query, the identity
+    is algebraic and it can never fail: substitute the definitions in ``_COUNTS_SQL`` and the
+    sum reduces to ``raw_lines`` for any input whatsoever. It was being called exactly that
+    way, and it passed on every seed for the same reason 1 = 1 passes.
+
+    It means something only when the two sides come from DIFFERENT derivations. The caller in
+    claims.py now passes the ingested count from the GENERATOR's ledger (which knows how many
+    lines it wrote, because it wrote them) against the reference's accounting of what it
+    found. That is a real cross-check, and see ``conservation_against_ledger`` below for the
+    stronger one it is paired with.
     """
     total = accepted + quarantined + rescued + deduplicated
     if total != ingested:
@@ -168,3 +180,40 @@ ALL_INVARIANTS = (
     "restatement_monotonic",
     "returns_never_exceed_sales",
 )
+
+
+def conservation_against_ledger(
+    ledger_counts: Mapping[str, int], reference: Mapping[str, int]
+) -> list[Violation]:
+    """The generator's own record of what it wrote, against the reference's accounting of it.
+
+    Three quantities, each known independently on both sides:
+
+      * how many lines exist in the files. The generator counted them as it wrote; the
+        reference counts the bytes back. A mismatch means a line was lost between writing
+        and reading, which is the one failure a self-consistent SQL query cannot see.
+      * how many DISTINCT event_ids there are. The generator knows because it built them;
+        the reference derives it by deduplicating. A mismatch means the deduplication key is
+        wrong, in either direction.
+      * how many duplicate copies were written. Same two independent sources.
+
+    This is the invariant the previous ``conservation`` call was supposed to be and was not.
+    """
+    violations: list[Violation] = []
+    pairs = [
+        ("lines_written", int(ledger_counts["events_written"]), int(reference["raw_lines"])),
+        ("unique_events", int(ledger_counts["unique_events"]), int(reference["unique_events"])),
+        ("duplicates", int(ledger_counts["duplicates"]), int(reference["duplicates"])),
+    ]
+    for name, expected, found in pairs:
+        if expected != found:
+            violations.append(
+                {
+                    "kind": "conservation_against_ledger",
+                    "quantity": name,
+                    "ledger": expected,
+                    "reference": found,
+                    "difference": found - expected,
+                }
+            )
+    return violations

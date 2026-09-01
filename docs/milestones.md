@@ -24,7 +24,7 @@ the ones already done carry their measured cost.
 | M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |
 | M16 | runbook, on-call notes, and the alert for a restatement larger than a declared threshold (the post-mortem itself is written: `docs/postmortem-2026-03-06.md`) | | 5 |
 
-Remaining: about 64 hours.
+Remaining: about 63 hours.
 
 ## Order and why
 

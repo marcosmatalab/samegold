@@ -225,5 +225,110 @@ def probe_structural_assumption(bronze_dir: Path, as_of: str) -> dict[str, Any]:
     }
 
 
+def probe_order_free_comparison(reference_sql: str, bronze_dir: Path, as_of: str) -> dict[str, Any]:
+    """Two mutants are classified equivalent because "the comparison sorts anyway". Check it.
+
+    The argument is that the final ORDER BY is presentation: every published comparison goes
+    through a canonical digest that sorts by the projection's total order first. That is a
+    claim about `verify/digest.py`, not about the SQL, and it is checkable directly: digest
+    the reference's rows, digest the SAME rows in reverse, and require the two to be equal.
+
+    A digest that did not sort would fail this, and the two mutants would immediately stop
+    being equivalent. That is what makes the classification conditional rather than
+    convenient.
+    """
+    from samegold.verify.digest import REVENUE_PROJECTION, CanonicalDigest
+
+    con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
+    try:
+        cursor = con.execute(
+            reference_sql, {"glob": str(bronze_dir / "**" / "*.json"), "as_of": as_of}
+        )
+        names = [description[0] for description in cursor.description or []]
+        rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+    finally:
+        con.close()
+    # The reference emits one close, so close_version and restated_at are constants here; the
+    # projection needs them present to hash the row at all.
+    stamped = [
+        dict(row, close_version=0, restated_at=as_of, restatement_reason="first close")
+        for row in rows
+    ]
+    forward = CanonicalDigest.of(stamped, REVENUE_PROJECTION)
+    backward = CanonicalDigest.of(list(reversed(stamped)), REVENUE_PROJECTION)
+    return {
+        "assumption": "comparison-is-order-free",
+        "statement": ASSUMPTIONS["comparison-is-order-free"],
+        "rows": len(stamped),
+        "digest_forward": forward.hexdigest,
+        "digest_reversed": backward.hexdigest,
+        "verdict": (
+            "holds: the digest of a permuted result is identical, so the final ORDER BY "
+            "cannot change a published answer"
+            if forward.hexdigest == backward.hexdigest
+            else "VIOLATED: the comparison depends on row order and the equivalence class is void"
+        ),
+    }
+
+
+def probe_orphan_returns_are_excluded(
+    reference_sql: str, bronze_dir: Path, as_of: str
+) -> dict[str, Any]:
+    """One mutant is equivalent because orphan returns contribute to nothing. Check it.
+
+    The argument is that turning a LEFT JOIN into an INNER JOIN is harmless because the rows
+    it drops are exactly the ones the classification labels ``return_without_order`` and
+    every aggregate then excludes. So: compute the close, ADD an orphan return to the input,
+    compute it again, and require the two to be identical.
+
+    If an orphan ever reached an output column, this diverges and the mutant is no longer
+    equivalent - which is the point of writing a control rather than an argument.
+    """
+    con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
+
+    def close(glob: str) -> list[tuple[Any, ...]]:
+        return con.execute(reference_sql, {"glob": glob, "as_of": as_of}).fetchall()
+
+    try:
+        before = close(str(bronze_dir / "**" / "*.json"))
+        with tempfile.TemporaryDirectory(prefix="samegold-orphan-") as tmp:
+            root = Path(tmp) / "bronze"
+            (root / "batch=orphan").mkdir(parents=True)
+            for source in sorted(bronze_dir.rglob("*.json")):
+                target = root / source.relative_to(bronze_dir)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
+            orphan = {
+                "event_id": "rt-orphan-0",
+                "event_type": "return_registered",
+                "event_ts": "2026-02-01T10:00:00+00:00",
+                "arrival_ts": "2026-02-01T10:05:00+00:00",
+                "order_id": "ORDER-THAT-DOES-NOT-EXIST",
+                "sku": "SKU-THAT-DOES-NOT-EXIST",
+                "qty": 3,
+                "return_id": "R-orphan",
+                "reason": "size",
+            }
+            (root / "batch=orphan" / "part-00000.json").write_text(
+                json.dumps(orphan) + "\n", encoding="utf-8"
+            )
+            after = close(str(root / "**" / "*.json"))
+    finally:
+        con.close()
+    return {
+        "assumption": "orphan-returns-are-excluded-downstream",
+        "statement": ASSUMPTIONS["orphan-returns-are-excluded-downstream"],
+        "rows_before": len(before),
+        "rows_after": len(after),
+        "verdict": (
+            "holds: adding a return that matches no sale changes no output column"
+            if before == after
+            else "VIOLATED: an orphan return reached the close and the equivalence class is void"
+        ),
+    }
+
+
 def unused(_: Mutant) -> None:  # pragma: no cover - keeps the Mutant import meaningful
     return None

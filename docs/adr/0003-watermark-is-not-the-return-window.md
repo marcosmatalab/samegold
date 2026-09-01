@@ -17,8 +17,15 @@ watermark silently drops the returns that are the entire point of the domain.
 
 ## Decision
 
-- The **watermark is 2 hours** and governs arrival lateness only: streaming deduplication
-  state and nothing else.
+- The **watermark is 2 hours** and would govern arrival lateness only: streaming
+  deduplication state and nothing else. It is declared as `WATERMARK_DELAY` in
+  `src/samegold/domain/contract.py` and, as of this writing, **is read by no code**: the
+  pipeline in this repository deduplicates statelessly at the gold boundary and has no
+  `withWatermark` anywhere. An adversarial review found this ADR describing a mechanism the
+  repository does not contain, which is the failure mode a design document invites. The
+  constant stays because the number is part of the contract and the Databricks lane's
+  streaming tables are where it would be applied; the claim that it is applied has been
+  removed.
 - **Business lateness is not a streaming concern.** A late return is a normal fact with an old
   event time. It is joined to its sale by key, imputed to the sale's month, and produces a new
   **version** of an already-closed month.
@@ -33,7 +40,9 @@ true version: invariance under permutations that preserve watermark order.
 
 ## Consequence worth knowing
 
-A duplicate that arrives after the watermark has expired the state that would recognise it
-escapes streaming deduplication. That escape rate is a measurable quantity, not zero, and the
-close protects itself from it with a second, stateless deduplication by `event_id` at the
-gold boundary.
+A duplicate that arrives after a watermark has expired the state that would recognise it
+escapes streaming deduplication. That escape rate is a measurable quantity and it is not
+zero, which is why the close does not depend on streaming deduplication at all: it
+deduplicates by `event_id` at the gold boundary, statelessly, over the whole history. That is
+more expensive and it is correct regardless of arrival order, which is the trade this project
+takes. SG-02 measures it: a full re-delivery of every file leaves the digest unchanged.

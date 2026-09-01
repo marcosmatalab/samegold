@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS {catalog}.main.revenue_closed (
     gross_cents      BIGINT,
     returns_cents    BIGINT,
     net_cents        BIGINT,
+    line_count       BIGINT,
+    return_count     BIGINT,
+    returns_rejected_count BIGINT,
     restated_at      TIMESTAMP,
     restatement_reason STRING
 ) USING DELTA CLUSTER BY (accounting_month)
@@ -27,20 +30,47 @@ CREATE TABLE IF NOT EXISTS {catalog}.main.revenue_closed (
 # COMMAND ----------
 # The version is (max existing) + 1 per month, and the insert is idempotent on
 # (accounting_month, close_version): a retried job must not create version 2 twice.
+#
+# Two conditions in the source below carry the whole bitemporal rule, and both were missing
+# from the first version of this task:
+#
+#   * a month is closed only once the close instant is in a LATER accounting month. Without
+#     it, the partial view of the month in progress is signed off as version 0 and every
+#     subsequent close restates it, for ever.
+#   * a version is recorded only when a VALUE CHANGED. Without it, every scheduled close
+#     appends a version that says exactly what the previous one said, and "restatement"
+#     stops meaning anything. This is the rule domain/bitemporal.py states in Python and
+#     pipelines/transform.revenue_versions derives in Spark; this is the third derivation.
 spark.sql(f"""
 MERGE INTO {catalog}.main.revenue_closed AS t
 USING (
+    WITH latest AS (
+        SELECT accounting_month, gross_cents, returns_cents, net_cents,
+               line_count, return_count, returns_rejected_count, close_version
+        FROM (
+            SELECT *, row_number() OVER (PARTITION BY accounting_month
+                                         ORDER BY close_version DESC) AS rn
+            FROM {catalog}.main.revenue_closed
+        ) WHERE rn = 1
+    )
     SELECT r.accounting_month,
-           COALESCE(v.next_version, 0) AS close_version,
+           COALESCE(l.close_version + 1, 0) AS close_version,
            r.gross_cents, r.returns_cents, r.net_cents,
+           r.line_count, r.return_count, r.returns_rejected_count,
            TIMESTAMP'{as_of}' AS restated_at,
-           CASE WHEN COALESCE(v.next_version, 0) = 0 THEN 'first close'
+           CASE WHEN l.close_version IS NULL THEN 'first close'
                 ELSE 'late arrivals after close' END AS restatement_reason
     FROM {catalog}.main.revenue_by_month r
-    LEFT JOIN (
-        SELECT accounting_month, MAX(close_version) + 1 AS next_version
-        FROM {catalog}.main.revenue_closed GROUP BY accounting_month
-    ) v USING (accounting_month)
+    LEFT JOIN latest l USING (accounting_month)
+    WHERE date_format(from_utc_timestamp(TIMESTAMP'{as_of}', 'Europe/Madrid'), 'yyyy-MM')
+              > r.accounting_month
+      AND (l.accounting_month IS NULL
+           OR l.gross_cents           <> r.gross_cents
+           OR l.returns_cents         <> r.returns_cents
+           OR l.net_cents             <> r.net_cents
+           OR l.line_count            <> r.line_count
+           OR l.return_count          <> r.return_count
+           OR l.returns_rejected_count <> r.returns_rejected_count)
 ) AS s
 ON t.accounting_month = s.accounting_month AND t.close_version = s.close_version
 WHEN NOT MATCHED THEN INSERT *

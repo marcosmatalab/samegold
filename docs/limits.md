@@ -7,7 +7,7 @@ The residual risk, listed before the results rather than after them.
 - The fast lane: the generator, the reference, the digest's refusals, the invariants, the
   statistics, the mutation engine and its assumption probes, the SCD2 logic (including a
   property test over out-of-order arrivals), the governance controls, and the evidence gate
-  with the three forgery attacks that used to work.
+  with the eleven forgery attacks that used to work.
 - The Spark lane **without Delta**: the Spark implementation and the DuckDB reference agree on
   the whole versioned close and on the customer dimension; the digest is unchanged at 2 and at
   16 shuffle partitions, and unchanged when the input is repartitioned so the rows arrive in a

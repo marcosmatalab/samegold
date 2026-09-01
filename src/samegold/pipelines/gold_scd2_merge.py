@@ -77,6 +77,12 @@ def F_col_in(column: str, values: list[str]) -> Any:
     return F.col(column).isin(values) if values else F.lit(False)
 
 
+def F_col(column: str) -> Any:
+    from pyspark.sql import functions as F
+
+    return F.col(column)
+
+
 def upsert_scd2(spark: Any, batch: DataFrame, table: str) -> dict[str, int]:
     """Apply one batch of customer versions to the Type 2 dimension.
 
@@ -119,26 +125,40 @@ def upsert_scd2(spark: Any, batch: DataFrame, table: str) -> dict[str, int]:
     # would work and would also make every run look like a full rewrite in the Delta history,
     # which destroys the change data feed as a source of information.
     before = {(row["customer_id"], row["valid_from"]): row for row in current}
+    wanted = {(row["customer_id"], row["valid_from"]) for row in desired}
     changed = [row for row in desired if before.get((row["customer_id"], row["valid_from"])) != row]
-    if not changed:
-        return {"applied": 0, "rows_written": 0, "dimension_rows": len(desired)}
+    # Rows the recomputed dimension NO LONGER CONTAINS have to go. An upsert-only MERGE has
+    # no way to say that, and the omission was invisible for as long as the tests only ever
+    # added intervals: a late correction that collapses two intervals into one, or re-splits
+    # an existing one, leaves the superseded row behind for ever, and the table then has two
+    # rows with is_current = true and a closed row whose valid_to points at an interval that
+    # does not exist. The structural invariant catches it (open_rows = 2) only if something
+    # runs it, so tests/delta now applies a third batch that is a correction, which is the
+    # shape that produced the stale row.
+    obsolete = [key for key in before if key not in wanted]
+    if not changed and not obsolete:
+        return {"applied": 0, "rows_written": 0, "deleted": 0, "dimension_rows": len(desired)}
 
-    source = spark.createDataFrame(
-        [{column: row[column] for column in TARGET_COLUMNS} for row in changed]
-    )
-    (
-        target.alias("t")
-        .merge(
-            source.alias("s"),
-            "t.customer_id = s.customer_id AND t.valid_from = s.valid_from",
+    if changed:
+        source = spark.createDataFrame(
+            [{column: row[column] for column in TARGET_COLUMNS} for row in changed]
         )
-        .whenMatchedUpdateAll()
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
+        (
+            target.alias("t")
+            .merge(
+                source.alias("s"),
+                "t.customer_id = s.customer_id AND t.valid_from = s.valid_from",
+            )
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+    for customer_id, valid_from in obsolete:
+        target.delete((F_col("customer_id") == customer_id) & (F_col("valid_from") == valid_from))
     return {
         "applied": len(incoming),
         "rows_written": len(changed),
+        "deleted": len(obsolete),
         "dimension_rows": len(desired),
         "keys_touched": len(keys),
     }

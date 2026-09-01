@@ -6,8 +6,8 @@ harness whose whole job is to prove that it doesn't.**
 A retail lakehouse (orders, amendments, returns) on Delta Lake and Spark, plus `samegold`: a
 differential harness that generates the data *and* the ledger of what the answer must be,
 computes the close twice in two engines, kills the pipeline at named structural points,
-mutates the transformation code, measures what file layout costs, and publishes what it could
-**not** catch.
+mutates the reference SQL and the specification itself, measures what file layout costs, and
+publishes what it could **not** catch.
 
 Every number below is rendered from `evidence/history.jsonl`. That file is hash-chained and
 its records are refused unless their seeds derive from the commit they name, so editing a
@@ -26,7 +26,7 @@ figure by hand breaks a test rather than improving a README.
 git clone https://github.com/marcosmatalab/samegold && cd samegold
 make demo      # ~10 s, no account, no credentials, no JVM
 make report    # one self-contained HTML page: the close, its versions, what moved
-make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->288<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->37.1<!--/sg--> s
+make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->304<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->42.8<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
 
@@ -34,7 +34,7 @@ make evidence  # regenerates every number except SG-07's (that one needs a JVM: 
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 288/288 (95% CI 98.7%-100.0%) | oss-local | local run, not reproduced in CI |
+| `SG-00` what this repository contains, counted | PASS | 304/304 (95% CI 98.8%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-03` mutation campaign | PASS | 48/48 (95% CI 92.6%-100.0%) | oss-local | local run, not reproduced in CI |
@@ -143,9 +143,12 @@ else's repository. Each of those is now a test that fails, and the defences are:
    were drawn for; the store recomputes them and refuses records whose seeds were chosen.
    Runs made with `SAMEGOLD_SEED_OVERRIDE` are refused outright and go to a separate
    refutation log.
-3. **Anchors outside the file.** Every record must name a commit that exists in this
-   repository, records must be in time order, and each `runs/<claim>.json` must hash to the
-   record it claims to be.
+3. **Anchors outside the file.** Records must be in time order, each `runs/<claim>.json`
+   must hash to the record it claims to be, and every record must name a commit that exists
+   in this repository. That last check is conditional on purpose: it applies only when at
+   least one recorded commit resolves in the checkout, because otherwise a fork, a shallow
+   clone or a downloaded tarball would be told its evidence was forged. The honest reading
+   is that the commit anchor protects the lineage it was written in, and nothing else.
 
 **What it does not stop, stated plainly:** anyone who can run this code can regenerate the
 whole chain, and a chain regenerated from scratch with invented figures verifies. There is no
@@ -163,7 +166,7 @@ same on any machine:
   of the files;
 - clustering by (month, sku) cut the share of the table a sku predicate has to read by
   **<!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->%** — **and by nothing at all**
-  at large file sizes, where three files cover the whole key range. Both measurements are
+  at large file sizes, where the two files it produces cover the whole key range. Both are
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
 - deleting one month copied
@@ -205,7 +208,7 @@ of a refutation run: neither is a statement about the data.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->288<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->37.1<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->304<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->42.8<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->10<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

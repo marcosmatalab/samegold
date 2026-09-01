@@ -47,13 +47,18 @@ def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime)
         by_month.setdefault(str(row["accounting_month"]), []).append(dict(row))
 
     rows_html: list[str] = []
-    moved = 0
+    # A month "moved" if it has more than one version, not if its NET moved. Those are not
+    # the same question and the page used to ask the second while highlighting rows by the
+    # first: a restatement where gross and returns both rose by 500 cents leaves net
+    # unchanged, so the table showed an orange restated row with a change of 0,00 while the
+    # sentence above it said "0 of 1 months moved after they were signed off". The figure in
+    # the lede now counts the same thing the highlighting marks.
+    restated_months = 0
     for month in sorted(by_month):
         series = sorted(by_month[month], key=lambda r: int(r["close_version"]))
-        first, last = series[0], series[-1]
-        delta = int(last["net_cents"]) - int(first["net_cents"])
-        if delta:
-            moved += 1
+        first = series[0]
+        if len(series) > 1:
+            restated_months += 1
         for row in series:
             restated = int(row["close_version"]) > 0
             classes = ' class="restated"' if restated else ""
@@ -78,7 +83,7 @@ def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime)
 <h1>Monthly close</h1>
 <p class="lede">Generated {html.escape(generated_at.isoformat(timespec="seconds"))} from
 gold.revenue_by_month. Every version is shown: a close is never rewritten, and
-{moved} of {len(by_month)} months moved after they were signed off.</p>
+{restated_months} of {len(by_month)} months were restated after they were signed off.</p>
 <p class="note">Highlighted rows are restatements: a return arrived up to 45 days after the
 sale and is imputed to the month of the sale, so a month that had already been closed changed.
 The change column is measured against version 0, the figure finance signed.</p>

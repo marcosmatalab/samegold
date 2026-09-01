@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from samegold.faults.barrier import EXIT_CODE
-from samegold.faults.points import SILVER_POINTS
+from samegold.faults.points import GOLD_POINTS, REACHABLE, SILVER_POINTS
 from samegold.verify.digest import Projection
 from samegold.verify.stats import rule_of_three_upper
 
@@ -76,6 +76,13 @@ class CampaignResult:
             "runs": self.runs,
             "points_covered": len(self.per_point),
             "points_total": len(SILVER_POINTS),
+            # The campaign injects at the points the SILVER writer owns. The gold-stage
+            # points are reachable in principle and are not exercised, and saying so here is
+            # the difference between "each structural point" (which the claim used to say,
+            # and which was false: two of the four reachable points were never touched) and
+            # a bound that means what it says.
+            "reachable_points_total": len(REACHABLE),
+            "reachable_points_not_covered": [point.name for point in GOLD_POINTS],
             "divergences": self.divergences,
             "missed_injections": self.missed_injections,
             "per_point": self.per_point,

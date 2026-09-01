@@ -8,7 +8,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 288/288 (95% CI 98.7%-100.0%) | oss-local | local run, not reproduced in CI |
+| `SG-00` what this repository contains, counted | PASS | 304/304 (95% CI 98.8%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-03` mutation campaign | PASS | 48/48 (95% CI 92.6%-100.0%) | oss-local | local run, not reproduced in CI |
@@ -115,7 +115,10 @@ kept because in production there is no ledger and shape is all there is.
 ## SG-06 — the evidence chain verifies and every seed derives from its commit
 
 **Experiment.** Recompute the hash chain over `evidence/history.jsonl` and re-derive the seeds
-of every record from the commit it names. Result: <!--sg:SG-06.rate-->8/8 (95% CI 67.6%-100.0%)<!--/sg-->.
+of every record from the commit it names. The count is the records present **at the moment
+this claim ran**: SG-06 is ordered last in `ALL_CLAIMS` so a full `samegold evidence` covers
+everything before it, but a later single-claim run (`make faults`, a re-run of SG-00) appends
+after it and is therefore not in this number. Result: <!--sg:SG-06.rate-->8/8 (95% CI 67.6%-100.0%)<!--/sg-->.
 
 **Why it exists.** The first version of this claim recomputed the seeds and compared them with
 themselves; it passed on a repository whose evidence had been forged by appending two lines to
@@ -125,11 +128,16 @@ a JSON file. This version verifies the artefact rather than the function.
 that a run URL exists; the gate checks the shape and the commit, and the renderer prints
 anything without one as a local run.
 
-## SG-07 — the close survives a crash at each structural point
+## SG-07 — the silver writer survives a crash at each of its structural points
 
-**Experiment.** For each structural point the writer owns, kill the process with `os._exit`
-inside `foreachBatch`, restart from the checkpoint, and compare two digests of silver: the
-deduplicated content, and the multiset of copies per event.
+**Experiment.** For each structural point of the SILVER writer, kill the process with
+`os._exit` inside `foreachBatch`, restart from the checkpoint, and compare two digests of
+silver: the deduplicated content, and the multiset of copies per event.
+
+**Scope, exactly.** `faults/points.py` enumerates four reachable points, two in the silver
+stage and two in the gold stage. The campaign injects at the **two silver ones**; the record
+carries `reachable_points_not_covered` so the gap is in the evidence rather than in a reader's
+assumption. The claim used to say "each structural point", which was false by half.
 
 **The negative control is what makes the claim falsifiable.** The same campaign runs against a writer that appends
 instead of overwriting — the hopeful version most pipelines ship. The content digest does
@@ -138,10 +146,12 @@ If the control is ever undetected, the claim fails: a crash test that cannot fai
 screenshot. That blindness was found by an adversarial review copying a batch directory and
 watching the number stay still.
 
-**Does not show** crash safety of the engine. The points inside a Delta commit, a state-store
-checkpoint or a multi-part object-storage commit are listed with `reachable=False` and
-reported as NOT COVERED; reaching them means instrumenting the engine, at which point the
-program under test is not the program that gets deployed.
+**Does not show** crash safety of the engine, and does not cover the gold writer. The points
+inside a Delta commit, a state-store checkpoint or a multi-part object-storage commit are
+listed with `reachable=False`: reaching them means instrumenting the engine, at which point
+the program under test is not the program that gets deployed. The two gold-stage points are
+reachable and simply not yet exercised, which is a smaller and more embarrassing gap, and is
+published as one.
 
 ## SG-08 — no direct identifier reaches gold, and a purge really purges
 
@@ -166,14 +176,18 @@ compaction, clustering at two file sizes, partitioning versus clustering on two 
 and the copy cost of a delete. Result: <!--sg:SG-09.rate-->5/5 (95% CI 56.6%-100.0%)<!--/sg-->.
 
 **One of the five checks is a negative result, and it has to pass.** Clustering by
-(month, sku) does nothing for a sku predicate when the table has three files, because three
+(month, sku) does nothing for a sku predicate when the clustered table has two files, because two
 files cover the whole key range; at a smaller target size it cuts the share of the table that
 must be read by <!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->%. The headline is
 a share and not a byte ratio because Z-ORDER rewrites and recompresses, and a byte ratio takes
 credit for that too: an adversarial review caught exactly that arithmetic.
 
-The file counts are reproducible run to run; the byte counts vary by about a tenth of a per
-cent because the parquet writer does, and the range is published rather than rounded away.
+The file counts are reproducible run to run; the byte counts are not, because the parquet
+writer is not. The published figure is therefore the SHARE, measured over repetitions, and
+`share_read_reduction_pct_range` in the record carries its range across those repetitions
+(currently a single value, because the share does not move even though the bytes do, which is
+the reason the share is the published quantity). The raw byte counts under `measurements` are
+from the first repetition and are there to be inspected, not to be quoted.
 
 **Does not show** latency or money. No timing is measured, on purpose, and DBU cost needs an
 account console Free Edition does not have.

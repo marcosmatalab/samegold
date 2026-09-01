@@ -139,33 +139,82 @@ class DuckDBWitness:
 
 
 _COUNTS_SQL = """
+-- The columns are DECLARED here for the same reason they are declared in gold_revenue.sql:
+-- with union_by_name the schema depends on which files happened to arrive, so a batch with
+-- no amendment in it has no `new_qty` column and every query that mentions one fails with a
+-- binder error. A counting query that only works on some inputs cannot back an invariant.
 WITH raw AS (
-    SELECT * FROM read_json($glob, format = 'newline_delimited', union_by_name = true,
-                            ignore_errors = true, filename = true)
+    SELECT * FROM read_json($glob, format = 'newline_delimited',
+                            ignore_errors = true, filename = true,
+                            columns = {
+                                'event_id': 'VARCHAR', 'event_type': 'VARCHAR',
+                                'event_ts': 'VARCHAR', 'arrival_ts': 'VARCHAR',
+                                'order_id': 'VARCHAR', 'customer_id': 'VARCHAR',
+                                'sku': 'VARCHAR', 'qty': 'JSON', 'new_qty': 'JSON',
+                                'unit_price_cents': 'JSON', 'currency': 'VARCHAR',
+                                'return_id': 'VARCHAR', 'reason': 'VARCHAR',
+                                'segment': 'VARCHAR', 'country': 'VARCHAR',
+                                'boundary': 'VARCHAR'
+                            })
+),
+-- Same JSON-typed conversion as gold_revenue.sql: a float or a quoted number is not an
+-- integer, and this query's buckets have to match the Spark pipeline's, which nulls both.
+typed AS (
+    SELECT * EXCLUDE (qty, new_qty, unit_price_cents),
+           CASE WHEN json_type(qty) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(qty AS BIGINT) END AS qty,
+           CASE WHEN json_type(new_qty) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(new_qty AS BIGINT) END AS new_qty,
+           CASE WHEN json_type(unit_price_cents) IN ('BIGINT', 'UBIGINT')
+                THEN CAST(unit_price_cents AS BIGINT) END AS unit_price_cents
+    FROM raw
 ),
 tagged AS (
     SELECT *,
-           row_number() OVER (PARTITION BY event_id ORDER BY CAST(event_ts AS TIMESTAMPTZ)) AS rn
-    FROM raw WHERE event_id IS NOT NULL
+           row_number() OVER (PARTITION BY event_id
+                              ORDER BY TRY_CAST(event_ts AS TIMESTAMPTZ)) AS rn
+    FROM typed WHERE event_id IS NOT NULL
 ),
 unique_events AS (SELECT * FROM tagged WHERE rn = 1),
+-- The SAME closed enum as the quarantine_reason() expression in
+-- src/samegold/pipelines/transform.py, branch for branch and in the same order, because the
+-- conservation invariant compares this accounting with that pipeline's.
+--
+-- Both are NULL-safe on purpose: a comparison against a missing column is NULL, not false,
+-- and the first version of the Spark side let a record with no `currency` fall through every
+-- branch to 'accepted' while this query excluded it. Two implementations that disagree about
+-- which bucket a record is in are two implementations that will disagree about the close as
+-- soon as such a record exists.
 classified AS (
     SELECT
         CASE
-            WHEN event_type NOT IN ('order_placed','order_line_amended',
-                                    'return_registered','customer_upserted')
+            WHEN event_type IS NULL
+                 OR event_type NOT IN ('order_placed','order_line_amended',
+                                       'return_registered','customer_upserted')
                 THEN 'unknown_event_type'
-            WHEN event_type = 'order_placed' AND (order_id IS NULL OR sku IS NULL
-                                                  OR customer_id IS NULL OR qty IS NULL)
+            WHEN TRY_CAST(event_ts AS TIMESTAMPTZ) IS NULL
+                 OR TRY_CAST(arrival_ts AS TIMESTAMPTZ) IS NULL
                 THEN 'missing_required_field'
-            WHEN event_type = 'order_placed' AND CAST(qty AS BIGINT) <= 0
+            WHEN event_type = 'order_placed' AND (order_id IS NULL OR sku IS NULL
+                                                  OR customer_id IS NULL OR qty IS NULL
+                                                  OR unit_price_cents IS NULL
+                                                  OR currency IS NULL)
+                THEN 'missing_required_field'
+            WHEN event_type = 'order_line_amended' AND (order_id IS NULL OR sku IS NULL
+                                                        OR new_qty IS NULL)
+                THEN 'missing_required_field'
+            WHEN event_type = 'return_registered' AND (order_id IS NULL OR sku IS NULL
+                                                       OR qty IS NULL)
+                THEN 'missing_required_field'
+            WHEN event_type = 'customer_upserted' AND customer_id IS NULL
+                THEN 'missing_required_field'
+            WHEN event_type IN ('order_placed','return_registered')
+                 AND CAST(qty AS BIGINT) <= 0
                 THEN 'non_positive_quantity'
             WHEN event_type = 'order_placed' AND CAST(unit_price_cents AS BIGINT) < 0
                 THEN 'negative_price'
             WHEN event_type = 'order_placed' AND currency <> 'EUR'
                 THEN 'unknown_currency'
-            WHEN event_type = 'return_registered' AND CAST(qty AS BIGINT) <= 0
-                THEN 'non_positive_quantity'
             ELSE 'accepted'
         END AS bucket
     FROM unique_events
