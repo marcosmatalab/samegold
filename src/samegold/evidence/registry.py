@@ -33,7 +33,14 @@ CLAIM_TITLES: dict[str, str] = {
     "SG-09": "what layout costs, in files and bytes",
 }
 
+# Every stream this repository draws from, including the three that never reach a published
+# record: `samegold demo`, `samegold generate` and `samegold report` each draw a seed, and the
+# module docstring calls this "the seed streams that exist". A list that omits three of them
+# is a list that says something false about itself.
 SEED_PURPOSES: tuple[str, ...] = (
+    "demo",
+    "generator",
+    "report",
     "facts",
     "witness",
     "redelivery",

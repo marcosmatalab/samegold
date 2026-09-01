@@ -10,8 +10,14 @@ party able to disprove it:
     produced on someone's laptop and the renderer marks it as such, in the README, in words;
   * the exact versions of the engines, so that "green" cannot quietly mean "green on a
     version nobody runs any more";
-  * the digest of the deployable artefact, which is how the fault-injection runs prove they
-    exercised the same program that gets deployed rather than an instrumented copy.
+  * the git TREE the run executed and whether it was committed, because the commit SHA
+    anchors the seeds and nothing else: two records at one commit can disagree about their
+    own denominators, and until the tree was recorded nothing could tell an honest
+    re-measurement from retry-until-green;
+  * the digest of the pipeline sources, recorded by the crash campaign so that a reader can
+    check the injected runs and the clean runs against the same code. RECORDED, not enforced,
+    and it says so where the function is defined - an earlier version of this list claimed it
+    "proved" something, while the field was null in every record in the history.
 """
 
 from __future__ import annotations

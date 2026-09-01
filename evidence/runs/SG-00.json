@@ -4,16 +4,16 @@
     "adrs": 9,
     "deselected_in_this_run": "tests/fast/test_evidence_gate.py::test_the_repository_documents_are_consistent_with_its_evidence",
     "fast_lane_green": false,
-    "fast_lane_seconds": 50.2,
+    "fast_lane_seconds": 48.2,
     "markdown_documents": 17,
-    "python_modules": 50,
-    "source_lines": 8421,
-    "test_lines": 3335,
+    "python_modules": 51,
+    "source_lines": 8747,
+    "test_lines": 3565,
     "tests_delta": 6,
     "tests_failed": 1,
-    "tests_fast": 331,
-    "tests_passed": 329,
-    "tests_spark": 41
+    "tests_fast": 335,
+    "tests_passed": 333,
+    "tests_spark": 52
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -28,11 +28,11 @@
     "python": "3.11.15",
     "sqlglot": "30.17.0"
   },
-  "hash": "709e7f29db2c8a4787adf9757b06595e",
+  "hash": "a008d993905da8d3ca91fd8475a510df",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "adf56dc56f482d3d66420d5110b256b0",
+  "prev": "bdc4f7d2c6113bd92b4af39d6d01a8a9",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -41,32 +41,32 @@
       "claim_id": "SG-00",
       "description": "the fast lane is red",
       "payload": {
-        "tail": "[1].split(\"<!--/sg-->\", 1)[0]\n>           assert rendered == str(artifacts[field]), f\"{field}: {rendered!r} != {artifacts[field]!r}\"\nE           AssertionError: worst_first_close_eur: '662 481,62' != '643 468,28'\nE           assert '662 481,62' == '643 468,28'\nE             \nE             - 643 468,28\nE             + 662 481,62\n\ntests/fast/test_documentation.py:87: AssertionError\n=========================== short test summary info ============================\nFAILED tests/fast/test_documentation.py::test_the_postmortem_quotes_the_published_evidence\n1 failed, 329 passed, 1 deselected in 49.43s\n"
+        "tail": "[1].split(\"<!--/sg-->\", 1)[0]\n>           assert rendered == str(artifacts[field]), f\"{field}: {rendered!r} != {artifacts[field]!r}\"\nE           AssertionError: worst_first_close_eur: '662 481,62' != '598 396,86'\nE           assert '662 481,62' == '598 396,86'\nE             \nE             - 598 396,86\nE             + 662 481,62\n\ntests/fast/test_documentation.py:87: AssertionError\n=========================== short test summary info ============================\nFAILED tests/fast/test_documentation.py::test_the_postmortem_quotes_the_published_evidence\n1 failed, 333 passed, 1 deselected in 47.50s\n"
       },
-      "seed": 17322390748533413571
+      "seed": 4790920625270289952
     },
     "outcome": "fail",
     "rate": {
-      "point": 0.99697,
-      "successes": 329,
-      "trials": 330,
+      "point": 0.997006,
+      "successes": 333,
+      "trials": 334,
       "wilson95": [
-        0.983037,
-        0.999465
+        0.983238,
+        0.999471
       ]
     },
     "runs": {
-      "commit_sha": "88b8301442a1e0388ca12bf01c790cd33363e0d2",
-      "duration_s": 52.336,
+      "commit_sha": "813a82b2dd458b9c7a4f55119e43451a4a8fef44",
+      "duration_s": 50.127,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        17322390748533413571
+        4790920625270289952
       ],
-      "started_at": "2026-09-01T21:03:14+00:00"
+      "started_at": "2026-09-01T21:35:16+00:00"
     }
   }
 }

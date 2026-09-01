@@ -60,7 +60,7 @@ nothing can emit, and refuses an implementation that can emit one that is not he
 | `unparseable_json` | the line is not JSON, or carries no `event_id`: nothing can be routed |
 | `unknown_event_type` | the `event_type` is missing or is not one of the four in the contract |
 | `missing_required_field` | a field the event type requires is absent, or a timestamp is not one |
-| `non_positive_quantity` | a sale or a return of zero or fewer units |
+| `non_positive_quantity` | a sale, a return, or an amendment to zero or fewer units |
 | `negative_price` | a unit price below zero |
 | `unknown_currency` | a currency other than EUR |
 | `return_without_order` | a return whose `(order_id, sku)` matches no accepted sale |

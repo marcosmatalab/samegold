@@ -458,7 +458,7 @@ def test_the_evidence_store_refuses_a_claim_it_does_not_define(tmp_path: Path) -
     """A record for a claim that does not exist was accepted and rendered as a table row."""
     from samegold.evidence.record import EvidenceRecord
     from samegold.evidence.store import EvidenceRejected, EvidenceStore
-    from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+    from samegold.generator.seeds import current_commit_sha, current_tree, seeds_from_commit
     from samegold.verify.verdict import Pass, Rate, RunSet
 
     sha = current_commit_sha()
@@ -469,6 +469,8 @@ def test_the_evidence_store_refuses_a_claim_it_does_not_define(tmp_path: Path) -
             n=1,
             seeds=seeds,
             commit_sha=sha,
+            tree_sha=current_tree()[0],
+            tree_dirty=current_tree()[1],
             seed_source="commit",
             seed_purpose=purpose,
             profile="fast",
@@ -495,7 +497,7 @@ def test_the_evidence_store_refuses_a_number_that_is_not_json(tmp_path: Path) ->
     """
     from samegold.evidence.record import EvidenceRecord
     from samegold.evidence.store import EvidenceRejected, EvidenceStore
-    from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+    from samegold.generator.seeds import current_commit_sha, current_tree, seeds_from_commit
     from samegold.verify.verdict import Pass, Rate, RunSet
 
     sha = current_commit_sha()
@@ -503,6 +505,8 @@ def test_the_evidence_store_refuses_a_number_that_is_not_json(tmp_path: Path) ->
         n=1,
         seeds=tuple(seeds_from_commit(1, "witness", sha=sha)),
         commit_sha=sha,
+        tree_sha=current_tree()[0],
+        tree_dirty=current_tree()[1],
         seed_source="commit",
         seed_purpose="witness",
         profile="fast",
@@ -562,3 +566,196 @@ def test_the_hardcoded_number_check_reads_the_document(tmp_path: Path) -> None:
     assert "hardcoded" in kinds
     document.write_text("`SG-01` agreed on every run.\n", encoding="utf-8")
     assert [d.kind for d in check_readme(document, latest)] == []
+
+
+# ------------------------------------------------------------------ the seventh review
+
+
+def test_a_record_names_the_tree_it_ran_on_not_only_the_commit() -> None:
+    """The commit anchors the SEEDS. Until now nothing anchored the CODE.
+
+    Three examples out of this repository's own committed history, each at a single commit
+    sha: SG-05 recorded 0/3 and then 3/3 thirty seconds later; SG-03's denominator moved from
+    49 scored mutants to 48; SG-07 went from fail to pass. All three are honest
+    re-measurements after a fix, and all three were indistinguishable from retry-until-green,
+    because the record said which seeds had run and not which program.
+    """
+    from samegold.evidence.record import EvidenceRecord
+    from samegold.evidence.store import EvidenceRejected, EvidenceStore
+    from samegold.generator.seeds import current_commit_sha, current_tree, seeds_from_commit
+    from samegold.verify.verdict import Pass, Rate, RunSet
+
+    sha = current_commit_sha()
+    tree, dirty = current_tree()
+    assert len(tree) == 40, "the working tree has no hash, so a record cannot name it"
+
+    def record(**overrides: object) -> EvidenceRecord:
+        fields: dict[str, object] = {
+            "n": 1,
+            "seeds": tuple(seeds_from_commit(1, "witness", sha=sha)),
+            "commit_sha": sha,
+            "tree_sha": tree,
+            "tree_dirty": dirty,
+            "seed_source": "commit",
+            "seed_purpose": "witness",
+            "profile": "fast",
+            "started_at": "2026-09-01T00:00:00+00:00",
+            "duration_s": 1.0,
+            "runtime": "oss-local",
+        }
+        fields.update(overrides)
+        runs = RunSet(**fields)  # type: ignore[arg-type]
+        return EvidenceRecord(
+            "SG-01", CLAIM_TITLES["SG-01"], Pass("SG-01", runs, Rate(1, 1)), "oss-local"
+        )
+
+    import tempfile
+
+    with (
+        tempfile.TemporaryDirectory(prefix="samegold-tree-") as tmp,
+        pytest.raises(EvidenceRejected, match="git tree it ran on"),
+    ):
+        EvidenceStore(Path(tmp)).append(record(tree_sha=""))
+
+
+def test_a_dirty_tree_is_published_as_such() -> None:
+    """Not forbidden - every honest re-measurement after a fix is a dirty tree - but labelled."""
+    from samegold.evidence.render import render_claims_block
+
+    latest = {
+        "SG-01": {
+            "claim_id": "SG-01",
+            "title": CLAIM_TITLES["SG-01"],
+            "runtime": "oss-local",
+            "artifacts": {},
+            "verdict": {
+                "outcome": "pass",
+                "runs": {"tree_dirty": True},
+                "rate": {"successes": 1, "trials": 1, "wilson95": [0.2, 1.0], "point": 1.0},
+            },
+        }
+    }
+    assert "on an uncommitted tree" in render_claims_block(latest)
+
+
+def test_the_results_table_prints_the_registry_title() -> None:
+    """A record written before a claim was renamed keeps the old title, legitimately.
+
+    The chain is a history and re-validating it must not turn a legitimate past into a
+    forgery. The TABLE is not a history: it describes the claims as they are, and it was
+    publishing "the close survives a crash at each structural point" forty lines above a
+    section explaining that this was false by half.
+    """
+    from samegold.evidence.render import render_claims_block
+
+    latest = {
+        "SG-07": {
+            "claim_id": "SG-07",
+            "title": "the close survives a crash at each structural point",
+            "runtime": "oss-local",
+            "artifacts": {},
+            "verdict": {"outcome": "pass", "runs": {}, "rate": None},
+        }
+    }
+    rendered = render_claims_block(latest)
+    assert CLAIM_TITLES["SG-07"] in rendered
+    assert "the close survives a crash at each structural point" not in rendered
+
+
+def test_the_hardcoded_check_sees_the_shapes_the_documents_actually_use(tmp_path: Path) -> None:
+    """The previous version required a BACKTICKED id and skipped lines starting with | or #.
+
+    Measured over the eight documents that inspected zero lines: backticked ids appear only
+    inside the generated table, which it skipped, and the prose writes them bare. It also
+    fired on "SG-03 runs the reference on DuckDB 1.5", because a version number is a number.
+    """
+    from samegold.evidence.render import check_readme
+
+    latest = {
+        "SG-03": {
+            "claim_id": "SG-03",
+            "title": CLAIM_TITLES["SG-03"],
+            "runtime": "oss-local",
+            "artifacts": {},
+            "verdict": {"outcome": "pass", "runs": {}, "rate": None},
+        }
+    }
+    document = tmp_path / "D.md"
+
+    def kinds(text: str) -> list[str]:
+        document.write_text(text + "\n", encoding="utf-8")
+        return [drift.kind for drift in check_readme(document, latest)]
+
+    for stated in (
+        "SG-03 moved 99.9% of closed months.",
+        "| `SG-03` mutation | PASS | 999/999 | oss-local | CI |",
+        "## `SG-03` cut reads by 99.9%",
+    ):
+        assert "hardcoded" in kinds(stated), stated
+    for innocent in (
+        "SG-03 runs the reference on DuckDB 1.5.",
+        "SG-03 was first published in 2026.",
+        "SG-03 mutates the reference SQL and the specification itself.",
+    ):
+        assert "hardcoded" not in kinds(innocent), innocent
+
+
+def test_every_seed_purpose_the_code_draws_is_in_the_registry() -> None:
+    """The registry calls itself "the seed streams that exist" and omitted three of them.
+
+    `samegold demo`, `samegold generate` and `samegold report` each draw a seed. None of them
+    writes a record, so the gate never noticed; the docstring was wrong about its own file.
+    """
+    from samegold.evidence.registry import SEED_PURPOSES
+
+    drawn = set()
+    for module in ("cli.py", "claims.py"):
+        source = (REPO / "src" / "samegold" / module).read_text(encoding="utf-8")
+        drawn |= set(re.findall(r'purpose="([a-z_]+)"', source))
+    missing = drawn - set(SEED_PURPOSES)
+    assert not missing, f"seed streams the code draws and the registry does not list: {missing}"
+
+
+def test_the_ledger_collapse_re_compares_after_a_replacement() -> None:
+    """One loop doing both collapses leaves an adjacent identical pair behind.
+
+    A(t1,X), B(t2,Y), C(t2,X): the C replaces B in place and is never compared with A, so the
+    result is [A(X), C(X)] - exactly the pair the collapse exists to remove. No seed produces
+    it (it needs a valid_from collision plus an attribute round-trip in three versions), which
+    is the argument for not writing it that way rather than for leaving it.
+    """
+    versions = [
+        {"valid_from": "t1", "segment": "X", "country": "ES", "event_id": "a"},
+        {"valid_from": "t2", "segment": "Y", "country": "ES", "event_id": "b"},
+        {"valid_from": "t2", "segment": "X", "country": "ES", "event_id": "c"},
+    ]
+    deduped: list[dict[str, object]] = []
+    for version in versions:
+        if deduped and deduped[-1]["valid_from"] == version["valid_from"]:
+            deduped[-1] = version
+        else:
+            deduped.append(version)
+    collapsed: list[dict[str, object]] = []
+    for version in deduped:
+        if collapsed and all(
+            collapsed[-1][name] == version[name] for name in ("segment", "country")
+        ):
+            continue
+        collapsed.append(version)
+    assert [row["valid_from"] for row in collapsed] == ["t1"]
+
+
+def test_sg04_can_fail() -> None:
+    """It had one unconditional Pass and was listed as refutable, so nothing could refute it.
+
+    The claim the README puts in its opening pull-quote was the one claim with no failure
+    condition, in a repository that says elsewhere "a crash test that cannot fail is a
+    screenshot".
+    """
+    source = (REPO / "src" / "samegold" / "claims.py").read_text(encoding="utf-8")
+    body = source[source.index("def claim_restatement_magnitude") :]
+    body = body[: body.index("\ndef ")]
+    assert 'Fail(\n            "SG-04"' in body, "SG-04 has no failure branch"
+    from samegold.claims import REFUTABLE_CLAIMS
+
+    assert "SG-04" in REFUTABLE_CLAIMS

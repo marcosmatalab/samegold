@@ -237,16 +237,24 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         #     "what the pipeline must produce, known by construction". It survived five review
         #     rounds because nothing read it: the SCD2 claims compare the two engines with each
         #     other and never with the ledger. tests/fast now compares all three.
-        collapsed: list[dict[str, Any]] = []
+        # TWO passes, because one is wrong in a way that is hard to see. Doing both collapses
+        # in a single loop replaces `collapsed[-1]` in place when two versions share a
+        # valid_from, and the replacement is then never compared with its NEW predecessor: the
+        # sequence A(t1,X), B(t2,Y), C(t2,X) collapses to [A(X), C(X)], an adjacent identical
+        # pair surviving the collapse the loop is performing. It needs a valid_from collision
+        # and an attribute round-trip in three versions, so no seed here produces it, which is
+        # exactly the argument for not writing it that way.
+        deduped: list[dict[str, Any]] = []
         for v in versions:
-            if collapsed and collapsed[-1]["valid_from"] == v["valid_from"]:
-                collapsed[-1] = v
-            elif collapsed and all(
-                collapsed[-1][name] == v[name] for name in ("segment", "country")
-            ):
-                continue
+            if deduped and deduped[-1]["valid_from"] == v["valid_from"]:
+                deduped[-1] = v
             else:
-                collapsed.append(v)
+                deduped.append(v)
+        collapsed: list[dict[str, Any]] = []
+        for v in deduped:
+            if collapsed and all(collapsed[-1][name] == v[name] for name in ("segment", "country")):
+                continue
+            collapsed.append(v)
         ledger.dim_customer[cid] = collapsed
 
     # ---- orders, amendments, returns -------------------------------------------------

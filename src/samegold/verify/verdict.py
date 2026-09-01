@@ -29,6 +29,21 @@ class RunSet:
     started_at: str
     duration_s: float
     runtime: Literal["oss-local", "oss-ci", "databricks-free"]
+    # The git TREE the run actually executed, and whether it differed from the commit's.
+    #
+    # The commit sha alone anchors the seeds and nothing else, and an adversarial review
+    # showed what that leaves open with three examples out of this repository's own history:
+    # SG-05 recorded 0/3 and then 3/3 thirty seconds later at one commit; SG-03's DENOMINATOR
+    # moved from 49 scored mutants to 48 at one commit; SG-07 went from fail to pass at one
+    # commit by being re-run with a different --repetitions. All three are legitimate - they
+    # are what fixing a bug and re-measuring looks like - and all three were indistinguishable
+    # from retry-until-green, because nothing in the record said which CODE had run.
+    #
+    # The tree hash says. It is computed from the working tree at run time, so a record made
+    # on a dirty tree names a tree that is in no commit, and the renderer labels it. That does
+    # not stop anyone re-running until green; it stops them doing it invisibly.
+    tree_sha: str = ""
+    tree_dirty: bool = False
 
     def __post_init__(self) -> None:
         if self.n <= 0:
@@ -44,6 +59,8 @@ class RunSet:
             "n": self.n,
             "seeds": list(self.seeds),
             "commit_sha": self.commit_sha,
+            "tree_sha": self.tree_sha,
+            "tree_dirty": self.tree_dirty,
             "seed_source": self.seed_source,
             "seed_purpose": self.seed_purpose,
             "profile": self.profile,

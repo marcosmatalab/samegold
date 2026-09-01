@@ -151,6 +151,16 @@ def _validate(payload: dict[str, Any], *, historical: bool = False) -> None:
         raise EvidenceRejected(
             f"{payload.get('claim_id')}: commit_sha is not a git object id: {sha!r}"
         )
+    # And the TREE. The commit anchors the seeds; it does not anchor the code, and two
+    # records at one commit can disagree about their own denominators because the code
+    # between them changed and was not committed. Historical records predate the field, so
+    # they are read rather than refused; a new record without it is refused.
+    tree = str(runs.get("tree_sha", ""))
+    if not historical and (len(tree) != 40 or any(ch not in "0123456789abcdef" for ch in tree)):
+        raise EvidenceRejected(
+            f"{payload.get('claim_id')}: the record does not name the git tree it ran on "
+            f"({tree!r}). A commit anchors the seeds; only the tree anchors the code."
+        )
     if source == "override":
         # An override run is a refutation, not evidence. It is written to a separate log and
         # never into the history the documents render, because its seeds are by design not

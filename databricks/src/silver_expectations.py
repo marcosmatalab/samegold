@@ -113,10 +113,15 @@ def silver_events():
 
     This table exists for the EVENT LOG: expectations are what make pass and fail counts per
     rule appear there and on the dashboard, which is the piece open-source SDP does not have
-    and the reason this lane exists at all. Gold reads `silver_classified`, not this one, so
-    the two derivations of the same rules are compared rather than trusted: a difference
-    shows up as a row count that does not match `silver_classified` where the reason is
-    'accepted'.
+    and the reason this lane exists at all. Gold reads `silver_classified`, not this one.
+
+    The two derivations of the same rules - these predicates and the CASE expression in
+    `samegold.pipelines.transform.quarantine_reason` - are compared record by record by
+    `tests/spark/test_adversarial_records.py::
+    test_the_databricks_rules_and_the_oss_case_agree_record_by_record`, which evaluates both
+    in one Spark session over a matrix of eighteen records including every NULL shape. An
+    earlier version of this docstring claimed the comparison happened "as a row count that
+    does not match silver_classified", which nothing computed.
     """
     return spark.readStream.table("bronze_events")
 

@@ -66,6 +66,7 @@ def test_the_readme_does_not_state_a_test_count_by_hand() -> None:
             )
 
 
+@pytest.mark.evidence_dependent
 def test_the_postmortem_quotes_the_published_evidence() -> None:
     """The euro figures in the post-mortem are SG-04's, and they are ANCHORS, not prose.
 

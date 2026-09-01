@@ -23,6 +23,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from samegold import claims as claim_module
+from samegold.domain.money import euros, signed_euros
 from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.render import check_readme, render_readme
 from samegold.evidence.store import EvidenceStore
@@ -85,15 +86,16 @@ def cmd_demo(args: argparse.Namespace) -> int:
     print()
     print(
         f"  Month {month} was closed at {first:%Y-%m-%d} reporting "
-        f"{before / 100:,.2f} EUR of net revenue."
+        f"{euros(before)} EUR of net revenue."
     )
     print(
         f"  By {last:%Y-%m-%d}, late returns and late amendments had moved it to "
-        f"{after / 100:,.2f} EUR."
+        f"{euros(after)} EUR."
     )
     pct = (100.0 * delta / before) if before else 0.0
     print(
-        f"  That is {delta / 100:+,.2f} EUR, {pct:+.2f}% of a month that finance had "
+        f"  That is {signed_euros(delta)} EUR, {pct:+.2f}% of a month that finance "
+        f"had "
         f"already signed off."
     )
     print()

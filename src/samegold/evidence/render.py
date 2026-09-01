@@ -81,6 +81,12 @@ def _value_for(record: dict[str, Any], field: str) -> str:
 _UNSAFE = re.compile(r"<!--|-->|\r?\n|\|")
 
 
+def _registry_title(claim_id: str, record: dict[str, Any]) -> str:
+    from samegold.evidence.registry import CLAIM_TITLES
+
+    return CLAIM_TITLES.get(claim_id, str(record.get("title", "")))
+
+
 def _safe(value: str, where: str) -> str:
     """Refuse a value that would break the document it is rendered into.
 
@@ -110,9 +116,18 @@ def _safe(value: str, where: str) -> str:
 
 
 def _provenance(record: dict[str, Any]) -> str:
+    """How the number was produced, in the words a reader needs to discount it by.
+
+    "dirty tree" is the important one and it is new: it means the run executed code that is
+    in no commit, so the commit the record names anchors its seeds and not its behaviour.
+    Every honest re-measurement after a fix looks like this, and so does retry-until-green.
+    Saying it is the whole defence available.
+    """
+    runs = record.get("verdict", {}).get("runs", {})
+    dirty = " on an uncommitted tree" if runs.get("tree_dirty") else ""
     if record.get("ci_run_url"):
-        return "CI"
-    return "local run, not reproduced in CI"
+        return f"CI{dirty}"
+    return f"local run, not reproduced in CI{dirty}"
 
 
 def render_claims_block(latest: dict[str, dict[str, Any]]) -> str:
@@ -128,7 +143,13 @@ def render_claims_block(latest: dict[str, dict[str, Any]]) -> str:
         rate = _value_for(record, "rate")
         bound = _value_for(record, "bound")
         detail = rate if rate != "n/a" else bound
-        title = _safe(str(record.get("title", "")), f"{claim_id}.title")
+        # The REGISTRY's title, not the record's. A record written before a claim was
+        # renamed legitimately keeps the old title (the chain is a history and re-validating
+        # it must not turn a legitimate past into a forgery), but the results table is a
+        # description of the claims as they are now: it published "the close survives a crash
+        # at each structural point" forty lines above a section explaining that this was
+        # false by half.
+        title = _safe(_registry_title(claim_id, record), f"{claim_id}.title")
         runtime = _safe(str(record.get("runtime", "?")), f"{claim_id}.runtime")
         rows.append(
             f"| `{claim_id}` {title} | {outcome} | {_safe(detail, f'{claim_id}.detail')} "
@@ -158,8 +179,14 @@ def render_readme(text: str, latest: dict[str, dict[str, Any]]) -> str:
 def check_readme(path: Path, latest: dict[str, dict[str, Any]]) -> list[RenderDrift]:
     """Return the drifts between a markdown file and the evidence. Empty means consistent."""
     text = path.read_text(encoding="utf-8")
-    rendered = render_readme(text, latest)
     drifts: list[RenderDrift] = []
+    try:
+        rendered = render_readme(text, latest)
+    except ValueError as error:
+        # A value the renderer refuses is a finding about the EVIDENCE, and `samegold check`
+        # is the command whose job is to report findings. Letting it escape turned the check
+        # into an uncaught traceback, which is the one way to make a gate look like a bug.
+        return [RenderDrift("unrenderable", f"{path.name}: {error}")]
     if rendered != text:
         drifts.append(
             RenderDrift(
@@ -187,28 +214,36 @@ def check_readme(path: Path, latest: dict[str, dict[str, Any]]) -> list[RenderDr
                     f"{path.name} cites {anchor}, and {claim_id} has no such artifact",
                 )
             )
-    # A number written by hand NEXT TO A CLAIM ID is the failure mode this whole file exists
-    # to prevent. The previous version of this check looked for a marker the author had to
-    # volunteer ("samegold:hardcoded"), which appeared nowhere in the repository and could
-    # therefore never fire: a check whose trigger is the author's own honesty is a comment.
-    # This one reads the document.
-    claim_id_pattern = re.compile(r"`(SG-\d\d)`")
-    number_pattern = re.compile(r"(?<![\w.-])\d+(?:[.,]\d+)?\s?%?")
+    # A RESULT written by hand next to a claim id. The two previous versions of this check
+    # both looked like checks and inspected nothing:
+    #
+    #   * the first looked for the marker "samegold:hardcoded", which the author had to
+    #     volunteer and which appears nowhere in the repository;
+    #   * the second required a BACKTICKED claim id and then skipped every line beginning
+    #     with "|" or "#". Measured over the eight documents, that inspected zero lines:
+    #     backticked ids appear only inside the generated table, and the prose writes them
+    #     bare. It also fired on "SG-03 runs the reference on DuckDB 1.5", because a version
+    #     number is a number.
+    #
+    # So: a claim id in any form, outside the generated block and outside an anchor, on a
+    # line that also states a RESULT - a percentage or a fraction, which is how every figure
+    # in these documents is written. A year or a library version is neither.
+    generated = text.split(BEGIN, 1)[-1].split(END, 1)[0] if BEGIN in text and END in text else ""
+    claim_id_pattern = re.compile(r"\bSG-\d\d\b")
+    result_pattern = re.compile(r"\d+(?:[.,]\d+)?\s?%|\b\d+\s?/\s?\d+\b")
     for number, line in enumerate(text.splitlines(), start=1):
+        if generated and line in generated:
+            continue
         outside = TOKEN.sub("", line)
         if not claim_id_pattern.search(outside):
             continue
-        if outside.lstrip().startswith(("|", "#")):
-            continue  # the generated table and the headings that name a claim
-        for found in number_pattern.finditer(outside):
-            token = found.group(0).strip()
-            if token.rstrip("%") in {"", "0", "1", "2", "3", "45"}:
-                continue  # section numbers, the window, small structural counts
+        for found in result_pattern.finditer(outside):
             drifts.append(
                 RenderDrift(
                     "hardcoded",
-                    f"{path.name}:{number} writes {token!r} beside a claim id without an "
-                    f"anchor; render it with <!--sg:...--> or move it out of the sentence",
+                    f"{path.name}:{number} states the result {found.group(0)!r} beside a "
+                    f"claim id without an anchor; render it with <!--sg:...--> so it cannot "
+                    f"go stale",
                 )
             )
     return drifts

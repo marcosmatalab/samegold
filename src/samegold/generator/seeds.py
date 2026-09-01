@@ -25,6 +25,37 @@ import os
 import subprocess
 
 
+def current_tree(default: str = "0" * 40) -> tuple[str, bool]:
+    """The hash of the tree that is actually about to run, and whether it is committed.
+
+    ``git stash create`` writes a commit object for the working tree WITHOUT touching the
+    index, the stash or the checkout, and its tree is exactly what a run will execute. On a
+    clean tree it prints nothing, and the answer is HEAD's tree.
+
+    Why a record needs this and not only the commit: the commit anchors the SEEDS, and an
+    adversarial review pointed out that it anchors nothing else. Two records at one commit
+    can disagree about their own denominators, because the code between them changed and was
+    not committed. That is what fixing a bug and re-measuring looks like, and it is also what
+    retry-until-green looks like, and the record could not tell them apart.
+    """
+
+    def git(*args: str) -> str:
+        try:
+            out = subprocess.run(
+                ["git", *args], capture_output=True, text=True, timeout=15, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return out.stdout.strip() if out.returncode == 0 else ""
+
+    stashed = git("stash", "create")
+    if stashed:
+        tree = git("rev-parse", f"{stashed}^{{tree}}")
+        return (tree or default, True)
+    tree = git("rev-parse", "HEAD^{tree}")
+    return (tree or default, False)
+
+
 def current_commit_sha(default: str = "0" * 40) -> str:
     """The commit the working tree is on, or ``default`` outside a git checkout.
 

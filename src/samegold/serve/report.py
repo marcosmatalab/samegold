@@ -16,6 +16,8 @@ import html
 from collections.abc import Sequence
 from typing import Any
 
+from samegold.domain.money import euros
+
 _STYLE = """
 :root { color-scheme: light dark; }
 body { font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0 auto;
@@ -34,24 +36,6 @@ td.negative { color: #a3352a; }
         padding-left: .9rem; margin: 0 0 1.6rem; }
 @media (prefers-color-scheme: dark) { p.lede, thead th, .note { color: #aaa; } }
 """
-
-
-def _euros(cents: int) -> str:
-    """Cents as the rest of this project writes money: 67269342 -> "672 693,42".
-
-    INTEGER arithmetic, in a repository whose contract says "money is integer cents
-    everywhere; there is no float in this pipeline" and whose whole argument for cents as
-    BIGINT is that it removes an entire class of engine-dependent rounding. This function was
-    `f"{cents / 100:,.2f}"`: a float division, in the one place the numbers are shown to a
-    person. At 1 234 567 890 123 456 789 cents it prints ...568,00 for a figure ending 567,89.
-
-    And es-ES, like `evidence/runs/SG-04.json` and the post-mortem. It was printing
-    `662,481.62` for a number those two write as `662 481,62`: one figure, two conventions,
-    on a page documented as generated from the same table they are.
-    """
-    whole, fraction = divmod(abs(int(cents)), 100)
-    sign = "-" if int(cents) < 0 else ""
-    return f"{sign}{whole:,}".replace(",", " ") + f",{fraction:02d}"
 
 
 def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime) -> str:
@@ -80,11 +64,11 @@ def render_report(versions: Sequence[dict[str, Any]], generated_at: dt.datetime)
             rows_html.append(
                 f"<tr{classes}><td>{html.escape(month)}</td>"
                 f"<td>{row['close_version']}</td>"
-                f"<td>{_euros(int(row['gross_cents']))}</td>"
-                f"<td>{_euros(int(row['returns_cents']))}</td>"
-                f"<td>{_euros(int(row['net_cents']))}</td>"
+                f"<td>{euros(int(row['gross_cents']))}</td>"
+                f"<td>{euros(int(row['returns_cents']))}</td>"
+                f"<td>{euros(int(row['net_cents']))}</td>"
                 f'<td class="{"negative" if change < 0 else ""}">'
-                f"{'' if not restated else _euros(change)}</td>"
+                f"{'' if not restated else euros(change)}</td>"
                 f"<td>{html.escape(str(row['restatement_reason']))}</td>"
                 f"<td>{html.escape(str(row['restated_at'])[:10])}</td></tr>"
             )
