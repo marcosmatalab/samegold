@@ -23,11 +23,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from samegold.domain.bitemporal import accounting_month_of
-from samegold.evidence.record import EvidenceRecord
+from samegold.domain.bitemporal import accounting_month_of, versions_from_snapshots
+from samegold.domain.money import euros
+from samegold.evidence.record import EvidenceRecord, artifact_digest
 from samegold.evidence.registry import CLAIM_TITLES
 from samegold.generator.events import CI, FAST, FULL, Profile, generate
-from samegold.generator.seeds import current_commit_sha, seed_source, seeds_from_commit
+from samegold.generator.seeds import (
+    current_commit_sha,
+    current_tree,
+    seed_source,
+    seeds_from_commit,
+)
 from samegold.mutation.assumption_probe import (
     probe_data_assumption,
     probe_order_free_comparison,
@@ -63,13 +69,21 @@ PROFILES: dict[str, Profile] = {"fast": FAST, "ci": CI, "full": FULL}
 REFERENCE_SQL = Path(__file__).parent / "oracle" / "gold_revenue.sql"
 
 
+def _source_root() -> Path:
+    """The installed package directory, whatever the checkout looks like."""
+    return Path(__file__).resolve().parent
+
+
 def _runset(
     seeds: Sequence[int], profile: str, started: float, runtime: str, purpose: str
 ) -> RunSet:
+    tree_sha, tree_dirty = current_tree()
     return RunSet(
         n=len(seeds),
         seeds=tuple(seeds),
         commit_sha=current_commit_sha(),
+        tree_sha=tree_sha,
+        tree_dirty=tree_dirty,
         seed_source=seed_source(),  # type: ignore[arg-type]
         seed_purpose=purpose,
         profile=profile,
@@ -142,10 +156,17 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     # evidence, and this claim runs while that evidence is being written. The CI order is
     # `evidence`, then `readme`, then `fast` with nothing deselected, so the check does run -
     # just not inside the thing it checks.
-    deselected = (
-        "tests/fast/test_evidence_gate.py::"
-        "test_the_repository_documents_are_consistent_with_its_evidence"
-    )
+    # Deselected by MARKER, not by name. Two tests compare the documents with the evidence,
+    # and this claim writes evidence: running them inside it asks whether the documents match
+    # a record that does not exist yet. The first version deselected one of them by its full
+    # node id, the second test was added later, and SG-00 then recorded `fast_lane_green:
+    # false` on every commit whose figures moved - which is every commit, because the seeds
+    # derive from the commit. A deselection list that has to be maintained by hand is a
+    # deselection list that will be wrong.
+    #
+    # `make ci-local` and the fast workflow run the marked tests with nothing deselected, so
+    # the comparison does happen - just not inside the thing it is comparing against.
+    deselected = "evidence_dependent"
     fast_run = subprocess.run(
         [
             sys.executable,
@@ -154,8 +175,8 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
             "tests/fast",
             "-q",
             "--no-header",
-            "--deselect",
-            deselected,
+            "-m",
+            f"not {deselected}",
         ],
         capture_output=True,
         text=True,
@@ -181,7 +202,7 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
         "test_lines": test_lines,
         "markdown_documents": len(docs),
         "adrs": len(list((root / "docs" / "adr").glob("*.md"))),
-        "deselected_in_this_run": deselected,
+        "deselected_in_this_run": f"-m 'not {deselected}'",
     }
     # PASSED over COLLECTED, parsed from pytest's own summary line, not collected over
     # collected. The rate used to be Rate(tests_fast, tests_fast), which reads like a pass
@@ -504,16 +525,6 @@ def claim_mutation_campaign(work: Path, profile_name: str = "fast") -> EvidenceR
 # --------------------------------------------------------------------- SG-04
 
 
-def _euros(cents: int) -> str:
-    """Cents as the document writes money: a space groups the thousands, a comma the decimals.
-
-    Plain ASCII, deliberately. A non-breaking space looks identical in a rendered document
-    and would make any comparison against it compare two things a reader cannot tell apart.
-    """
-    whole, fraction = divmod(abs(int(cents)), 100)
-    return f"{whole:,}".replace(",", " ") + f",{fraction:02d}"
-
-
 def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> EvidenceRecord:
     """SG-04. How much of a closed month moves after it is closed. A business number.
 
@@ -576,15 +587,42 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
     if heaviest is not None:
         flattened = {
             "worst_month": heaviest["accounting_month"],
-            "worst_first_close_eur": _euros(int(heaviest["first_close_net_cents"])),
-            "worst_final_eur": _euros(int(heaviest["final_net_cents"])),
-            "worst_delta_eur": _euros(abs(int(heaviest["delta_cents"]))),
+            "worst_first_close_eur": euros(int(heaviest["first_close_net_cents"])),
+            "worst_final_eur": euros(int(heaviest["final_net_cents"])),
+            "worst_delta_eur": euros(abs(int(heaviest["delta_cents"]))),
             "worst_versions": int(heaviest["versions"]),
         }
+    # A measurement still has to be able to FAIL, or the "result" column is a decoration.
+    # This claim had a single unconditional `Pass` and was listed as refutable, so
+    # `make refute SEED=anything` could not refute it: the one claim the README puts in its
+    # opening pull-quote was the one claim with no failure condition. The condition is the
+    # structural property the measurement depends on - a month that moved must have a dense,
+    # monotonic version history - because a "restatement" recorded on a broken history is a
+    # number about nothing.
+    history: list[dict[str, Any]] = []
+    for month, series in by_month.items():
+        snapshots = [(as_of, {month: values}) for as_of, values in series]
+        history.extend(versions_from_snapshots(snapshots))
+    broken = restatement_monotonic(history)
+    verdict_04: Verdict = (
+        Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close")
+        if not broken
+        else Fail(
+            "SG-04",
+            runset,
+            Counterexample(
+                "SG-04",
+                seeds[0],
+                "a month moved on a version history that is not dense and monotonic",
+                {"first": broken[0], "count": len(broken)},
+            ),
+            rate,
+        )
+    )
     return EvidenceRecord(
         claim_id="SG-04",
         title=CLAIM_TITLES["SG-04"],
-        verdict=Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close"),
+        verdict=verdict_04,
         runtime="oss-local",
         artifacts={
             "months_that_moved": moved,
@@ -819,6 +857,15 @@ def claim_crash_campaign(
     return EvidenceRecord(
         claim_id="SG-07",
         title=CLAIM_TITLES["SG-07"],
+        # The fingerprint of the code that ran, so that "the injected runs and the clean runs
+        # executed the same program" is a comparison a reader can make and not a sentence in
+        # a docstring. The function existed and was called by nothing; the field was null in
+        # every one of the records in the history.
+        artifact_digest=artifact_digest(
+            sorted(_source_root().joinpath("pipelines").glob("*.py"))
+            + sorted(_source_root().joinpath("faults").glob("*.py"))
+            + sorted(_source_root().joinpath("oracle").glob("*.sql"))
+        ),
         verdict=verdict,
         runtime="oss-local",
         artifacts=payload,
@@ -964,7 +1011,7 @@ def claim_cost_lab(work: Path, repetitions: int = 2) -> EvidenceRecord:
     the spread of the bytes is published rather than rounded away.
 
     The result the lab likes best is a negative one: clustering by (month, sku) does nothing
-    for a sku predicate when the table has three files, because three files cover the whole
+    for a sku predicate when the CLUSTERED table has two files, because two files cover the
     key range. It pays only once there are files to skip.
     """
     from samegold.cost.lab import lab_dataset, run_lab

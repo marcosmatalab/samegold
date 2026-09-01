@@ -193,7 +193,7 @@ def run_lab(
     }
 
     # COST-02 is run at TWO file sizes on purpose. At one file size the answer came back
-    # "clustering changed nothing", which is true and useless: with three files covering the
+    # "clustering changed nothing", which is true and useless: with two files covering the
     # whole sku range there is nothing to skip. Measuring at two sizes turns a null result
     # into a threshold, and the null result is published next to it rather than dropped.
     results["COST-02"] = {}

@@ -18,7 +18,7 @@ from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.registry import CLAIM_TITLES
 from samegold.evidence.render import BEGIN, END, check_readme, render_readme
 from samegold.evidence.store import EvidenceRejected, EvidenceStore, record_hash
-from samegold.generator.seeds import current_commit_sha, seeds_from_commit
+from samegold.generator.seeds import current_commit_sha, current_tree, seeds_from_commit
 from samegold.verify.verdict import Pass, Rate, RunSet
 
 REPO = Path(__file__).resolve().parents[2]
@@ -41,6 +41,8 @@ def _record(
         n=len(real_seeds),
         seeds=real_seeds,
         commit_sha=sha,
+        tree_sha=current_tree()[0],
+        tree_dirty=current_tree()[1],
         seed_source="commit",
         seed_purpose="witness",
         profile="fast",
@@ -251,6 +253,7 @@ def test_the_repository_evidence_chain_verifies() -> None:
     assert store.verify_chain(REPO) == []
 
 
+@pytest.mark.evidence_dependent
 def test_the_repository_documents_are_consistent_with_its_evidence() -> None:
     store = EvidenceStore(REPO / "evidence")
     for name in ("README.md", "CLAIMS.md"):

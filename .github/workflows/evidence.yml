@@ -51,7 +51,10 @@ jobs:
           git config user.email "github-actions@users.noreply.github.com"
           branch="evidence/run-${{ github.run_id }}"
           git checkout -b "$branch"
-          git add evidence README.md CLAIMS.md
+          # Every file `samegold readme` writes, taken from the CLI rather than listed by
+          # hand: the job used to render docs/postmortem-2026-03-06.md and then commit
+          # everything except it, so the pull request it opened was red by construction.
+          git add evidence $(python -c "from samegold.cli import RENDERED_FILES; print(' '.join(RENDERED_FILES))")
           if git diff --staged --quiet; then
             echo "no change in the evidence; nothing to push"
             exit 0
