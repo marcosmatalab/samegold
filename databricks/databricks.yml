@@ -1,0 +1,52 @@
+# Declarative Automation Bundle (formerly Databricks Asset Bundles).
+#
+# Deployed from the GitHub runner, not from inside the workspace: Free Edition restricts
+# outbound traffic to a small set of trusted domains, so a deploy started from a notebook is
+# unreliable. Authentication is a personal access token, because Free Edition has no account
+# console and therefore no OAuth machine-to-machine service principals.
+#
+#   databricks configure --host $DATABRICKS_HOST --token
+#   databricks bundle validate -t free
+#   databricks bundle deploy   -t free
+#   databricks bundle run samegold_close -t free
+
+bundle:
+  name: samegold
+
+variables:
+  catalog:
+    description: Unity Catalog catalog. Free Edition gives you one metastore and no external locations.
+    default: samegold
+  landing_volume:
+    description: UC volume the generator writes into. Volumes are the only storage on Free Edition.
+    default: /Volumes/samegold/raw/landing
+
+targets:
+  free:
+    default: true
+    mode: development
+    workspace:
+      host: ${var.DATABRICKS_HOST}
+    resources:
+      pipelines:
+        samegold_pipeline:
+          # One active pipeline per pipeline type is the Free Edition limit, so there is
+          # exactly one, and it is serverless because that is the only compute available.
+          serverless: true
+          photon: true
+          continuous: false
+          channel: CURRENT
+          catalog: ${var.catalog}
+          schema: main
+          configuration:
+            samegold.landing: ${var.landing_volume}
+          libraries:
+            - file:
+                path: ../src/bronze_autoloader.py
+            - file:
+                path: ../src/silver_expectations.py
+            - file:
+                path: ../src/gold_close.py
+
+include:
+  - resources/*.yml

@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "samegold"
+version = "0.1.0"
+description = "The month-end close that survives late returns, mid-write crashes and reprocessing - and proves it."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Marcos Mata Garcia" }]
+dependencies = [
+  "duckdb>=1.5,<2",
+  "pyarrow>=21",
+  "sqlglot>=27",
+]
+
+[project.optional-dependencies]
+# The Spark lane. Pinned hard: this is the only combination verified to work (see docs/adr/0002).
+spark = [
+  "pyspark==4.2.0",
+  "delta-spark==4.4.0",
+  "pandas>=2.2,<3.0",
+  "pyyaml>=6",
+  "grpcio>=1.67",
+  "grpcio-status>=1.67",
+  "googleapis-common-protos>=1.65",
+  "zstandard>=0.25",
+]
+# Independent Delta reader/writer (no JVM). Used as a third-party witness of the Delta log.
+rust = ["deltalake==1.6.3"]
+dev = ["pytest>=8", "pytest-xdist>=3", "hypothesis>=6.100", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+samegold = "samegold.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/samegold"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "spark: needs a local JVM + pyspark (slow, ~25s session startup)",
+  "delta: needs Maven Central reachable to resolve the Delta jars",
+  "databricks: needs DATABRICKS_HOST/DATABRICKS_TOKEN against a Free Edition workspace",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks run with `spark`, `dbutils` and `display` injected by the runtime.
+# Declaring them would be a lie about how the file executes there.
+"databricks/src/*.py" = ["F821"]
+"pipelines/transformations/*.py" = ["F821"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/samegold"]
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*"]
+ignore_missing_imports = true
+
+# PySpark ships no usable stubs, so every DataFrame is Any and "returning Any from a function
+# declared to return DataFrame" fires on every single transformation. Turning the warning off
+# for the Spark-facing packages is honest; turning strict mode off for the whole project to
+# silence it would not be.
+[[tool.mypy.overrides]]
+module = ["samegold.pipelines.*", "samegold.ingest.*", "samegold.faults.*", "samegold.cost.*"]
+warn_return_any = false
+disallow_untyped_calls = false

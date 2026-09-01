@@ -1,0 +1,28 @@
+# Spark Declarative Pipelines, the open-source lane.
+#
+# The file MUST be called spark-pipeline.yml (or .yaml). The CLI looks for exactly those two
+# names; "pipeline.yml" fails with PIPELINE_SPEC_FILE_NOT_FOUND, and the documentation is not
+# explicit about it.
+#
+# Run it with:
+#   pip install -e ".[spark]"        # SDP needs the Spark Connect client extras and pyyaml
+#   export SPARK_LOCAL_IP=127.0.0.1  # otherwise a loopback hostname turns into a BindException
+#   spark-pipelines run
+#
+# The configuration block is not optional. Out of the box, open-source SDP writes PARQUET, not
+# Delta: the tables appear under spark-warehouse with no _delta_log, and every Delta-specific
+# thing in this project (MERGE, CDF, time travel, OPTIMIZE) silently has nothing to work with.
+name: samegold
+storage: ./_pipeline_storage
+catalog: spark_catalog
+database: samegold
+libraries:
+  - glob:
+      include: transformations/**
+configuration:
+  spark.sql.extensions: io.delta.sql.DeltaSparkSessionExtension
+  spark.sql.catalog.spark_catalog: org.apache.spark.sql.delta.catalog.DeltaCatalog
+  spark.sql.sources.default: delta
+  spark.jars.packages: io.delta:delta-spark_4.2_2.13:4.4.0
+  spark.sql.shuffle.partitions: "8"
+  spark.sql.session.timeZone: UTC

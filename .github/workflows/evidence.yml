@@ -1,0 +1,50 @@
+name: evidence
+
+# The only job allowed to write evidence that backs a published number. A record produced
+# anywhere else carries no ci_run_url and the renderer prints it as "local run, not reproduced
+# in CI", which is the honest label for a number produced on the author's laptop.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SPARK_LOCAL_IP: 127.0.0.1
+      SAMEGOLD_STORAGE: parquet
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -e ".[spark,rust,dev]"
+      - name: claims
+        run: samegold evidence --profile ci
+      - name: crash campaign
+        run: python -m samegold.faults.campaign --repetitions 5 --profile fast
+      - name: render the documents
+        run: samegold readme && samegold check
+      - name: attest the evidence
+        # Provenance, so a reader can tell a number produced by this workflow from a number
+        # produced by someone with a text editor.
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: evidence/history.jsonl
+      - name: commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add evidence README.md CLAIMS.md
+          git diff --staged --quiet || git commit -m "evidence: run ${{ github.run_id }}"
+          git push

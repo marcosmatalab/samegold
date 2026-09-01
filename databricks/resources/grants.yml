@@ -1,0 +1,18 @@
+# Governance as code. The point is not that these grants are exotic; it is that they are
+# DECLARED here, deployed from CI, and compared against what is actually in the metastore by
+# the drift test in milestone M10. A grant that only exists because someone clicked it is a
+# grant nobody can review.
+resources:
+  schemas:
+    main:
+      catalog_name: ${var.catalog}
+      name: main
+      comment: "samegold gold and silver tables"
+      grants:
+        - principal: account users
+          privileges: [USE_SCHEMA, SELECT]
+    raw:
+      catalog_name: ${var.catalog}
+      name: raw
+      comment: "landing volume; not readable by analysts"
+      grants: []

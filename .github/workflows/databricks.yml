@@ -1,0 +1,43 @@
+name: databricks
+
+# Manual only. It deploys to a Free Edition workspace, where a single run can exhaust the
+# daily quota and stop all compute for the rest of the day; putting that on a push trigger
+# would mean one busy afternoon takes the workspace down.
+#
+# Deploys from the runner rather than from inside the workspace: Free Edition restricts
+# outbound traffic to a small set of trusted domains, and a bundle deploy started from a
+# notebook there is unreliable. Authentication is a PAT because Free Edition has no account
+# console and therefore no OAuth machine-to-machine credentials.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [validate, deploy, run]
+        default: validate
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: validate
+        working-directory: databricks
+        run: databricks bundle validate -t free
+      - name: deploy
+        if: inputs.action != 'validate'
+        working-directory: databricks
+        run: databricks bundle deploy -t free
+      - name: run
+        if: inputs.action == 'run'
+        working-directory: databricks
+        run: databricks bundle run samegold_close -t free
