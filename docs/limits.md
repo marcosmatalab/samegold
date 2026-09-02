@@ -17,9 +17,10 @@ The residual risk, listed before the results rather than after them.
   `OPTIMIZE ... ZORDER BY` whose effect is read from that log, and the hand-written Type 2
   `MERGE` including its delete-by-absence branch. Run on WSL2 Ubuntu 24.04 under Windows 11,
   Temurin 21, pyspark 4.2.0 with delta-spark 4.4.0, jars resolved from Maven Central at the
-  coordinate ADR 0002 pins. The `delta` job of `.github/workflows/spark.yml` runs the same two
-  commands on `ubuntu-latest`; it had been red on the defect below since its first run, and
-  this commit is the first that can pass it.
+  coordinate ADR 0002 pins. And on `ubuntu-latest` in CI: the `delta` job of
+  `.github/workflows/spark.yml` runs the same two commands and went green for the first time
+  on run 33628100076, `51 passed, 1 skipped` then `6 passed`, having been red on the defect
+  below since its first run.
 - The crash campaign on the silver stage: injection confirmed by exit code, convergence after
   restart, and a negative control that a non-idempotent writer fails.
 - The cost lab on real Delta tables through delta-rs: compaction, clustering, partitioning and
