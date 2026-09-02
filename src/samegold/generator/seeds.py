@@ -24,6 +24,43 @@ import hashlib
 import os
 import subprocess
 
+# The evidence directory is the OUTPUT of a run, not an input to it, and leaving it in the
+# dirtiness check made this field say the same thing forever.
+#
+# `samegold evidence` appends a record per claim as it goes. So the first claim of a sweep saw
+# a clean tree and every claim after it saw `evidence/history.jsonl` modified - by the sweep
+# itself, three seconds earlier - and recorded `tree_dirty: true`. Nine of the ten records
+# published on the front page say "on an uncommitted tree" for that reason and not for any
+# reason a reader would guess from the words. A caveat that is always on carries no
+# information, and this one was being read as "the code was not committed".
+#
+# What the field is FOR is in `current_tree`'s docstring: two records at one commit can
+# disagree about their denominators because the code between them changed and was not
+# committed. A record already written cannot change what the next claim computes. The one
+# claim that reads the chain at all is SG-06, whose job is to verify it, and whose defence
+# against an edited chain is the hash chain rather than this flag.
+#
+# Everything else still counts, untracked files included - that is the shape of "code that is
+# in no commit" a repository under review is most likely to have, and it is what caught an
+# untracked test module moving a published test count by five.
+_EVIDENCE_PREFIX = "evidence/"
+
+
+def _code_changes(status: str) -> list[str]:
+    """The lines of `git status --porcelain` that are not this repository's own output."""
+    out: list[str] = []
+    for line in status.splitlines():
+        if not line.strip():
+            continue
+        # "XY path", and for a rename "XY old -> new". The destination is what exists now.
+        path = line[3:].strip().strip('"')
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip().strip('"')
+        if path.replace("\\", "/").startswith(_EVIDENCE_PREFIX):
+            continue
+        out.append(path)
+    return out
+
 
 def current_tree(default: str = "") -> tuple[str, bool]:
     """The hash of the tree that is about to run, and whether it is exactly a commit's tree.
@@ -57,7 +94,7 @@ def current_tree(default: str = "") -> tuple[str, bool]:
     status, ok = git("status", "--porcelain")
     if not ok:
         return (default, False)
-    dirty = bool(status)
+    dirty = bool(_code_changes(status))
     if dirty:
         # A commit object for the working tree, written without touching the index, the stash
         # or the checkout. It captures tracked modifications; an untracked file changes no

@@ -15,7 +15,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 | `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (72bafaa5b) |
 | `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (df1e4ffde) |
 | `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 148/148 (95% CI 97.5%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (dcd8155c6) |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI, c8c4a0745 on an uncommitted tree (beade96c9) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI, 16af667fb on an uncommitted tree (1c24637d6) |
 | `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (e50075ee7) |
 | `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (e91bafdd9) |
 
