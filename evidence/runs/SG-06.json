@@ -2,8 +2,8 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "b4151a621183dd773090aaf10b41fa10c4b76078",
-    "records_verified": 161,
+    "commit_sha": "5adbbe403e6d17300fb712cf242dd50ad52c94bd",
+    "records_verified": 171,
     "seed_source": "commit"
   },
   "ci_commit_sha": null,
@@ -19,40 +19,40 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "c9d44cbf8a6fb0ccbcd52d3ebcf91ddd",
+  "hash": "a89abfba6d4aa525088326ef6062341b",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "e2e3abaa67b122a1c47f5cde83ac36d3",
+  "prev": "498206a2aa3d692720f18c86ac7de21d",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "161 records verified against commit b4151a621183",
+    "note": "171 records verified against commit 5adbbe403e6d",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 161,
-      "trials": 161,
+      "successes": 171,
+      "trials": 171,
       "wilson95": [
-        0.976696,
+        0.978029,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "b4151a621183dd773090aaf10b41fa10c4b76078",
-      "duration_s": 5.818,
+      "commit_sha": "5adbbe403e6d17300fb712cf242dd50ad52c94bd",
+      "duration_s": 3.651,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        8653013646776680556
+        8805992472236622943
       ],
-      "started_at": "2026-09-02T22:59:39+00:00",
-      "tree_dirty": true,
-      "tree_sha": "f29d80131f4c3ef23f9372a5788e559e54d4a86e"
+      "started_at": "2026-09-02T23:19:39+00:00",
+      "tree_dirty": false,
+      "tree_sha": "a06f7f66ddfa78c5ddd68345ead865a63a148d0e"
     }
   }
 }
