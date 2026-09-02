@@ -500,23 +500,54 @@ def test_the_catalog_is_not_created_through_the_unity_catalog_api() -> None:
 
 
 def test_the_catalog_is_created_through_the_sql_statements_api() -> None:
-    """The path that does work with Default Storage, with a bounded wait."""
+    """The path that works with Default Storage, and a wait that can outlast a cold start.
+
+    `wait_timeout` accepts "0s" or "5s" to "50s", so NO value of it covers a serverless
+    warehouse booting, which takes 40s to 2 minutes and is the NORMAL case on Free Edition.
+    The first version asked for 30s with `on_wait_timeout: CANCEL`, and the wait expired on a
+    cold warehouse. The answer is not a bigger number; it is CONTINUE plus polling.
+    """
     assert "/api/2.0/sql/statements" in CODE
     assert "CREATE CATALOG IF NOT EXISTS" in CODE
-    # Without a wait the call returns PENDING immediately; without CANCEL a timed-out
-    # statement keeps running behind a script that has already moved on.
-    assert '"wait_timeout": "30s"' in CODE
-    assert '"on_wait_timeout": "CANCEL"' in CODE
+    assert '"on_wait_timeout": "CONTINUE"' in CODE
+    assert '"on_wait_timeout": "CANCEL"' not in CODE, (
+        "CANCEL ends the client's wait and reports CANCELED while the DDL the warehouse has "
+        "already admitted goes on running - which is how this step reported a failure that "
+        "had in fact created the catalog"
+    )
+    assert "api get" in CODE and "/api/2.0/sql/statements/" in CODE
+    assert "SAMEGOLD_SQL_TIMEOUT_SECONDS:-300" in CODE
+    assert "SAMEGOLD_SQL_POLL_SECONDS:-5" in CODE
 
 
-def test_the_script_refuses_to_continue_unless_the_statement_succeeded() -> None:
-    """A statement left PENDING reproduces the missing catalog one step later.
+def test_no_failure_path_asserts_the_world_without_looking_again() -> None:
+    """The rule this round is about, as a property of the code.
 
-    That is the worse failure: it surfaces at `bundle deploy` as a dependency error, which
-    looks like a different bug in a different place.
+    CANCELED does not mean "it did not happen", it means "I stopped waiting". Every exit from
+    a non-SUCCEEDED state has to re-ask `catalogs get` before it says anything, and the same
+    goes for the fetch step, where a failed `fs cp` was being reported as a missing record.
     """
-    assert "SUCCEEDED" in CODE, "nothing checks the statement's terminal state"
-    assert "state" in CODE
+    assert "catalog_exists()" in CODE
+    body = SCRIPT.split("statement ended in state", 1)[1].split("    die ", 1)[0]
+    assert "catalog_exists" in body, (
+        "the non-success path reaches its die without re-checking whether the catalog exists"
+    )
+    fetch = SCRIPT.split("step_fetch()", 1)[1].split(chr(10) + chr(125), 1)[0]
+    assert "fs ls" in fetch, "a failed `fs cp` is still being read as a missing record"
+
+
+def test_the_failure_message_is_generated_from_the_state_that_was_observed() -> None:
+    """A hand-written taxonomy that does not cover what it prints is worse than none.
+
+    The list that came before this one enumerated PENDING, RUNNING and FAILED. The state it
+    printed on the day it mattered was CANCELED, which was not in it - the same shape as
+    round 14's by-ordinal exclusion list.
+    """
+    assert "explain_statement_state" in CODE
+    explain = SCRIPT.split("explain_statement_state() {", 1)[1].split(chr(10) + chr(125), 1)[0]
+    for state in ("TIMED_OUT_WAITING", "FAILED", "CANCELED", "CLOSED", "PENDING | RUNNING"):
+        assert state in explain, f"{state} has no note, and this script can print it"
+    assert "no note about" in explain
 
 
 def test_the_catalog_name_is_validated_before_it_reaches_sql() -> None:
