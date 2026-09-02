@@ -103,7 +103,7 @@ step_catalog() {
     printf '%s' "$CATALOG" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$' || die \
 "catalog must match ^[A-Za-z_][A-Za-z0-9_]*\$, got '$CATALOG'"
 
-    if databricks catalogs get "$CATALOG" >/dev/null 2>&1; then
+    if catalog_exists; then
         echo "  exists"
         return 0
     fi
@@ -115,21 +115,12 @@ step_catalog() {
     # Default Storage. A catalog is also not a bundle resource type at all, so this is the one
     # piece of the lane created imperatively, and saying so beats a deploy that dies on a
     # parent nobody declared.
-    local py warehouse statement state
+    local py warehouse warehouse_state submitted statement_id state error deadline started
     py="$(python_bin)" || die "no python on PATH, which this step needs to read the CLI's JSON"
 
-    warehouse="$(databricks warehouses list -o json 2>/dev/null | "$py" -c '
-import json, sys
-try:
-    warehouses = json.load(sys.stdin)
-except Exception:
-    warehouses = []
-# Any warehouse will do: Free Edition gives exactly one, 2X-Small, and this statement is a
-# single DDL. Preferring a RUNNING one only avoids waiting for a cold start.
-running = [w for w in warehouses if str(w.get("state", "")).upper() == "RUNNING"]
-chosen = (running or warehouses)
-print(chosen[0]["id"] if chosen else "")
-')" || warehouse=""
+    read -r warehouse warehouse_state <<EOF
+$(databricks warehouses list -o json 2>/dev/null | "$py" -c "$WAREHOUSE_FIELDS")
+EOF
 
     [ -n "$warehouse" ] || die \
 "catalog '$CATALOG' does not exist and there is no SQL warehouse to create it with.
@@ -142,40 +133,154 @@ SQL Warehouses in the workspace, or just run this once in the SQL Editor:
 The Unity Catalog API cannot do it here: it wants a metastore storage root, and Free Edition
 uses Default Storage and has none (databricks/cli#4513)."
 
+    # A Free Edition warehouse stops itself after a few minutes idle, so a COLD START is the
+    # normal case for this script rather than the exception, and it costs 40s to 2 minutes.
+    # Saying so on screen is not decoration: a script that looks hung for ninety seconds is a
+    # script people kill halfway through, and killing it halfway is exactly how you end up with
+    # a catalog that exists and a tool that reported failure.
+    if [ "$warehouse_state" != "RUNNING" ]; then
+        echo "  warehouse $warehouse is $warehouse_state; starting it"
+        echo "  a serverless 2X-Small cold start takes 40s-2min. This is a wait, not a hang."
+        databricks warehouses start "$warehouse" --no-wait >/dev/null 2>&1 || true
+    fi
+
     echo "  creating via SQL on warehouse $warehouse"
-    statement="$(databricks api post /api/2.0/sql/statements --json "$(cat <<JSON
+    # `on_wait_timeout: CONTINUE`, not CANCEL, and this is the whole lesson of the round.
+    # The API accepts "0s" or "5s" to "50s" for wait_timeout, and a cold start can take longer
+    # than 50s, so NO value of that parameter covers the normal case: a timeout tuned against
+    # execution time cannot cover a wait dominated by start-up time. With CANCEL, the client's
+    # wait expiring killed the wait AND reported CANCELED, and this script then announced the
+    # catalog was not there - while the DDL the warehouse had already admitted went on to
+    # create it. With CONTINUE the statement stays alive and the response carries a
+    # statement_id to poll.
+    submitted="$(databricks api post /api/2.0/sql/statements --json "$(cat <<JSON
 {
   "warehouse_id": "$warehouse",
   "statement": "CREATE CATALOG IF NOT EXISTS $CATALOG COMMENT 'samegold: created by scripts/databricks_run.sh, not by the bundle'",
-  "wait_timeout": "30s",
-  "on_wait_timeout": "CANCEL"
+  "wait_timeout": "50s",
+  "on_wait_timeout": "CONTINUE"
 }
 JSON
 )")" || die "the CREATE CATALOG statement could not be submitted; the CLI output is above"
 
-    # The state is the whole point. `wait_timeout` returns after 30 seconds whatever has
-    # happened, so a PENDING statement with the script marching on reproduces the same missing
-    # catalog one step later - at `bundle deploy`, where it looks like a different bug.
-    state="$(printf '%s' "$statement" | "$py" -c '
+    read -r state statement_id error <<EOF
+$(printf '%s' "$submitted" | "$py" -c "$STATEMENT_FIELDS")
+EOF
+
+    # The ceiling is on the WHOLE wait rather than on one request, because what is being waited
+    # for is a machine booting and not a query running. Five minutes is a cold start with room.
+    started=$(date +%s)
+    deadline=$(( started + ${SAMEGOLD_SQL_TIMEOUT_SECONDS:-300} ))
+    while [ "$state" = "PENDING" ] || [ "$state" = "RUNNING" ]; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            state="TIMED_OUT_WAITING"
+            break
+        fi
+        # The GET is documented as taking up to 5 seconds to reflect the latest status, so
+        # polling faster than that buys nothing and spends request quota.
+        sleep "${SAMEGOLD_SQL_POLL_SECONDS:-5}"
+        echo "  still $state after $(( $(date +%s) - started ))s (statement $statement_id)"
+        read -r state statement_id error <<EOF
+$(databricks api get "/api/2.0/sql/statements/$statement_id" 2>/dev/null | "$py" -c "$STATEMENT_FIELDS")
+EOF
+    done
+
+    if [ "$state" = "SUCCEEDED" ]; then
+        echo "  created"
+        return 0
+    fi
+
+    # EVERY path out of a non-SUCCEEDED state goes through here, and the first thing it does is
+    # LOOK. CANCELED does not mean "it did not happen", it means "I stopped waiting": the
+    # cancel ends the client's wait, not a DDL the warehouse has already admitted. CLOSED is
+    # documented as a successful execution whose results are no longer fetchable. And a ceiling
+    # that expires says nothing whatsoever about the world. The version before this one
+    # asserted "Either way the catalog is not there" and was proved wrong on the first real
+    # workspace it met - inside its own error message.
+    echo "  statement ended in state $state; asking the catalog whether it exists"
+    if catalog_exists; then
+        echo "  created - the statement reported $state and the catalog is there."
+        echo "  The wait was cut short; the DDL was not."
+        return 0
+    fi
+
+    # Only now, having looked, may this say what is and is not there. And it reports the state
+    # it actually saw rather than reciting a list of the states it expected: the list that came
+    # before this one enumerated PENDING, RUNNING and FAILED, and the state it printed on the
+    # day it mattered was CANCELED, which was not in it.
+    die \
+"CREATE CATALOG did not succeed, and the catalog is still not there - checked just now, not
+assumed.
+
+  last observed state: $state
+  statement id:        ${statement_id:-none}
+  workspace error:     ${error:-none reported}
+
+$(explain_statement_state "$state")
+
+You can do it by hand in the SQL Editor, which is one line:
+
+  CREATE CATALOG IF NOT EXISTS $CATALOG;"
+}
+
+# Generated from the state that was observed, with a fallback that stays correct for a state
+# this script has never seen. A hand-maintained taxonomy that does not cover what it prints is
+# round 14's by-ordinal exclusion list wearing different clothes.
+explain_statement_state() {
+    case "$1" in
+        TIMED_OUT_WAITING)
+            echo "The warehouse did not finish within ${SAMEGOLD_SQL_TIMEOUT_SECONDS:-300}s. It may still be starting, and that statement may yet complete on its own - which is why this step re-checks rather than concluding." ;;
+        FAILED)
+            echo "The workspace refused the statement; the error above is its reason." ;;
+        CANCELED)
+            echo "Something cancelled it. This script no longer cancels on timeout, so the cancel came from somewhere else." ;;
+        CLOSED)
+            echo "CLOSED is documented as a successful execution whose results are no longer fetchable, so seeing it here with no catalog is surprising and worth reporting upstream." ;;
+        PENDING | RUNNING)
+            echo "It was still going when the wait ended, which should be unreachable: the loop leaves those states only at the ceiling, and that is reported as TIMED_OUT_WAITING." ;;
+        *)
+            echo "This script has no note about '$1'. It is a state the API returned and nothing here anticipated, which is worth reading in the workspace rather than guessing at." ;;
+    esac
+}
+
+# One question, one place, so that every caller asks it the same way and no caller is tempted
+# to infer the answer instead.
+catalog_exists() {
+    databricks catalogs get "$CATALOG" >/dev/null 2>&1
+}
+
+# Reads a statement-execution response and prints `state statement_id error` on one line.
+# Shared by the submit and by the poll, so the two readings cannot drift apart.
+STATEMENT_FIELDS='
 import json, sys
 try:
     body = json.load(sys.stdin)
 except Exception:
-    print("UNREADABLE"); raise SystemExit
+    body = {}
 status = body.get("status") or {}
-print(status.get("state", "NO_STATE"))
-if status.get("error"):
-    print(json.dumps(status["error"]), file=sys.stderr)
-')"
-    [ "$state" = "SUCCEEDED" ] || die \
-"CREATE CATALOG did not succeed: the statement finished in state '$state'.
+error = (status.get("error") or {}).get("message", "")
+print(
+    status.get("state", "UNREADABLE"),
+    body.get("statement_id", ""),
+    " ".join(str(error).split()),
+)
+'
 
-A state of PENDING or RUNNING means it was still going when the 30s wait_timeout expired and
-was cancelled; FAILED means the workspace refused it and the error is above. Either way the
-catalog is not there, and continuing would fail at \`bundle deploy\` instead, which looks
-like a different problem."
-    echo "  created"
-}
+# Prints `id state` for the warehouse to use: a RUNNING one if there is one, because that
+# skips the cold start, and otherwise whichever exists. Free Edition gives exactly one.
+WAREHOUSE_FIELDS='
+import json, sys
+try:
+    warehouses = json.load(sys.stdin)
+except Exception:
+    warehouses = []
+running = [w for w in warehouses if str(w.get("state", "")).upper() == "RUNNING"]
+chosen = running or warehouses
+if chosen:
+    print(chosen[0].get("id", ""), str(chosen[0].get("state", "UNKNOWN")).upper())
+else:
+    print("", "NONE")
+'
 
 step_validate() { say "bundle validate -t $TARGET"; (cd "$BUNDLE" && databricks bundle validate -t "$TARGET"); }
 step_deploy()   { say "bundle deploy -t $TARGET";   (cd "$BUNDLE" && databricks bundle deploy   -t "$TARGET" --var="catalog=$CATALOG"); }
@@ -233,12 +338,28 @@ step_run() {
 step_fetch() {
     say "fetch the evidence"
     mkdir -p "$OUT"
-    databricks fs cp --overwrite "$EVIDENCE_VOLUME/SG-DBX-01.json" "$OUT/SG-DBX-01.json" || die \
-"the run produced no $EVIDENCE_VOLUME/SG-DBX-01.json.
+    # A failed copy is not the same fact as a missing file, and the previous version of this
+    # message asserted the second from the first: "the run produced no SG-DBX-01.json ... its
+    # absence means the task did not reach the end". A `cp` can fail because the token expired,
+    # because the volume is not readable, or because the network dropped. Same defect as the
+    # catalog step's CANCELED, one function away: turning "the call failed" into a claim about
+    # the world without looking. So it LOOKS, and reports what it found either way.
+    if ! databricks fs cp --overwrite "$EVIDENCE_VOLUME/SG-DBX-01.json" "$OUT/SG-DBX-01.json"; then
+        if databricks fs ls "$EVIDENCE_VOLUME/SG-DBX-01.json" >/dev/null 2>&1; then
+            die \
+"the record EXISTS at $EVIDENCE_VOLUME/SG-DBX-01.json and could not be copied down.
 
-Look at the publish_evidence task in the run: the notebook writes that file as its last step,
-so its absence means the task did not reach the end. The run's output is in the workspace
-under Jobs -> samegold monthly close."
+So the run reached the end and produced it; what failed is this machine's ability to fetch it.
+Look at credentials and network before you look at the job. You can also read it in the
+workspace, or retry with: scripts/databricks_run.sh fetch"
+        fi
+        die \
+"no record at $EVIDENCE_VOLUME/SG-DBX-01.json - checked just now, not inferred from the copy
+failing.
+
+publish_evidence.py writes that file as its last step, so this is consistent with the task not
+reaching the end. The run's output is in the workspace under Jobs -> samegold monthly close."
+    fi
     # Written HERE, by this machine, about this deploy - and kept in a separate file from the
     # record the workspace produced, so that nothing this laptop asserts can be mistaken for
     # something the workspace measured.
