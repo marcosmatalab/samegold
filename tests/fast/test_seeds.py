@@ -51,6 +51,16 @@ def test_a_runs_own_output_does_not_make_the_tree_look_uncommitted() -> None:
     from samegold.generator.seeds import _code_changes
 
     assert _code_changes(" M evidence/history.jsonl\n M evidence/runs/SG-07.json") == []
+    # THE SHAPE THAT ACTUALLY ARRIVES. `current_tree` reads
+    # `subprocess.run(...).stdout.strip()`, so the first line has lost its leading space and a
+    # parser that slices at a fixed offset eats the first character of the path. The version of
+    # this helper that sliced passed the assertion above - written by hand, with both spaces -
+    # and published nine records claiming an uncommitted tree.
+    stripped = " M evidence/history.jsonl\n M evidence/runs/SG-00.json".strip()
+    assert _code_changes(stripped) == []
+    assert _code_changes("M evidence/history.jsonl\n M src/samegold/cli.py") == [
+        "src/samegold/cli.py"
+    ]
     assert _code_changes(" M evidence/history.jsonl\n M src/samegold/cli.py") == [
         "src/samegold/cli.py"
     ]
