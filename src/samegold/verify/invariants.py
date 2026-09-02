@@ -206,6 +206,22 @@ def conservation_against_ledger(
         purpose; the reference counts them as the lines it could not turn into a record plus
         the ones it turned into an all-NULL row. That figure was published as zero on data
         that contained them, for a whole review cycle.
+      * how many carry a NUMBER THE COLUMN CANNOT HOLD. The generator emits them (a price of
+        2^63, one past the largest BIGINT); the reference recounts them by asking which values
+        need more than 64 bits. This one is here because it is the only fault in the set that
+        erases itself: every reader in the project puts such a value in its rescue column and
+        leaves the real column NULL, after which the record is indistinguishable from one whose
+        producer never sent the field. It still leaves through a named door -
+        ``missing_required_field``, since after the rescue the field is missing - so the four-
+        way conservation identity holds without it. What it adds is that the LOSS is counted:
+        the record is accounted for, and so is the value.
+
+        There was no such count, and the gap was stated as a fact in the code. ``claims.py``
+        passed ``rescued=0`` into ``conservation`` above with a comment explaining that the
+        rescue door "is one this pipeline never uses" - true when it was written, and false as
+        soon as any producer sent a number too wide for its column, which the deployed lane did
+        on its first run. A term that cannot move is not a check; a term that quietly starts
+        moving while the comment says it cannot is worse.
 
     This is the invariant the previous ``conservation`` call was supposed to be and was not.
     """
@@ -218,6 +234,11 @@ def conservation_against_ledger(
             "unparseable_lines",
             int(ledger_counts["unparseable_lines"]),
             int(reference["unparseable"]),
+        ),
+        (
+            "values_beyond_bigint",
+            int(ledger_counts["values_beyond_bigint"]),
+            int(reference["beyond_bigint"]),
         ),
     ]
     for name, expected, found in pairs:

@@ -793,13 +793,23 @@ def claim_dimension_invariants(
                 # all-NULL record, which is what `no_event_id` counts; adding both counted
                 # the same line twice.
                 quarantined=counts["rejected_by_rule"] + counts["unparseable"],
-                # Structurally zero, and said out loud rather than left as a literal. The
-                # reader declares a `_rescued_data` column (PERMISSIVE mode fills it) and no
-                # consumer reads it: a record whose JSON is malformed arrives with every
-                # field NULL and leaves through `unparseable_json`, so the rescue DOOR of the
-                # contract's four is one this pipeline never uses. A term that cannot move is
-                # not a check, which is why CONTRACT.md now says so where the identity is
-                # stated.
+                # Zero because the rescue is not a DOOR here, which is a narrower claim than
+                # the one this comment used to make and is the correction of round eighteen.
+                #
+                # It used to say the rescue column is never populated at all: "a record whose
+                # JSON is malformed arrives with every field NULL and leaves through
+                # `unparseable_json`, so the rescue door is one this pipeline never uses". That
+                # was true of the data the generator wrote then and false of the pipeline. A
+                # value too wide for its column - 2^63 in `unit_price_cents`, which is what a
+                # real producer sent the deployed lane - is rescued PER COLUMN: the reader nulls
+                # that one field, copies the raw line into `_rescued_data`, and keeps the rest
+                # of the record. The row then leaves through `missing_required_field`, because
+                # after the rescue the field is missing.
+                #
+                # So the row is counted exactly once, under `quarantined`, and this term stays
+                # zero. What was missing was any count of the LOST VALUE, and a term that cannot
+                # move is not a check: `values_beyond_bigint` is now written by the generator
+                # and recounted by the reference, and compared below.
                 rescued=0,
                 deduplicated=counts["duplicates"],
             )

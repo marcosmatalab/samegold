@@ -15,7 +15,7 @@ behind one contract test, and the guarantees that differ are these:
 | cost as the directory grows | roughly constant with notifications | O(number of objects) per trigger |
 | seen-file state | RocksDB-backed, scales to millions | in the checkpoint, degrades with volume |
 | schema evolution | `cloudFiles.schemaEvolutionMode`, schema hints, `_rescued_data` | declared schema plus `columnNameOfCorruptRecord`; no evolution modes |
-| malformed records | rescued into `_rescued_data` | corrupt record column, and the semantics differ per format |
+| malformed records | rescued into `_rescued_data` | corrupt record column, and the semantics differ per format - but for the shape that matters here, a value too wide for its column, the two agree: one column nulled, the record kept, the raw line in the rescue column. Measured, not assumed |
 
 The claims that depend on ingestion semantics are therefore made **per lane**, never once and
 transferred.
@@ -47,6 +47,45 @@ So the honest statement of parity today is: **the rules agree, and the lanes did
 they ran on different types.** `docs/databricks-run.md` has the full account and
 `docs/adr/0006-mutants-are-generated-not-planted.md` has what generalises from it. Nothing in
 the table below should be read as "verified on all three lanes" until a run says so.
+
+### What a second pass over that fix found
+
+Fixing a defect and then re-reading the fix is not ceremony here; it produced three more, and
+two of them were in the repair itself.
+
+- **The literal's WIDTH, not just its value.** `1000000` is an INT32 literal, and the round
+  above fixed the consequence (a NULL predicate can no longer be accepted) without fixing the
+  cause (the predicate is still NULL). Every bound literal in Spark-dialect SQL now carries
+  `L` and every bound in the PySpark lane goes through `_bound()`, which casts to bigint. The
+  effect is measurable and is measured: re-run on STRING columns with ANSI pinned off - the
+  exact reproduction - **no rule is undecidable any more**, and the record priced at
+  Long.MaxValue leaves through `amount_out_of_range`, the door the contract has for it, rather
+  than through the first rule that could not answer. `docs/limits.md` carries the table for
+  all three engines, including the measurement that DuckDB does not have this hazard at all:
+  it raises a binder error rather than answering NULL.
+- **The rules agreed; their ORDER did not.** The OSS `CASE` tested the bounds before the
+  currency and the Databricks `RULES` declared the currency before the bounds. Every record in
+  the parity matrix broke exactly one rule, so the sequence decided nothing and twenty records
+  agreed. Measured on the record that breaks two: an `order_placed` priced past the bound AND
+  denominated in dollars was `amount_out_of_range` on the OSS lane and `unknown_currency` on
+  the Databricks one. Same rules, different door, and a quarantine report is grouped by door.
+  The OSS branches are built in the order `RULES` declares them now, and the matrix has the
+  record that holds them there.
+- **Acceptance is a conjunction, not the `ELSE`.** `WHEN NOT COALESCE(rule, false) ... ELSE
+  'accepted'` is correct - the branches are total - and it is correct by an argument the
+  reader has to reconstruct, in the exact place the previous version was wrong for want of it.
+  Both lanes now say what they mean: `WHEN <every rule holds> THEN 'accepted'`, over the same
+  declaration the rejection branches are generated from. The `ELSE` that remains is
+  unreachable and `raise_error`s, which is the ruling on "the classification could not
+  classify": a fault in the pipeline, not a member of the contract's closed enum.
+
+**A parity improvement, measured rather than assumed**: a value too wide for its column
+behaves the SAME on all three lanes. Spark reading a declared schema in PERMISSIVE mode nulls
+that one column and keeps the rest of the record in `_rescued_data`; Auto Loader with the
+schema hints does the same; DuckDB's `json_type` says UBIGINT and `TRY_CAST(... AS BIGINT)`
+returns NULL. All three then quarantine it as `missing_required_field`. The generator emits
+one deliberately (corrupt kind `beyond_bigint`) so that the agreement is exercised on every
+seed rather than argued for here.
 
 ## Feature parity table
 

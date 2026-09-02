@@ -28,6 +28,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -39,18 +40,38 @@ def environment_fingerprint() -> dict[str, str]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
     }
-    for module, label in (
+    # ASKED OF THE INSTALLED DISTRIBUTION, not by importing the package, and the difference is
+    # a gate that was red on every machine that can run the Spark lane.
+    #
+    # This used to be `__import__(module)` and `mod.__version__`. It worked, and it left
+    # `pyspark`, `delta` and `py4j` in `sys.modules` - so the round-17 session hook in
+    # `tests/fast/conftest.py`, which fails the fast lane if Spark was ever imported, fired on
+    # any run that built an evidence record. Two whole test files, sixteen tests, exit status 1,
+    # on both of this project's development machines. Nobody saw it: pytest still printed
+    # `57 passed`, the hook's message went to stdout among the dots, and the number is what gets
+    # read. It is the round-15 finding again - a gate whose result is not what its summary line
+    # says - with the sign flipped: red locally, green in CI, because CI installs `.[dev]` and
+    # has no Spark to import.
+    #
+    # `importlib.metadata` reads the installed distribution's metadata and does not execute the
+    # package, which is the right question anyway: this field records WHICH VERSION IS
+    # INSTALLED, and importing was only ever a way of finding that out. It also answers better -
+    # `delta.__version__` does not exist, so delta-spark was recorded as "unknown" in every
+    # evidence record ever written, and is recorded as its real version now.
+    #
+    # `samegold doctor` in cli.py keeps the import, deliberately: that command answers "can this
+    # environment actually load it", which is a different question and worth the import.
+    for distribution, label in (
         ("pyspark", "pyspark"),
-        ("delta", "delta_spark"),
+        ("delta-spark", "delta_spark"),
         ("duckdb", "duckdb"),
         ("deltalake", "delta_rs"),
         ("sqlglot", "sqlglot"),
         ("pyarrow", "pyarrow"),
     ):
-        try:  # pragma: no cover - import side effects only
-            mod = __import__(module)
-            versions[label] = str(getattr(mod, "__version__", "unknown"))
-        except Exception:
+        try:
+            versions[label] = metadata.version(distribution)
+        except metadata.PackageNotFoundError:
             versions[label] = "absent"
     return versions
 

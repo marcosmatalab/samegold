@@ -472,6 +472,16 @@ def _matrix_rows() -> list[dict[str, object]]:
         event(event_id="maxlong", unit_price_cents=9223372036854775807),
         event(event_id="past-qty-bound", qty=10001),
         event(event_id="past-price-bound", unit_price_cents=1000001),
+        # TWO faults in one record, which no record in this matrix had. Every other row here
+        # breaks exactly one rule, so the ORDER of the rules decided nothing and the two lanes
+        # could declare them in different orders and still agree on all twenty. They did: the
+        # OSS CASE tested the bounds before the currency and the Databricks `RULES` declared
+        # the currency before the bounds, so this record - priced past the bound AND in dollars
+        # - was `amount_out_of_range` on one lane and `unknown_currency` on the other. The
+        # rules were identical; their sequence was not, and the sequence is what a quarantine
+        # report is grouped by. The OSS branches are built in the order `RULES` declares them
+        # now, and this row is what holds them there.
+        event(event_id="two-faults", currency="USD", unit_price_cents=1000001),
     ]
 
 
@@ -535,30 +545,35 @@ def test_no_rule_is_undecidable_on_any_record_of_the_matrix(spark) -> None:  # t
     )
 
 
-def test_the_classification_fails_closed_when_a_predicate_cannot_answer(spark) -> None:  # type: ignore[no-untyped-def]
-    """The property that would have stopped the deployment booking 2.7e19 as revenue.
+def test_the_bound_literals_carry_their_width_so_nothing_is_undecidable_on_strings(spark) -> None:  # type: ignore[no-untyped-def]
+    """The round-seventeen reproduction, re-run, and it no longer reproduces.
 
-    On STRING columns the bounds predicate IS undecidable, and no amount of care in the rules
-    changes that - the coercion happens in the engine. What has to hold is that an undecidable
-    predicate cannot produce `accepted`. The old CASE ended in `ELSE 'accepted'`, so everything
-    the system could not understand became revenue; the generated one wraps every branch in
-    `COALESCE(..., false)`, so acceptance is established positively and anything else leaves
-    through the door of the rule that could not pass it.
+    On STRING columns `unit_price_cents > 1000000` coerces the string to the LITERAL's INT32,
+    9223372036854775807 overflows it, and non-ANSI Spark yields NULL - so the predicate could
+    not answer, and a CASE whose ELSE was `accepted` booked the row. Round seventeen fixed the
+    second half (nothing undecidable can be accepted) and left the first: the rule still could
+    not answer, it just failed closed into `negative_price`, which is the wrong door reached
+    for the right reason.
+
+    Every bound literal now carries its width - `1000000L`, `0L`, `10000L` - so the STRING is
+    coerced to BIGINT instead, and the same expression on the same columns in the same ANSI
+    mode DECIDES. This test is the measurement: `undecided_rules` is empty for every record of
+    the matrix even here, and `maxlong` leaves through `amount_out_of_range`, which is the door
+    the contract has for it, rather than through the first rule that could not answer.
+
+    It is kept in non-ANSI mode on purpose even though it now passes in both. That is the mode
+    the deployed pipeline behaved as (docs/limits.md has the table), and a test that only
+    exercises the safe mode is the test this file had for a round.
     """
     from pyspark.sql import functions as F
+
+    from samegold.pipelines.transform import quarantine_reason
 
     namespace = _databricks_namespace()
     reason, undecided = str(namespace["_REASON"]), str(namespace["_UNDECIDED"])
     rows, ddl = _as_strings(_matrix_rows())
     frame = spark.createDataFrame(rows, ddl)
 
-    # ANSI mode is pinned OFF, and that is the whole reproduction rather than a convenience.
-    # Spark 4 defaults ANSI ON, where the string is widened and the comparison answers `true`;
-    # the Databricks pipeline behaved as ANSI OFF, where the string is coerced to the INT32
-    # literal's type, 9223372036854775807 overflows it, and the cast yields NULL. Measured both
-    # ways on pyspark 4.2.0. Running this test in the default mode passes without exercising
-    # anything - which is the same shape of mistake as running the parity matrix on typed
-    # columns and calling it agreement.
     previous = spark.conf.get("spark.sql.ansi.enabled")
     spark.conf.set("spark.sql.ansi.enabled", "false")
     try:
@@ -566,34 +581,157 @@ def test_the_classification_fails_closed_when_a_predicate_cannot_answer(spark) -
             F.col("event_id"),
             F.expr(reason).alias("reason"),
             F.expr(undecided).alias("undecided"),
+            quarantine_reason().alias("oss"),
         ).collect()
     finally:
         spark.conf.set("spark.sql.ansi.enabled", previous)
     by_id = {row["event_id"]: row for row in classified}
 
-    maxlong = by_id["maxlong"]
-    assert maxlong["reason"] != "accepted", (
-        "an event priced at Long.MaxValue came out `accepted` on STRING columns, which is the "
-        "deployed defect reproduced exactly: the value coerced to INT32 is NULL, and a CASE "
-        "whose ELSE is `accepted` turns NULL into revenue"
+    undecidable = [(r["event_id"], r["undecided"]) for r in classified if r["undecided"]]
+    assert not undecidable, (
+        f"a rule could not answer on STRING columns, which is what the `L` suffixes exist to "
+        f"prevent: {undecidable}"
     )
-    # It leaves through `negative_price`, not through the bounds rule, and that is worth
-    # keeping rather than asserting away: on STRING columns `unit_price_cents >= 0` is ALREADY
-    # undecidable - the literal `0` is INT32 too - so the first rule that cannot answer is the
-    # one that catches the row. Which door it leaves by is an accident of ordering; that it
-    # leaves at all is the property. On the types bronze now declares it leaves through
-    # `amount_out_of_range`, which is what the ledger comparison checks.
-    assert maxlong["reason"] == "negative_price", maxlong["reason"]
-    # And the diagnostic names the rule that could not decide, so a run where this happens
-    # says so instead of the row being quietly filed under a business reason.
-    assert maxlong["undecided"] == "negative_price", maxlong["undecided"]
-    # Nothing in the matrix may be accepted while a rule was undecidable about it.
-    leaked = [
-        (row["event_id"], row["undecided"])
-        for row in classified
-        if row["reason"] == "accepted" and row["undecided"]
+    maxlong = by_id["maxlong"]
+    assert maxlong["reason"] == "amount_out_of_range", maxlong["reason"]
+    # And the OSS lane, on the same columns in the same mode. Its bound literals go through
+    # `_bound()`, which casts them to BIGINT for exactly this reason, so the two lanes agree
+    # here as well as on the declared types.
+    disagreements = [
+        (r["event_id"], r["oss"], r["reason"]) for r in classified if r["oss"] != r["reason"]
     ]
-    assert not leaked, f"accepted despite an undecidable rule: {leaked}"
+    assert not disagreements, f"the two lanes disagree on STRING columns: {disagreements}"
+
+
+def test_a_rule_that_cannot_answer_quarantines_the_row_instead_of_accepting_it(spark) -> None:  # type: ignore[no-untyped-def]
+    """The property the whole round turns on, tested where it can still be observed.
+
+    Both fixes above - typed bronze, and bound literals that carry their width - work by making
+    every rule decidable. That is the right fix and it has an awkward consequence: the property
+    "a rule that cannot answer must not produce revenue" now holds VACUOUSLY on the real rules,
+    and a property nothing can exercise is a property nobody is testing. The next rule someone
+    adds, the next column whose type is inferred rather than declared, and it stops holding
+    vacuously without any test noticing.
+
+    So a rule that is NULL by construction is injected, and the classification is rendered from
+    the lane's OWN function (`_classification`) rather than rebuilt here - the rebuilt version
+    is what agreed with the defect for a round. Every record must leave through a door: the
+    injected rule cannot pass, so no record can satisfy the conjunction that `accepted`
+    requires, and `undecided_rules` must name the rule that could not decide.
+    """
+    from pyspark.sql import functions as F
+
+    from samegold.pipelines.schema import bronze_schema
+
+    namespace = _databricks_namespace()
+    render = namespace["_classification"]
+    render_undecided = namespace["_undecided"]
+    assert callable(render) and callable(render_undecided)
+    rules = dict(namespace["RULES"])  # type: ignore[call-overload]
+    assert "unknown_currency" in rules
+    rules["unknown_currency"] = "CAST(NULL AS BOOLEAN)"
+
+    frame = spark.createDataFrame(_matrix_rows(), bronze_schema())
+    classified = frame.select(
+        F.col("event_id"),
+        F.expr(str(render(rules))).alias("reason"),
+        F.expr(str(render_undecided(rules))).alias("undecided"),
+    ).collect()
+
+    accepted = [row["event_id"] for row in classified if row["reason"] == "accepted"]
+    assert not accepted, (
+        f"a rule that evaluates to NULL let {accepted} through as `accepted`. This is the "
+        f"round-seventeen defect exactly: NOT(NULL) is NULL, the WHEN does not match, and the "
+        f"row lands in whatever the classification does by default. Acceptance has to be the "
+        f"conjunction of the rules, not the remainder after them."
+    )
+    # And the row that would have been accepted leaves through the rule that could not decide,
+    # named, rather than under a business reason nothing established.
+    ok = next(row for row in classified if row["event_id"] == "ok")
+    assert (ok["reason"], ok["undecided"]) == ("unknown_currency", "unknown_currency")
+
+
+def test_the_branch_that_cannot_be_reached_raises_rather_than_classifying(spark) -> None:  # type: ignore[no-untyped-def]
+    """`accepted` is a conjunction, so the ELSE is dead. Dead has to mean loud.
+
+    The ruling is written where the branch is: a record the classification cannot classify is a
+    fault in the PIPELINE, not a reason in the contract's closed enum, so it is not given a name
+    in `QuarantineReason` (a reason no run can produce is a dead enum member -
+    `test_every_quarantine_reason_is_actually_produced_by_a_run` is the test that says so) and
+    it is not allowed to return NULL either, which is the quietest possible answer to "the
+    classification did not classify".
+
+    What is asserted here is the MECHANISM, taken from the lane's own source: put that ELSE in a
+    CASE whose branches match nothing, and the query fails. Without this, `raise_error` in that
+    position is a claim about Spark that nothing in this repository checks.
+    """
+    unreachable = str(_databricks_namespace()["_UNREACHABLE"])
+    with pytest.raises(Exception) as caught:
+        spark.sql(f"SELECT CASE WHEN false THEN 'x' ELSE {unreachable} END AS r").collect()
+    assert "USER_RAISED_EXCEPTION" in str(caught.value)
+    assert "defect in the pipeline" in str(caught.value)
+
+
+def test_a_value_too_wide_for_its_column_is_counted_not_only_classified(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The fault that erases itself, and the counter that stops it being silent.
+
+    A price of 2^63 is not a business fault - no rule ever sees it. The READER cannot put it in
+    a BIGINT column: Spark nulls that one field and copies the raw line into `_rescued_data`,
+    Auto Loader with the schema hints does the same, DuckDB's `json_type` says UBIGINT and
+    `TRY_CAST(... AS BIGINT)` gives NULL. After that the record is indistinguishable from one
+    whose producer never sent the field, and it leaves through `missing_required_field`, which
+    is fail-closed and right.
+
+    Right, and mute. Trading a loud failure for a quiet one is the worst available outcome of
+    fixing the types, so this asserts the three things that keep it loud: the column is NULL and
+    the rescue column holds the record (nothing was thrown away), the record is classified
+    rather than dropped, and the count of values lost this way is carried in the ledger and
+    recomputed by the reference. The generator emits these deliberately - corrupt kind
+    `beyond_bigint` - so the counter has something to count on every seed.
+    """
+    from pyspark.sql import functions as F
+
+    from samegold.pipelines.schema import RESCUED_COLUMN
+    from samegold.pipelines.transform import classify, read_bronze
+
+    rows = [
+        BASE_ORDER,
+        dict(BASE_ORDER, event_id="over-1", order_id="O2", unit_price_cents=2**63),
+    ]
+    bronze = _write(tmp_path, rows)
+    classified = {
+        row["event_id"]: row for row in classify(read_bronze(spark, str(bronze))).collect()
+    }
+    over = classified["over-1"]
+    assert over["unit_price_cents"] is None, "the value fit a BIGINT after all"
+    assert over[RESCUED_COLUMN] is not None, (
+        "the value did not fit the column AND was not rescued, which is the shape that leaves "
+        "no trace of itself anywhere"
+    )
+    assert over["quarantine_reason"] == "missing_required_field", over["quarantine_reason"]
+    # Not a fourth door: exactly one reason, like every other record.
+    assert classified["op-1"]["quarantine_reason"] == "accepted"
+
+    # And the accounting, from two derivations that never met: the generator counted these as
+    # it wrote them, the reference recounts them by asking which values need more than 64 bits.
+    from samegold.generator.events import FAST, generate
+    from samegold.oracle.duckdb_gold import reference_counts
+    from samegold.verify.invariants import conservation_against_ledger
+
+    result = generate(tmp_path / "g", seed=20260901, profile=FAST)
+    counts = reference_counts(tmp_path / "g" / "bronze")
+    assert result.ledger.counts["values_beyond_bigint"] > 0, (
+        "no seed produced a value outside BIGINT, so the counter that exists to make that "
+        "visible is measuring nothing"
+    )
+    assert not conservation_against_ledger(result.ledger.counts, counts)
+    # The same records, through the Spark reader: rescued, and never accepted.
+    frame = classify(read_bronze(spark, str(tmp_path / "g" / "bronze")))
+    rescued = frame.where(F.col(RESCUED_COLUMN).isNotNull()).collect()
+    assert len(rescued) >= result.ledger.counts["values_beyond_bigint"]
+    assert not [row for row in rescued if row["quarantine_reason"] == "accepted"], (
+        "a record whose value was lost to the rescue column was published as revenue"
+    )
 
 
 def test_the_databricks_classification_matches_the_ledger_by_reason(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]

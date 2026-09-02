@@ -91,6 +91,74 @@ record when it is, so the sentence above has a date on it rather than being open
   recomputed by a reader with a clone, so it goes to `evidence/databricks/` and says why in
   its own `chain` field. `evidence/databricks/README.md` is the comparison in full.
 
+## One workspace, two ANSI modes, and why a bound literal is spelled `1000000L`
+
+This is not a limit of the free tier. It is a property of the platform that cost this project a
+published month, and it is written here because the alternative is that it lives in a commit
+message and the next reader finds it the same way this one did.
+
+**The pipeline engine and the SQL warehouse in the same workspace do not evaluate the same
+expression the same way.** The declarative pipeline that runs `silver_expectations.py` behaved
+as `spark.sql.ansi.enabled=false`; the SQL warehouse that the same rules were checked from
+answered as if it were true. Both answers were observed in the workspace on 2 September 2026,
+on the same table, for the same predicate, which is how the defect was found at all - the rule
+said one thing when a human asked it and another when the pipeline did.
+
+The mechanism, measured locally on pyspark 4.2.0 under WSL2 (Temurin 21) rather than deduced,
+with `v` a STRING column holding `9223372036854775807`:
+
+| expression | `ansi=false` | `ansi=true` |
+|---|---|---|
+| `v > 1000000` | **NULL** | `true` |
+| `v > 1000000L` | `true` | `true` |
+| `v >= 0` | **NULL** | `true` |
+| `v >= 0L` | `true` | `true` |
+| `v <= 10000` | **NULL** | `false` |
+| `CAST(v AS INT)` | **NULL** | raises `CAST_INVALID_INPUT` |
+| `CAST(v AS BIGINT)` | `9223372036854775807` | `9223372036854775807` |
+
+Read the second row against the first. `1000000` is an **INT32** literal, and Spark coerces the
+*other operand* to the literal's type rather than widening the literal: the string is cast to
+INT32, the value overflows it, and with ANSI off that cast is NULL. It is the WIDTH of the
+literal, not string-versus-numeric, and it disappears the moment either the column is a BIGINT
+or the literal says it is one.
+
+What that NULL did: `NOT(NULL)` is NULL, a `WHEN` does not match on NULL, and the classification
+of the day ended in `ELSE 'accepted'`. Three events the generator emits **in order to be
+rejected** were booked as 2.767e19 cents of January revenue - six and a half million times the
+contract's ceiling for a single line - out of 428 lines.
+
+Three consequences are carried in the code, and each has a test:
+
+- bronze is typed at ingest (`cloudFiles.schemaHints`), so the columns are BIGINT and the
+  coercion has nothing to do;
+- every bound literal in Spark-dialect SQL carries `L`, and every bound in the PySpark lane goes
+  through `_bound()`, which is `lit(value).cast("bigint")`. Belt and braces on purpose: the
+  hints only take effect after a full refresh re-infers the cached schema, and the same rules
+  are read by the warehouse, whose mode is not the pipeline's;
+- acceptance is a positive conjunction over the rules rather than the `ELSE` branch, so a rule
+  that cannot answer quarantines rather than paying out. `tests/fast/test_contract_documents.py`
+  enforces the spelling, `tests/spark/test_adversarial_records.py` evaluates the rules on STRING
+  columns with ANSI pinned off - which is the reproduction, since Spark 4 defaults ANSI on and
+  the test passes vacuously otherwise.
+
+**The reference does not have this hazard, and that is measured too**, on duckdb 1.5.5: comparing
+a VARCHAR column against an INTEGER literal is a *binder error* - `Cannot compare values of type
+VARCHAR and type INTEGER_LITERAL` - so the reference refuses to run rather than quietly answering
+"unknown", and its numeric columns are JSON converted through an explicit `json_type` guard and
+`TRY_CAST(... AS BIGINT)` before any comparison. So `gold_revenue.sql` and `duckdb_gold.py` are
+exempt from the `L` policy by measurement rather than by omission.
+
+A related asymmetry, same root, recorded here because it is what the failed run actually died
+of: a value that does not fit its column is **rescued**, not rejected. Spark reading a declared
+schema in PERMISSIVE mode, and Auto Loader with the hints, both null that one column and copy the
+raw line into the rescue column; DuckDB's `TRY_CAST(... AS BIGINT)` gives NULL for the same value.
+The record survives and leaves through `missing_required_field`, because after the rescue the
+field is missing - fail-closed and correct, and completely silent about the fact that a value was
+LOST rather than never sent. The generator emits one of these deliberately (corrupt kind
+`beyond_bigint`, a price of 2^63) and `values_beyond_bigint` is counted in its ledger and
+recounted independently by the reference, so the loss is a number somebody can read.
+
 ## Not verifiable for free, at all
 
 | exam area | why the free lanes cannot show it | what is done instead |
