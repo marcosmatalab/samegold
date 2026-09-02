@@ -2,6 +2,18 @@
 # DECLARED here, deployed from CI, and compared against what is actually in the metastore by
 # the drift test in milestone M10. A grant that only exists because someone clicked it is a
 # grant nobody can review.
+#
+# Two Free Edition facts that decide what this file can and cannot show:
+#
+#   * the CATALOG is not here, because there is no `catalogs` resource type in a bundle. It
+#     is created once, out of band, by `scripts/databricks_run.sh` before the deploy - which
+#     is also the only reason the first `bundle deploy` of this lane can succeed at all: a
+#     schema resource whose catalog does not exist fails at deploy time, not at run time.
+#   * `account users` is the ONLY principal available. Free Edition has no account console,
+#     no SCIM and no SSO, so no group can be created and every group-based control resolves
+#     against a metastore with one member: the person who deployed it. What this grant proves
+#     is that the privilege was applied and is readable back; it does not and cannot show
+#     that anyone was kept out. docs/limits.md says so in the same words.
 resources:
   schemas:
     main:
@@ -14,5 +26,5 @@ resources:
     raw:
       catalog_name: ${var.catalog}
       name: raw
-      comment: "landing volume; not readable by analysts"
+      comment: "landing and evidence volumes; not readable by analysts"
       grants: []

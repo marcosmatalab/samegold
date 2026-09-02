@@ -8,11 +8,16 @@ name: databricks
 # outbound traffic to a small set of trusted domains, and a bundle deploy started from a
 # notebook there is unreliable. Authentication is a PAT because Free Edition has no account
 # console and therefore no OAuth machine-to-machine credentials.
+#
+# Every step goes through scripts/databricks_run.sh, which is also what `make databricks`
+# runs. Two definitions of what this lane does is how they drift, and a lane that behaves
+# differently in CI from the way it behaves on a laptop is the thing round 12 was about.
 
 on:
   workflow_dispatch:
     inputs:
       action:
+        description: "validate (no compute) | deploy | run (deploy, seed, run, fetch)"
         type: choice
         options: [validate, deploy, run]
         default: validate
@@ -30,14 +35,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - name: install the generator
+        # `seed` uploads events produced by the OSS generator, so the run action needs the
+        # package. `validate` and `deploy` do not, and pay for it anyway rather than having
+        # two install paths.
+        run: pip install -e ".[dev]"
       - name: validate
-        working-directory: databricks
-        run: databricks bundle validate -t free
+        run: scripts/databricks_run.sh validate
       - name: deploy
         if: inputs.action != 'validate'
-        working-directory: databricks
-        run: databricks bundle deploy -t free
-      - name: run
+        run: scripts/databricks_run.sh deploy
+      - name: seed the landing volume
         if: inputs.action == 'run'
-        working-directory: databricks
-        run: databricks bundle run samegold_close -t free
+        # No SAMEGOLD_BIN: there is no .venv on a runner, and the script falls back to the
+        # `samegold` pip put on PATH.
+        run: scripts/databricks_run.sh seed
+      - name: run the job
+        if: inputs.action == 'run'
+        run: scripts/databricks_run.sh run
+      - name: fetch the evidence
+        if: inputs.action == 'run'
+        run: scripts/databricks_run.sh fetch
+      - name: publish the record as an artifact
+        # NOT committed from CI. The record is not part of evidence/history.jsonl and a
+        # workflow that pushed it into the repository would be the one thing this lane must
+        # not do: make an unverifiable record look like a chained one.
+        if: inputs.action == 'run'
+        uses: actions/upload-artifact@v4
+        with:
+          name: samegold-databricks-evidence
+          path: evidence/databricks/

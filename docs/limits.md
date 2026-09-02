@@ -61,8 +61,28 @@ where a `SparkSession | None` was used as a `SparkSession`.
 The Databricks lane needs a workspace: the bundle, Unity Catalog, expectations, AUTO CDC, the
 event log and the dashboard. Its sources are parsed, its rules are compared record by record
 against the OSS implementation in `tests/spark`, and since round 12 its three Databricks-only
-API calls are pinned by the open-source signatures they fail against - but nothing here has
-deployed it or watched it run.
+API calls are pinned by the open-source signatures they fail against - but **nothing here has
+deployed it or watched it run**, and this section is worth exactly as much as the identical
+sentence about the Delta lane was worth for eleven rounds, which is to say: check it.
+
+What changed in round 13 is that the lane is now deployable in one command and produces a
+record when it is, so the sentence above has a date on it rather than being open-ended:
+
+- `make databricks` reads `DATABRICKS_HOST` and `DATABRICKS_TOKEN` and runs the whole lane -
+  catalog, validate, deploy, seed, run, fetch. `scripts/databricks_run.sh` is the script.
+- `docs/databricks-run.md` holds the results, with every run-produced figure inside an anchor
+  that currently reads `NOT RUN`. `tests/fast/test_databricks_lane.py` fails if any of them
+  holds a number while `evidence/databricks/SG-DBX-01.json` does not exist. A document cannot
+  get ahead of its run by hand any more; that is the round-12 finding turned into a test.
+- `tests/fast/test_databricks_lane.py` also checks the bundle against the Free Edition limits
+  it has to live inside, which is how four defects that would have failed the first deploy or
+  the first run were found: a landing volume nothing created, two notebook tasks reading their
+  catalog from a `spark.conf` key only a pipeline populates, an `event_log('')` built from a
+  pipeline id that does not exist outside a pipeline, and a nightly schedule deployed
+  UNPAUSED on an account where the daily quota is a hard stop.
+- Whatever that run produces is **not** appended to `evidence/history.jsonl`. It cannot be
+  recomputed by a reader with a clone, so it goes to `evidence/databricks/` and says why in
+  its own `chain` field. `evidence/databricks/README.md` is the comparison in full.
 
 ## Not verifiable for free, at all
 
@@ -71,6 +91,8 @@ deployed it or watched it run.
 | cost in DBUs | `system.billing` needs an account console and a metastore-admin role; Free Edition has neither | files and bytes that a predicate cannot skip, read from the Delta log: deterministic, and labelled as a proxy |
 | query profiles | a Databricks UI | Spark plans and the same file-level measurements |
 | account-level security | no SSO, no SCIM, no account groups, no OAuth machine-to-machine | the controls are implemented in code and tested; the platform equivalents are declared in SQL and marked as declared |
+| row filters and column masks, enforced | `databricks/sql/policies.sql` needs a SQL warehouse id to be applied, and a bundle on Free Edition can neither create a warehouse nor learn its id; `is_account_group_member` is false for everyone anyway | the file is deployed with the bundle, parsed by `tests/spark/test_databricks_lane_parses.py`, and **not applied by `make databricks`** - stated here rather than left to be assumed from its presence |
+| a grant that keeps anyone out | `account users` is the only principal that exists, and it has one member: whoever deployed | the grants in `databricks/resources/grants.yml` show that the privilege was applied and can be read back, which is a different and much smaller claim |
 | Delta Sharing as a provider | provider registration is not available on Free Edition | out of scope, stated rather than faked |
 | Lakehouse Federation | needs an external database and a connector | out of scope |
 

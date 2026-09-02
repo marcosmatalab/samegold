@@ -5,12 +5,17 @@
 # delta     adds the Delta jars from Maven Central.     ~3 min first time
 # faults    the crash campaign, ten repetitions.        ~20 min
 # evidence  every claim except SG-07.                   ~2 min
+# databricks  a Free Edition workspace and two env vars.  no duration here: unlike every
+#             line above it, this one has never been run, and a number nobody measured is
+#             the thing this repository is about. It can spend that account's compute quota
+#             for the rest of the day - see docs/databricks-run.md.
 #
 # The durations are the ones measured on the machine that wrote this file, not a target.
 # `make doctor` prints what the fast lane actually took on yours.
 #
-# Every target is runnable by a stranger with a clone and a Python 3.11. Nothing here needs
-# a Databricks account; the Databricks lane is a separate target and is clearly marked.
+# Every target here is runnable by a stranger with a clone and a Python 3.11, with exactly
+# two exceptions, and they are named rather than left to be discovered: `databricks` and
+# `databricks-validate` need an account, a network and credentials.
 
 PY ?= python3
 VENV ?= .venv
@@ -104,6 +109,19 @@ ci-local: install ## exactly what the fast workflow runs, in the order it runs i
 .PHONY: doctor
 doctor: install ## what is installed and what each lane needs
 	$(BIN)/samegold doctor
+
+.PHONY: databricks
+databricks: install ## deploy the Databricks lane to a Free Edition workspace and fetch its evidence
+	# The only target here that needs an account. It reads DATABRICKS_HOST and
+	# DATABRICKS_TOKEN from the environment and tells you which one is missing rather than
+	# handing you a stack trace from a CLI. What it does, in order: create the catalog (a
+	# bundle cannot), validate, deploy, seed the landing volume with generated events, run
+	# the job, and copy the SG-DBX-01 record into evidence/databricks/.
+	SAMEGOLD_BIN=$(BIN) scripts/databricks_run.sh all
+
+.PHONY: databricks-validate
+databricks-validate: ## `databricks bundle validate -t free`, without deploying anything
+	SAMEGOLD_BIN=$(BIN) scripts/databricks_run.sh validate
 
 .PHONY: lint
 lint: install ## ruff + mypy strict, over every directory that holds code

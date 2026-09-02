@@ -35,7 +35,7 @@ lists only hits is not a map.
 | "Manage and troubleshoot external third-party library installations and dependencies" | `src/samegold/pipelines/session.py` and ADR 0002: the exact Maven coordinate, the sdist trap, the Ivy cache path | SG-00 |
 | "Develop User-Defined Functions (UDFs) using Pandas/Python UDF" | **gap.** The pipeline deliberately has none: every transformation is expressible in the SQL/DataFrame API, which is faster and analysable. A UDF example with its cost measured is milestone M15 | — |
 | "Build and manage reliable, production-ready data pipelines for batch and streaming data" | `src/samegold/pipelines/transform.py`, `faults/worker.py` (streaming with `foreachBatch` + `availableNow`) | SG-01, SG-07 |
-| "Create and Automate ETL workloads using Jobs via UI/APIs/CLI" | `databricks/resources/jobs.yml`, deployed by the CLI from CI | needs a workspace |
+| "Create and Automate ETL workloads using Jobs via UI/APIs/CLI" | `databricks/resources/jobs.yml`, deployed by the CLI from CI; the schedule is deployed PAUSED because a Free Edition quota overrun stops all compute for the day | needs a workspace |
 | "Explain the advantages and disadvantages of streaming tables compared to materialized views" | `pipelines/transformations/bronze_silver.py` and `databricks/src/gold_close.py`: streaming tables for append-only silver, a materialized view for the close | PARITY.md |
 | "Use AUTO CDC APIs to simplify CDC in Lakeflow Spark Declarative Pipelines" | `databricks/src/gold_close.py` (`create_auto_cdc_flow`, SCD type 2) versus the hand-written equivalent in `src/samegold/pipelines/gold_scd2_merge.py` | needs a workspace |
 | "Compare Spark Structured Streaming and Lakeflow Spark Declarative Pipelines" | the streaming path is exercised by the crash campaign; the declarative spec shares the same `classify` function and its configuration is checked by a test, but it is **not executed here** (milestone M11) | SG-07, PARITY.md |
@@ -99,7 +99,7 @@ This is the weakest section of the project and the honest reason is money, not e
 | "Applying anonymization methods including hashing, tokenization, suppression, and generalization" | `governance/anonymise.py`, all four, with the failure mode of each | SG-08 |
 | "Implementing batch and streaming pipelines that detect and apply PII masking" | `governance/policy.py`: classification per column, masking on the way into gold, and an exposure check over the OUTPUT that catches an identifier hiding under a new column name | SG-08 |
 | "Developing data purging solutions for data retention policy compliance" | `governance/retention.py`: delete **and** vacuum, because time travel returns purged rows until the files are gone | SG-08 |
-| "Use row filters and column masks to filter and mask sensitive table data" | `databricks/sql/policies.sql` declares them; Free Edition has no account groups, so they are declared and not enforced | stated |
+| "Use row filters and column masks to filter and mask sensitive table data" | `databricks/sql/policies.sql` declares them, and **nothing executes that file**: applying it needs a SQL warehouse id a Free Edition bundle can neither create nor learn, and `is_account_group_member` is false for everyone on an account with no groups. Declared, parsed, never applied | `docs/databricks-run.md` |
 | "Using ACLs to secure workspace objects with least privilege" | `databricks/resources/grants.yml` | needs a workspace |
 
 ## 8. Data governance (7%)
@@ -113,7 +113,7 @@ This is the weakest section of the project and the honest reason is money, not e
 
 | objective | where | evidence |
 |---|---|---|
-| "Build and deploy Databricks resources using Declarative Automation Bundles" | `databricks/databricks.yml` + the CI job that validates and deploys it | needs a workspace |
+| "Build and deploy Databricks resources using Declarative Automation Bundles" | `databricks/databricks.yml`, `make databricks` (one command: catalog, validate, deploy, seed, run, fetch) and the CI job that calls the same script. The bundle is checked against the Free Edition limits by `tests/fast/test_databricks_lane.py`; it has still never been deployed | `docs/databricks-run.md` |
 | "Configure and integrate with Git-based CI/CD workflows" | four workflows; the evidence workflow opens a pull request rather than pushing to a protected branch | SG-00 |
 | "Analyze the errors and remediate the failed job runs with job repairs and parameter overrides" | `faults/harness.py` keeps every failed run's output and names the injection that produced it | SG-07 |
 | reproducing a run exactly | commit-derived seeds and a hash-chained history | SG-06 |

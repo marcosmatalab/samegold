@@ -25,6 +25,41 @@ REPO = Path(__file__).resolve().parents[2]
 LANE = REPO / "databricks"
 
 
+# A module-level helper that forwards a string to `spark.sql` is still a door into Spark, and
+# the statement behind it is still a statement nothing has parsed. `publish_evidence.py` has
+# one (`_rows`) so that a failing section can be named in the record instead of taking the
+# whole notebook down; the parse test has to see through it, or the helper becomes the way to
+# ship SQL that never met a parser - the exact defect this file was written for.
+# A module-level helper that forwards a string to `spark.sql` is still a door into Spark, and
+# the statement behind it is still a statement nothing has parsed. `publish_evidence.py` has
+# one (`_rows`) so that a failing section can be named in the record instead of taking the
+# whole notebook down; the parse test has to see through it, or the helper becomes the way to
+# ship SQL that never met a parser - the exact defect this file was written for.
+SQL_HELPERS = {"_rows"}
+
+
+def _forwarding_calls(tree: ast.Module) -> set[int]:
+    """The `spark.sql(query)` calls INSIDE the bodies of those helpers, by node id.
+
+    Their argument is a parameter name, not a literal, and the statement it will carry is
+    collected at the helper's call sites instead. Skipping them by node identity - rather
+    than by "the argument is a Name" - keeps a `spark.sql(built_at_runtime)` anywhere else
+    in the lane raising, which is the check that matters.
+    """
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name in SQL_HELPERS):
+            continue
+        for inner in ast.walk(node):
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "sql"
+            ):
+                out.add(id(inner))
+    return out
+
+
 # Statements are extracted from the notebook sources rather than kept in fixture files, so
 # the thing parsed here is the thing that would be deployed.
 def _sql_calls(source: str) -> list[str]:
@@ -35,11 +70,19 @@ def _sql_calls(source: str) -> list[str]:
     asserted "at least 5 statements" and passed. Walking the AST cannot miss a call, and a
     literal it cannot reconstruct (a runtime-built query) raises rather than being skipped.
     """
+    tree = ast.parse(source)
+    forwarded = _forwarding_calls(tree)
     out: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or id(node) in forwarded:
             continue
-        if node.func.attr != "sql":
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr != "sql":
+                continue
+        elif isinstance(node.func, ast.Name):
+            if node.func.id not in SQL_HELPERS:
+                continue
+        else:
             continue
         # The query can be passed positionally or as `sqlQuery=`. Skipping the keyword form
         # silently was how the first version of this walk collected four of six statements

@@ -138,7 +138,7 @@ class DuckDBWitness:
         }
 
 
-_COUNTS_SQL = """
+_COUNTS_SQL = r"""
 -- The columns are DECLARED here for the same reason they are declared in gold_revenue.sql:
 -- with union_by_name the schema depends on which files happened to arrive, so a batch with
 -- no amendment in it has no `new_qty` column and every query that mentions one fails with a

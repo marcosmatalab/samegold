@@ -1,0 +1,25 @@
+# The storage. Free Edition has no external locations, so a Unity Catalog volume is the only
+# place a file can live, and both of these are MANAGED - `volume_type` is not written because
+# MANAGED is the only kind a bundle can create and the only kind this account can hold.
+#
+# These did not exist. The pipeline read `/Volumes/samegold/raw/landing` and nothing in the
+# bundle created it, so `databricks bundle deploy` succeeded and the first run failed on a
+# path that had never been declared anywhere. The schemas were declared (resources/grants.yml)
+# and the volume inside one of them was not.
+resources:
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: raw
+      name: landing
+      comment: "Bronze events as they land. Auto Loader lists this directory; nothing else writes here."
+    evidence:
+      catalog_name: ${var.catalog}
+      schema_name: raw
+      name: evidence
+      # A SEPARATE volume, not a subdirectory of the landing zone. Auto Loader lists the
+      # landing path recursively and would ingest the evidence record as if it were an event.
+      # (`_schema/` survives inside it only because Spark's file source skips names starting
+      # with an underscore, which is a convention to rely on for a checkpoint and not for
+      # the one file this lane exists to produce.)
+      comment: "Where publish_evidence.py writes SG-DBX-01.json for `make databricks` to fetch."
