@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "f9885b1f9efb41d0a14df0da5c76507a",
-        "digest_reversed": "f9885b1f9efb41d0a14df0da5c76507a",
+        "digest_forward": "7c59b27925aca260992d05db5b251f01",
+        "digest_reversed": "7c59b27925aca260992d05db5b251f01",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -244,12 +244,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "d532048ec645fe3a041903aa2cc1d8e4",
+  "hash": "2dc7389eb133f800c0aea5b38343a8fb",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "14f4f08d86b73331726a66ec50118d75",
+  "prev": "fd629f94d388e933f8d3d0cccd44f598",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
-      "duration_s": 310.028,
+      "commit_sha": "b4151a621183dd773090aaf10b41fa10c4b76078",
+      "duration_s": 287.807,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        10423737049716840721
+        14665830109764332534
       ],
-      "started_at": "2026-09-02T12:01:47+00:00",
+      "started_at": "2026-09-02T22:56:26+00:00",
       "tree_dirty": true,
-      "tree_sha": "511a68c6051ae9df93faf801c5dc7c3221cf685b"
+      "tree_sha": "ad574019df244e260daf6c187fdd9b6e27bbd9c1"
     }
   }
 }

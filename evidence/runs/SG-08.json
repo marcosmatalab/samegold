@@ -1,15 +1,15 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 253,
+    "dimension_rows": 244,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
     "purge": {
-      "cutoff": "2026-02-04",
+      "cutoff": "2026-02-03",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 242,
+      "rows_deleted": 232,
       "version_after": 3,
       "version_before": 0
     }
@@ -27,12 +27,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "407382fa0bde12dd14ec8b3ee88f39fe",
+  "hash": "3bbe7ca3def06897d7df259959e744dd",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "8625f1bef1c963b7200fc3e4784c078f",
+  "prev": "d49eed7b2ef0fb505e85d0fe3f4f3ede",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
-      "duration_s": 5.187,
+      "commit_sha": "b4151a621183dd773090aaf10b41fa10c4b76078",
+      "duration_s": 2.527,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        4659578878506757385
+        10820254228582275675
       ],
-      "started_at": "2026-09-02T12:02:29+00:00",
+      "started_at": "2026-09-02T22:56:53+00:00",
       "tree_dirty": true,
-      "tree_sha": "e50075ee7ba2953de808bc8f3328d0412d5d4831"
+      "tree_sha": "bdc0786eae47f4ef6aa4604db5e6e394f84c6836"
     }
   }
 }

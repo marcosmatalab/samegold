@@ -47,13 +47,26 @@ _EVIDENCE_PREFIX = "evidence/"
 
 
 def _code_changes(status: str) -> list[str]:
-    """The lines of `git status --porcelain` that are not this repository's own output."""
+    """The lines of `git status --porcelain` that are not this repository's own output.
+
+    SPLIT ON WHITESPACE, never sliced at a fixed offset. The porcelain format is "XY path", so
+    `line[3:]` looks right and is wrong here: the caller hands this the output of
+    `subprocess.run(...).stdout.strip()`, and that strip removes the leading space of the FIRST
+    line. " M evidence/history.jsonl" arrives as "M evidence/history.jsonl", `line[3:]` returns
+    "vidence/history.jsonl", and the prefix test fails on exactly one line of the status - the
+    first one, which for an evidence sweep is always `evidence/history.jsonl`.
+
+    That version passed its unit test, because the test fed it strings written out by hand with
+    both spaces present. Nine records were published as `tree_dirty: true` by it. The case that
+    actually occurs is in the test now, taken from a real `git status`.
+    """
     out: list[str] = []
     for line in status.splitlines():
-        if not line.strip():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
             continue
-        # "XY path", and for a rename "XY old -> new". The destination is what exists now.
-        path = line[3:].strip().strip('"')
+        path = parts[1].strip().strip('"')
+        # A rename is "old -> new"; the destination is what exists now.
         if " -> " in path:
             path = path.split(" -> ", 1)[1].strip().strip('"')
         if path.replace("\\", "/").startswith(_EVIDENCE_PREFIX):

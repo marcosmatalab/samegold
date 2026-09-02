@@ -1,19 +1,19 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "adrs": 9,
+    "adrs": 10,
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_green": true,
-    "fast_lane_seconds": 161.0,
-    "markdown_documents": 17,
+    "fast_lane_seconds": 143.3,
+    "markdown_documents": 20,
     "python_modules": 52,
-    "source_lines": 9884,
-    "test_lines": 4407,
+    "source_lines": 10167,
+    "test_lines": 6726,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 366,
-    "tests_passed": 362,
-    "tests_spark": 60
+    "tests_fast": 444,
+    "tests_passed": 431,
+    "tests_spark": 77
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -28,11 +28,11 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "719b5cb55b5537a0d33aff3c47656480",
+  "hash": "e2e3abaa67b122a1c47f5cde83ac36d3",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "26d4d7859a16aff7f49dc6e651226fb2",
+  "prev": "c4a37fe898c93f2c1935c44ee141e776",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -41,27 +41,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 362,
-      "trials": 362,
+      "successes": 431,
+      "trials": 431,
       "wilson95": [
-        0.9895,
+        0.991166,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
-      "duration_s": 167.215,
+      "commit_sha": "b4151a621183dd773090aaf10b41fa10c4b76078",
+      "duration_s": 149.698,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        4679909700202840263
+        12044540523305937847
       ],
-      "started_at": "2026-09-02T12:05:28+00:00",
+      "started_at": "2026-09-02T22:59:33+00:00",
       "tree_dirty": true,
-      "tree_sha": "77e6e8c33fce948ea0dd98b57978dcad2653569e"
+      "tree_sha": "18208dd8ec777d64c5e3a94b48de37e09d8f522f"
     }
   }
 }
