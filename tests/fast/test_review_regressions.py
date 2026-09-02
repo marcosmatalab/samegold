@@ -875,8 +875,13 @@ def test_three_returns_of_a_three_unit_line_do_not_refund_nine() -> None:
 
     A review reverted the cumulative rule in all three lanes - restoring "gross 3000, refunds
     9000, net MINUS 6000" - and the entire suite stayed green, because the only thing standing
-    between this repository and a negative-revenue close was a comment. The generator emits at
-    most one return per line, so no seed can produce the shape; it has to be written.
+    between this repository and a negative-revenue close was a comment. The generator emitted
+    at most one return per line, so no seed could produce the shape; it had to be written.
+
+    It emits it now, as boundary case 13, which is why four mutants of the cumulative window
+    stopped surviving. This test stays anyway and stays hand-written: it pins the exact
+    numbers of the incident the eighth round is named after, and a case in the generator can
+    be changed by someone who does not know what it was for.
     """
     import datetime as dt
     import json

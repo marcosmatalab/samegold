@@ -31,3 +31,18 @@ not in the harness: no zero-cent line, no return exactly on the 45th day, no sal
 after a close. Nine boundary cases were added, and two specification mutants that had
 survived (SPEC-04 and SPEC-06, both about what a close knew at the time) started dying. A
 hand-picked mutant set would have found none of that.
+
+It happened again, and the second time is the more useful one, because it shows how the hole
+reopens. Contract 1.3.0 added two bounds on the money arithmetic and a rule about which of two
+sales sharing a line key wins, and added **no data that reaches them**. The next campaign
+dropped to 52 of 67 with fifteen survivors, every one of them a rule the generator had never
+exercised: no record anywhere near a bound, no line with two sales, no line with two returns,
+no amendment to zero. Not one of them was a weakness in a witness, and every one of them
+would have been closed by writing "equivalent" beside it.
+
+The lesson the first round taught is that a mutation score measures the data as much as the
+code. The lesson this one adds is that the score **decays silently**: a rule can be added to
+the contract, implemented correctly in both lanes, and be untested from the day it lands,
+because nothing in the campaign asks whether the data can tell the new rule from its
+neighbours. The survivors are the only thing that says so, which is why an unexplained
+survivor is a finding and not a number to close out.

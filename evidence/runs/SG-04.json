@@ -4,26 +4,26 @@
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -3253278,
-        "delta_pct": -6.4809,
-        "final_net_cents": 46944774,
-        "first_close_net_cents": 50198052,
+        "delta_cents": -2867773,
+        "delta_pct": -0.0285,
+        "final_net_cents": 10061497330,
+        "first_close_net_cents": 10064365103,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -291539,
-        "delta_pct": -1.2509,
-        "final_net_cents": 23015486,
-        "first_close_net_cents": 23307025,
+        "delta_cents": -877209,
+        "delta_pct": -3.3824,
+        "final_net_cents": 25057179,
+        "first_close_net_cents": 25934388,
         "versions": 3
       }
     ],
-    "worst_delta_eur": "32 532,78",
-    "worst_final_eur": "469 447,74",
-    "worst_first_close_eur": "501 980,52",
-    "worst_month": "2026-01",
-    "worst_move_pct": 6.4809,
+    "worst_delta_eur": "8 772,09",
+    "worst_final_eur": "250 571,79",
+    "worst_first_close_eur": "259 343,88",
+    "worst_month": "2026-02",
+    "worst_move_pct": 3.3824,
     "worst_versions": 3
   },
   "ci_commit_sha": null,
@@ -31,24 +31,24 @@
   "claim_id": "SG-04",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "4.4.0",
+    "delta_spark": "absent",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "4.2.0",
-    "python": "3.11.15",
+    "pyspark": "absent",
+    "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "5f64bbfd372ba378c1326cc8a8c450be",
+  "hash": "ea86bf9834f083543fbb305ed0130bff",
   "not_claimed": [
     "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one"
   ],
-  "prev": "af0f86612ece55efa6d25dcb97d102ae",
+  "prev": "97d23796a8696cdf011288da8270f99f",
   "runtime": "oss-local",
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 6.48% of the first close",
+    "note": "largest move 3.38% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -60,19 +60,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "8f521422aa579d07a2d516354b2454bfe4975618",
-      "duration_s": 0.44,
+      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
+      "duration_s": 2.012,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "restatement",
       "seed_source": "commit",
       "seeds": [
-        16085897363116563089
+        15262264277807298629
       ],
-      "started_at": "2026-09-01T23:12:09+00:00",
+      "started_at": "2026-09-02T08:56:59+00:00",
       "tree_dirty": true,
-      "tree_sha": "7b1e43faaeb0fa2cebfc389fbb50801b48df73d5"
+      "tree_sha": "eb805e7128db32ae9825f4131f30827a3178c4ce"
     }
   }
 }

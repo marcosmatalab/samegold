@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 250,
+    "dimension_rows": 251,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -9,7 +9,7 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 235,
+      "rows_deleted": 240,
       "version_after": 3,
       "version_before": 0
     }
@@ -19,20 +19,20 @@
   "claim_id": "SG-08",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "4.4.0",
+    "delta_spark": "absent",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "4.2.0",
-    "python": "3.11.15",
+    "pyspark": "absent",
+    "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "099bc39321d480fe035d6ca7092a752b",
+  "hash": "80787688c6cd0e749cbb704d5de1b99a",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "ea947863b3fdb10e08d321032938d7dc",
+  "prev": "1ab162c17df66ae5819dc4c713201fc1",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "8f521422aa579d07a2d516354b2454bfe4975618",
-      "duration_s": 0.661,
+      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
+      "duration_s": 2.766,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        9705702874692509775
+        857803971288870102
       ],
-      "started_at": "2026-09-01T23:12:18+00:00",
+      "started_at": "2026-09-02T08:57:24+00:00",
       "tree_dirty": true,
-      "tree_sha": "4e9cb71c0c23d2c024f06630a3e2ea3344c98f40"
+      "tree_sha": "eb7a1d2d3e31b53b573c6dd7f43c642bbd4904fa"
     }
   }
 }

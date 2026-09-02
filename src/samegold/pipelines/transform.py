@@ -219,6 +219,10 @@ def quarantine_reason() -> Column:
         # `qty`, and an order_line_amended carries `new_qty`. All three implementations agreed,
         # so no parity test could see it, and the generator's `max(1, ...)` guaranteed no seed
         # would produce it. An amendment to -5 drove gross revenue negative.
+        #
+        # A seed produces the zero now (boundary case 14 in generator/events.py), and it had
+        # to: while nothing was standing at this door, widening it to `new_qty >= 0` unsold a
+        # whole line and no witness noticed.
         .when(
             (F.col("event_type") == "order_line_amended") & (F.col("new_qty") <= 0),
             F.lit("non_positive_quantity"),
@@ -383,7 +387,10 @@ def classify_returns(silver_df: DataFrame, lines: DataFrame) -> DataFrame:
     # line for a human, not one to keep partially refunding - and CONTRACT.md states it.
     #
     # Both engines agreed on both versions of the bug, so the parity claim was blind to it,
-    # and the generator emits at most one return per line, so no seed reached either.
+    # and the generator emitted at most one return per line, so no seed reached either. It
+    # does emit the shape now (boundary case 13 in generator/events.py): with one return per
+    # line this window's SUM and a MAX are the same number and its ORDER BY sorts one row, so
+    # four mutations of it survived every witness until a line carried three returns.
     from pyspark.sql import Window as _Window
 
     ineligible = (
