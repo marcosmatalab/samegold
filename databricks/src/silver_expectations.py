@@ -83,42 +83,72 @@ RULES = {
 
 # The classification, as a column, over EVERY row. This table is what gold reads.
 #
-# The lane used to have only `silver_events` (expectations, rows dropped) and
-# `silver_quarantine` (the dropped rows, with a reason), and `gold_close.py` then selected
-# `quarantine_reason` from `silver_events` - a column that table does not have, because an
-# expectation drops a row and does not annotate it. The whole gold close would have failed
-# analysis on its first refresh. Its statements parse, which is what the parse test checked;
-# they did not resolve, which is a different question and is now asked too.
+# DERIVED FROM `RULES`, not written again beside them, and that is this round's finding rather
+# than a tidy-up. The two used to be independent renderings of the same rules, and a NULL
+# predicate meant the OPPOSITE thing in each:
 #
-# There is a second reason to read the classified table rather than the filtered one, and it
-# is the reason the OSS lane is built that way: deduplication runs over the WHOLE population
-# and validity is applied after it. Deduplicating only the survivors lets a good copy of a
-# duplicated event win here and an invalid copy win there, which is a divergence no parity
-# test could see because the two lanes would be computing different things.
+#   * `expect_all_or_drop` treats a predicate that is not TRUE as not satisfied, so the row is
+#     dropped. NULL fails closed.
+#   * a `CASE ... WHEN p THEN reason ... ELSE 'accepted'` does not match on a NULL `p`, so the
+#     row falls past every branch and lands in the ELSE. NULL fails OPEN, into revenue.
+#
+# On the first real deployment three events with `unit_price_cents = 9223372036854775807` came
+# out `accepted` and contributed 2.7e19 to a month's gross - six and a half million times the
+# contract's own ceiling for a single line. The expectations were right and the CASE was wrong,
+# about the same rule, in the same file. They agreed on every test because every test ran them
+# on typed columns where no predicate is ever NULL.
+#
+# Two changes, and the second is the one that generalises:
+#
+#  1. one declaration. `RULES` says what must HOLD; the branches below are generated from it,
+#     so a rule cannot be fixed in one rendering and left wrong in the other.
+#  2. acceptance is POSITIVE. Every branch is wrapped in `COALESCE(..., false)`, so a row is
+#     `accepted` only when every rule evaluated explicitly to TRUE. `accepted` used to be what
+#     happened when nothing else matched, which makes every predicate that cannot answer into
+#     revenue. Now a predicate that cannot answer sends the row through that rule's own door -
+#     the same door the expectation sends it through, by construction rather than by review.
+#
+# `undecided_rules` names any rule that evaluated to NULL on a row. With the types declared at
+# ingest it should always be empty; it is carried and counted so that if it is ever non-empty
+# the run says so, instead of the row being quietly quarantined under a business reason and the
+# defect going unnoticed. tests/spark asserts it is empty for every record in the matrix.
 _REASON = (
-    "CASE"
-    " WHEN event_id IS NULL THEN 'unparseable_json'"
-    " WHEN event_type IS NULL OR event_type NOT IN ('order_placed','order_line_amended',"
-    "'return_registered','customer_upserted') THEN 'unknown_event_type'"
-    " WHEN try_to_timestamp(event_ts) IS NULL OR try_to_timestamp(arrival_ts) IS NULL"
-    " THEN 'missing_required_field'"
-    f" WHEN NOT ({_PRESENT_FOR_TYPE}) THEN 'missing_required_field'"
-    " WHEN event_type IN ('order_placed','return_registered') AND qty <= 0"
-    " THEN 'non_positive_quantity'"
-    " WHEN event_type = 'order_line_amended' AND new_qty <= 0 THEN 'non_positive_quantity'"
-    " WHEN event_type = 'order_placed' AND unit_price_cents < 0 THEN 'negative_price'"
-    " WHEN event_type = 'order_placed' AND currency <> 'EUR' THEN 'unknown_currency'"
-    " WHEN (event_type IN ('order_placed','return_registered') AND qty > 10000)"
-    " OR (event_type = 'order_line_amended' AND new_qty > 10000)"
-    " OR (event_type = 'order_placed' AND unit_price_cents > 1000000)"
-    " THEN 'amount_out_of_range'"
-    " ELSE 'accepted' END"
+    "CASE "
+    + " ".join(
+        f"WHEN NOT COALESCE({predicate}, false) THEN '{name}'" for name, predicate in RULES.items()
+    )
+    + " ELSE 'accepted' END"
+)
+
+# The rule that DECIDED the row, and only if it could not answer.
+#
+# Rules are ordered, and a later rule is allowed to be undecidable about a record an earlier
+# rule already rejected: `non_positive_quantity` is NULL for a record with no `event_type`,
+# and it does not matter, because `unknown_event_type` decided that row three branches
+# earlier. Reporting every NULL predicate would report those, and a diagnostic that is noisy
+# on healthy data is a diagnostic nobody reads.
+#
+# What matters is the rule the row actually left through. If THAT one returned NULL, the row
+# was quarantined under a reason nothing established - fail closed, which is right, but on a
+# guess - and the run has to say so.
+_UNDECIDED = (
+    "CASE "
+    + " ".join(
+        f"WHEN NOT COALESCE({predicate}, false) "
+        f"THEN (CASE WHEN ({predicate}) IS NULL THEN '{name}' ELSE '' END)"
+        for name, predicate in RULES.items()
+    )
+    + " ELSE '' END"
 )
 
 
 @dp.table(name="silver_classified", comment="Every event, tagged with why it was accepted.")
 def silver_classified() -> DataFrame:
-    return spark.readStream.table("bronze_events").withColumn("quarantine_reason", F.expr(_REASON))
+    return (
+        spark.readStream.table("bronze_events")
+        .withColumn("quarantine_reason", F.expr(_REASON))
+        .withColumn("undecided_rules", F.expr(_UNDECIDED))
+    )
 
 
 @dp.table(name="silver_events", comment="Validated events. Duplicates are resolved in gold.")

@@ -320,69 +320,26 @@ def test_the_databricks_rules_and_the_oss_case_agree_record_by_record(spark, tmp
     that existed was a substring grep over the source, and it passed while the Databricks side
     accepted a record with a NULL `event_type` that the OSS side quarantined.
     """
-    import re as _re
-
     from pyspark.sql import functions as F
 
     from samegold.pipelines.schema import bronze_schema
     from samegold.pipelines.transform import quarantine_reason
 
-    source = Path(__file__).resolve().parents[2] / "databricks" / "src" / "silver_expectations.py"
-    text = source.read_text(encoding="utf-8")
-    namespace: dict[str, object] = {}
-    for name, body in _re.findall(
-        r"^(_[A-Z_]+)(?:\s*:[^=]+)?\s*=\s*\((.*?)^\)", text, _re.DOTALL | _re.MULTILINE
-    ):
-        namespace[name] = eval(f"({body})", {"__builtins__": {}}, namespace)
-    block = text[text.index("RULES = {") + len("RULES = {") : text.index("\n}\n")]
-    rules: dict[str, str] = eval("{" + block + "}", {"__builtins__": {}}, namespace)
+    # Read in SOURCE ORDER through the shared reader: `_REASON` is now derived from `RULES`,
+    # and the regex that used to pull the helpers out evaluated them before `RULES` existed,
+    # which raised NameError at collection time.
+    rules = _databricks_namespace()["RULES"]
+    assert isinstance(rules, dict)
 
-    ts, arrived = "2026-01-10T10:00:00+00:00", "2026-01-10T10:05:00+00:00"
-
-    def event(**overrides: object) -> dict[str, object]:
-        base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
-        base.update(
-            event_id="e",
-            event_type="order_placed",
-            event_ts=ts,
-            arrival_ts=arrived,
-            order_id="O1",
-            customer_id="C1",
-            sku="S1",
-            qty=2,
-            new_qty=None,
-            unit_price_cents=1000,
-            currency="EUR",
-        )
-        base.update(overrides)
-        return base
-
-    rows = [
-        event(),
-        event(event_id=None),
-        event(event_type=None),
-        event(event_type="warehouse_pinged"),
-        event(event_ts="not-a-timestamp"),
-        event(currency=None),
-        event(currency="USD"),
-        event(unit_price_cents=None),
-        event(unit_price_cents=-1),
-        event(qty=None),
-        event(qty=0),
-        event(customer_id=None),
-        event(event_type="order_line_amended", new_qty=3),
-        event(event_type="order_line_amended", new_qty=None),
-        event(event_type="order_line_amended", new_qty=-5),
-        event(event_type="return_registered", qty=1),
-        event(event_type="return_registered", qty=None),
-        event(event_type="customer_upserted", customer_id=None),
-    ]
+    rows = _matrix_rows()
     frame = spark.createDataFrame(rows, bronze_schema())
 
-    # The Databricks side, rebuilt from its own RULES dict in declaration order.
-    databricks = F.lit("accepted")
-    for name, predicate in reversed(list(rules.items())):
-        databricks = F.when(~F.expr(predicate), F.lit(name)).otherwise(databricks)
+    # The Databricks side is the expression the lane ACTUALLY evaluates, not a reconstruction
+    # of it. It used to be rebuilt here as `when(~predicate, name)`, which is the open-failing
+    # form the deployed CASE had - so this test agreed with the defect instead of catching it.
+    # `_REASON` is generated from RULES in the lane's own file; that is what runs there and
+    # that is what runs here.
+    databricks = F.expr(str(_databricks_namespace()["_REASON"]))
 
     compared = frame.select(
         F.col("event_id"),
@@ -428,4 +385,265 @@ def test_a_quarantined_customer_upsert_does_not_reach_the_dimension(spark, tmp_p
     assert dimension == _duckdb_dimension(bronze)
     assert all(row[1] is not None for row in dimension), (
         f"a NULL valid_from reached gold: {dimension}"
+    )
+
+
+# --------------------------------------------------------------- the types the rules run on
+#
+# Everything above compares the two derivations on TYPED columns, and on typed columns they
+# agree on every record - which is what this file reported for a round while the deployed lane
+# was booking 2.7e19 of revenue from three events the contract caps at 1e10.
+#
+# The rules were right. The types were wrong. Auto Loader reading JSON with no hints inferred
+# every bronze column as STRING, and on a STRING column `unit_price_cents > 1000000` compares
+# against an INT32 literal: the string is coerced to INT32, 9223372036854775807 overflows it,
+# and non-ANSI Spark returns NULL. A NULL predicate does not match a `WHEN`, so the row fell
+# through to `ELSE 'accepted'`. Measured on pyspark 4.2.0: ansi off gives NULL, ansi on gives
+# true, and `> 1000000L` gives true in both - the defect is the WIDTH of the literal.
+#
+# So the matrix is evaluated twice: once as bronze now delivers it (declared types), where no
+# predicate may be undecidable, and once as bronze used to deliver it (strings), where the one
+# thing that must hold is that nothing undecidable can become revenue.
+
+
+def _databricks_namespace() -> dict[str, object]:
+    """The lane's own RULES and derived expressions, read in source order.
+
+    Borrowed from the parse test rather than re-implemented: that module already has to read
+    this file in dependency order, and two readers of one file are two chances to read it
+    differently.
+    """
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "test_databricks_lane_parses.py"
+    spec = importlib.util.spec_from_file_location("_lane_parses", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lane = Path(__file__).resolve().parents[2] / "databricks" / "src" / "silver_expectations.py"
+    return dict(module._module_namespace(lane.read_text(encoding="utf-8"), lane))
+
+
+def _matrix_rows() -> list[dict[str, object]]:
+    """The parity matrix, plus the three amounts that broke the real deployment."""
+    from samegold.pipelines.schema import bronze_schema
+
+    ts, arrived = "2026-01-10T10:00:00+00:00", "2026-01-10T10:05:00+00:00"
+
+    def event(**overrides: object) -> dict[str, object]:
+        base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
+        base.update(
+            event_id="e",
+            event_type="order_placed",
+            event_ts=ts,
+            arrival_ts=arrived,
+            order_id="O1",
+            customer_id="C1",
+            sku="S1",
+            qty=2,
+            new_qty=None,
+            unit_price_cents=1000,
+            currency="EUR",
+        )
+        base.update(overrides)
+        return base
+
+    return [
+        event(event_id="ok"),
+        event(event_id=None),
+        event(event_type=None),
+        event(event_type="warehouse_pinged"),
+        event(event_ts="not-a-timestamp"),
+        event(currency=None),
+        event(currency="USD"),
+        event(unit_price_cents=None),
+        event(unit_price_cents=-1),
+        event(qty=None),
+        event(qty=0),
+        event(customer_id=None),
+        event(event_type="order_line_amended", new_qty=3),
+        event(event_type="order_line_amended", new_qty=None),
+        event(event_type="order_line_amended", new_qty=-5),
+        event(event_type="return_registered", qty=1),
+        event(event_type="return_registered", qty=None),
+        event(event_type="customer_upserted", customer_id=None),
+        # The three the deployment turned into revenue. Long.MaxValue is what the generator
+        # emits for its `bad-*` events; the others are one past each contract bound.
+        event(event_id="maxlong", unit_price_cents=9223372036854775807),
+        event(event_id="past-qty-bound", qty=10001),
+        event(event_id="past-price-bound", unit_price_cents=1000001),
+    ]
+
+
+def _as_strings(rows: list[dict[str, object]]) -> tuple[list[dict[str, object]], str]:
+    """The same records with the numeric columns as text, and a DDL to match.
+
+    Not a hypothetical shape: `DESCRIBE silver_classified` on the deployed lane returned 21
+    columns and every one of them was STRING.
+    """
+    from samegold.pipelines.schema import bronze_schema
+
+    numeric = {"qty", "new_qty", "unit_price_cents"}
+    ddl = ", ".join(
+        f"{f.name} string" if f.name in numeric else f"{f.name} {f.dataType.simpleString()}"
+        for f in bronze_schema().fields
+    )
+    out: list[dict[str, object]] = []
+    for row in rows:
+        copy = dict(row)
+        for column in numeric:
+            copy[column] = None if copy[column] is None else str(copy[column])
+        out.append(copy)
+    return out, ddl
+
+
+def test_no_rule_is_undecidable_on_any_record_of_the_matrix(spark) -> None:  # type: ignore[no-untyped-def]
+    """A predicate that cannot answer is a defect, not a case.
+
+    This is the check that was missing at the root. The parity test asked whether the two
+    derivations AGREE; nothing asked whether either could DECIDE. On the types bronze now
+    declares, every rule must return TRUE or FALSE for every record - because a rule that
+    returns NULL hands the row's fate to whichever rendering happens to evaluate it, which is
+    exactly how one predicate came to mean "drop" in the expectations and "accept" in the CASE.
+    """
+    from pyspark.sql import functions as F
+
+    from samegold.pipelines.schema import bronze_schema
+
+    namespace = _databricks_namespace()
+    rules = namespace["RULES"]
+    assert isinstance(rules, dict) and rules, "no RULES were read at all"
+
+    # The rule that DECIDES a row is the first one it does not pass, and only that one has to
+    # be able to answer. Rules are ordered on purpose - `missing_required_field` runs before
+    # the value rules so that those can assume presence - so a record with no `event_type` at
+    # all leaves `non_positive_quantity` undecidable and it is harmless, because
+    # `unknown_event_type` decided the row three branches earlier. The first version of this
+    # test asserted that NO rule was ever NULL and failed on exactly those records: the right
+    # property is narrower and sharper.
+    frame = spark.createDataFrame(_matrix_rows(), bronze_schema())
+    rows = frame.select(
+        F.col("event_id"),
+        F.expr(str(namespace["_REASON"])).alias("reason"),
+        F.expr(str(namespace["_UNDECIDED"])).alias("undecided"),
+    ).collect()
+    offenders = [(row["event_id"], row["reason"]) for row in rows if row["undecided"]]
+    assert not offenders, (
+        f"on the types bronze declares, these records were classified by a rule that returned "
+        f"NULL - neither true nor false: {offenders}. Fail-closed keeps them out of revenue, "
+        f"but the reason on the row was not established by anything."
+    )
+
+
+def test_the_classification_fails_closed_when_a_predicate_cannot_answer(spark) -> None:  # type: ignore[no-untyped-def]
+    """The property that would have stopped the deployment booking 2.7e19 as revenue.
+
+    On STRING columns the bounds predicate IS undecidable, and no amount of care in the rules
+    changes that - the coercion happens in the engine. What has to hold is that an undecidable
+    predicate cannot produce `accepted`. The old CASE ended in `ELSE 'accepted'`, so everything
+    the system could not understand became revenue; the generated one wraps every branch in
+    `COALESCE(..., false)`, so acceptance is established positively and anything else leaves
+    through the door of the rule that could not pass it.
+    """
+    from pyspark.sql import functions as F
+
+    namespace = _databricks_namespace()
+    reason, undecided = str(namespace["_REASON"]), str(namespace["_UNDECIDED"])
+    rows, ddl = _as_strings(_matrix_rows())
+    frame = spark.createDataFrame(rows, ddl)
+
+    # ANSI mode is pinned OFF, and that is the whole reproduction rather than a convenience.
+    # Spark 4 defaults ANSI ON, where the string is widened and the comparison answers `true`;
+    # the Databricks pipeline behaved as ANSI OFF, where the string is coerced to the INT32
+    # literal's type, 9223372036854775807 overflows it, and the cast yields NULL. Measured both
+    # ways on pyspark 4.2.0. Running this test in the default mode passes without exercising
+    # anything - which is the same shape of mistake as running the parity matrix on typed
+    # columns and calling it agreement.
+    previous = spark.conf.get("spark.sql.ansi.enabled")
+    spark.conf.set("spark.sql.ansi.enabled", "false")
+    try:
+        classified = frame.select(
+            F.col("event_id"),
+            F.expr(reason).alias("reason"),
+            F.expr(undecided).alias("undecided"),
+        ).collect()
+    finally:
+        spark.conf.set("spark.sql.ansi.enabled", previous)
+    by_id = {row["event_id"]: row for row in classified}
+
+    maxlong = by_id["maxlong"]
+    assert maxlong["reason"] != "accepted", (
+        "an event priced at Long.MaxValue came out `accepted` on STRING columns, which is the "
+        "deployed defect reproduced exactly: the value coerced to INT32 is NULL, and a CASE "
+        "whose ELSE is `accepted` turns NULL into revenue"
+    )
+    # It leaves through `negative_price`, not through the bounds rule, and that is worth
+    # keeping rather than asserting away: on STRING columns `unit_price_cents >= 0` is ALREADY
+    # undecidable - the literal `0` is INT32 too - so the first rule that cannot answer is the
+    # one that catches the row. Which door it leaves by is an accident of ordering; that it
+    # leaves at all is the property. On the types bronze now declares it leaves through
+    # `amount_out_of_range`, which is what the ledger comparison checks.
+    assert maxlong["reason"] == "negative_price", maxlong["reason"]
+    # And the diagnostic names the rule that could not decide, so a run where this happens
+    # says so instead of the row being quietly filed under a business reason.
+    assert maxlong["undecided"] == "negative_price", maxlong["undecided"]
+    # Nothing in the matrix may be accepted while a rule was undecidable about it.
+    leaked = [
+        (row["event_id"], row["undecided"])
+        for row in classified
+        if row["reason"] == "accepted" and row["undecided"]
+    ]
+    assert not leaked, f"accepted despite an undecidable rule: {leaked}"
+
+
+def test_the_databricks_classification_matches_the_ledger_by_reason(spark, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The comparison that actually closes this lane, and it did not exist.
+
+    Every other check on these rules asks whether two derivations AGREE. Agreement is not
+    correctness - this repository says so on its front page - and the two agreed all the way
+    through the deployment that booked 2.7e19 as revenue.
+
+    The generator knows, by construction, what verdict each event deserves: it writes the
+    corrupt records deliberately and counts them as it writes. So the Databricks
+    classification is compared against that count, per reason, the same way
+    `verify.invariants.conservation_against_ledger` compares the OSS lane. This is the only
+    check here whose right-hand side was not produced by reading the same rules again.
+    """
+    from pyspark.sql import functions as F
+
+    from samegold.generator.events import FAST, generate
+    from samegold.pipelines.schema import bronze_schema
+
+    result = generate(tmp_path / "g", seed=20260901, profile=FAST)
+    frame = spark.read.schema(bronze_schema()).json(str(tmp_path / "g" / "bronze"))
+    reason = str(_databricks_namespace()["_REASON"])
+    counts = {
+        row["reason"]: row["n"]
+        for row in frame.select(F.expr(reason).alias("reason"))
+        .groupBy("reason")
+        .agg(F.count("*").alias("n"))
+        .collect()
+    }
+
+    # Only the ingest-stage reasons: the three return-stage ones are decided in gold, by
+    # questions about the SALE, which silver cannot see.
+    ingest_reasons = {
+        "unparseable_json",
+        "unknown_event_type",
+        "missing_required_field",
+        "non_positive_quantity",
+        "negative_price",
+        "unknown_currency",
+        "amount_out_of_range",
+    }
+    disagreements = {
+        name: (int(result.ledger.quarantine.get(name, 0)), int(counts.get(name, 0)))
+        for name in sorted(ingest_reasons)
+        if int(result.ledger.quarantine.get(name, 0)) != int(counts.get(name, 0))
+    }
+    assert not disagreements, (
+        f"the Databricks classification and the generator's by-construction ledger disagree, "
+        f"as {{reason: (ledger, lane)}}: {disagreements}. The lane that shipped counted the "
+        f"three `amount_out_of_range` events as accepted revenue and this is the check that "
+        f"would have said so."
     )

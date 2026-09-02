@@ -20,6 +20,34 @@ behind one contract test, and the guarantees that differ are these:
 The claims that depend on ingestion semantics are therefore made **per lane**, never once and
 transferred.
 
+## The three lanes do NOT currently agree, and here is the measurement
+
+Everything below was written on the assumption that the Databricks lane computes the same
+close as the other two. **On 2 September 2026 that assumption was tested against a real
+workspace for the first time and it is false.** The correction goes at the top rather than in
+a footnote, because the claim it corrects is the headline claim of this repository.
+
+What the run produced: `revenue_by_month` for 2026-01 with a gross of **2.767e19 cents** from
+428 lines. The contract caps a single line at 10 000 x 1 000 000 = 1e10 cents, so that month's
+revenue was six and a half million times the ceiling of one line. Three events did all of it -
+`bad-0000007`, `bad-0000015`, `bad-0000023`, each with `unit_price_cents =
+9223372036854775807` and `quarantine_reason = 'accepted'`. They are events the generator emits
+in order to be REJECTED, and the other two lanes reject them.
+
+Two causes, both now fixed and both covered by tests:
+
+1. `gross_cents` was DOUBLE, not BIGINT, because Auto Loader inferred every bronze column as
+   STRING and `qty * unit_price_cents` on two strings promotes to double. In a project whose
+   thesis is that money is an integer number of cents, this lane's money was floating point.
+2. On a STRING column, `unit_price_cents > 1000000` coerces the string to the INT32 literal's
+   type; 9223372036854775807 overflows INT32 and non-ANSI Spark returns NULL. A NULL predicate
+   does not match a `WHEN`, and the classification's `ELSE` was `accepted`.
+
+So the honest statement of parity today is: **the rules agree, and the lanes did not, because
+they ran on different types.** `docs/databricks-run.md` has the full account and
+`docs/adr/0006-mutants-are-generated-not-planted.md` has what generalises from it. Nothing in
+the table below should be read as "verified on all three lanes" until a run says so.
+
 ## Feature parity table
 
 | capability | OSS lane | Databricks Free Edition | note |

@@ -54,6 +54,68 @@ From `databricks/databricks.yml` and `databricks/resources/`:
 - **two volumes**, `raw.landing` and `raw.evidence`, from `databricks/resources/volumes.yml`.
 - **not deployed**: `databricks/sql/policies.sql`. See the last section.
 
+## The first real run, and why its numbers are not in the anchors below
+
+The lane was deployed and run against a Free Edition workspace on 2 September 2026. `deploy`,
+`seed` and the whole pipeline succeeded. `close_month` then died with
+`DELTA_CAST_OVERFLOW_IN_TABLE_WRITE`, writing a DOUBLE into `gross_cents BIGINT`.
+
+**The run produced figures. They are wrong, so they are written here and NOT pasted into the
+anchors below**, which still read `NOT RUN`. An anchor is for a number the lane earned; this
+section is for a number it did not.
+
+| measured in the workspace | value |
+|---|---|
+| `DESCRIBE revenue_by_month` | `gross_cents`, `returns_cents`, `net_cents` = **double** |
+| `DESCRIBE silver_classified` | 21 columns, **all STRING** except `_ingested_at` |
+| `revenue_by_month` 2026-01 | gross **2.767e19** from 428 lines |
+| `revenue_by_month` 2026-02 | gross 199 379 from 3 lines |
+| `silver_classified` | `bad-0000007`, `bad-0000015`, `bad-0000023`: `order_placed`, `qty='1'`, `unit_price_cents='9223372036854775807'`, `quarantine_reason='accepted'` |
+| `'9223372036854775807' > 1000000` in the SQL warehouse | `true` |
+| the same records through the OSS `CASE` | `amount_out_of_range` |
+| `silver_events` for those three ids | zero rows - the EXPECTATIONS dropped them |
+| the deployed file vs the repository | identical |
+
+The contract caps one line at 10 000 x 1 000 000 = 1e10 cents. Those three events are worth
+9.22e18 each and account for the whole of January's gross: six and a half million times the
+ceiling of a single line, from events the generator emits **in order to be rejected**.
+
+### The mechanism, measured rather than deduced
+
+The expectations dropped those rows and the classification accepted them, from the same rules
+in the same file. The only shape consistent with all of the above is that
+`unit_price_cents > 1000000` returned NULL inside the pipeline while returning `true` in the
+warehouse. That was checked on pyspark 4.2.0 rather than argued:
+
+| expression, `v` a STRING column holding `9223372036854775807` | `spark.sql.ansi.enabled=false` | `=true` |
+|---|---|---|
+| `v > 1000000` | **NULL** | `true` |
+| `v > 1000000L` | `true` | `true` |
+| `CAST(v AS INT)` | NULL | raises `CAST_INVALID_INPUT` |
+| `CAST(v AS BIGINT)` | 9223372036854775807 | 9223372036854775807 |
+
+The literal `1000000` is INT32. The STRING is coerced to **the literal's** type, the value
+overflows INT32, and non-ANSI Spark yields NULL for that cast. The pipeline behaved as
+non-ANSI, the warehouse as ANSI - which is exactly the pair of answers observed. The defect is
+the WIDTH of the literal, and it is unreachable the moment the column is a BIGINT.
+
+Then a NULL predicate does not match a `WHEN`, so the row fell through to `ELSE 'accepted'`.
+The expectations got it right for free: `expect_all_or_drop` treats "not TRUE" as "did not
+pass". The same NULL meant *drop* in one rendering and *accept* in the other.
+
+### What was changed
+
+- `bronze_autoloader.py` declares `cloudFiles.schemaHints` from the same schema the OSS lane
+  uses, so `qty`, `new_qty` and `unit_price_cents` arrive as BIGINT. **This needs a full
+  refresh** to take effect, because `cloudFiles.schemaLocation` caches the inferred schema:
+  `scripts/databricks_run.sh run-full-refresh`.
+- `silver_expectations.py` GENERATES the classification from `RULES` instead of restating it,
+  and acceptance is positive: every branch is `COALESCE(predicate, false)`, so a row is
+  `accepted` only when every rule said TRUE. A new `undecided_rules` column names any rule
+  that returned NULL, so if this ever happens again the run says so.
+- The three events now land in `amount_out_of_range`, which is where the other two lanes send
+  them, and needs no new quarantine reason.
+
 ## What the run returned
 
 ### The pipeline update

@@ -154,6 +154,24 @@ def _run(
     # the read-only attribute and nothing else, so the stub would sit there unexecutable and
     # `databricks` would resolve to the real CLI further down PATH - a test quietly talking to
     # a live workspace. Bash's chmod sets the bit MSYS actually reads.
+    # Before anything else: can the shell that will run the script actually SEE the fixture?
+    # In some sandboxed environments (this repository's agent harness is one) the Python
+    # process and `bash` have different views of the Windows temp directory, and every test
+    # below then fails with the script talking to the real CLI further down PATH. That is an
+    # environment fact, not a defect in the step under test, and it is worth saying in those
+    # words rather than as six assertion errors - or, worse, as a skip that says nothing.
+    visible = subprocess.run(
+        ["bash", "-c", f'test -r "{_bash_path(stub)}"'],
+        capture_output=True,
+        check=False,
+    )
+    if visible.returncode != 0:
+        pytest.skip(
+            f"bash cannot read the stub this test just wrote ({stub}), so the script would "
+            f"run against the real databricks CLI instead. The Python process and the shell "
+            f"disagree about the filesystem here; these tests are meaningful where they do "
+            f"not - Linux, WSL2, and a normal Windows checkout."
+        )
     launch = (
         f'chmod +x "{stub}" 2>/dev/null || true; '
         f'export PATH="{_bash_path(stub_dir)}:$PATH"; '

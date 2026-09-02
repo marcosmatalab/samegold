@@ -147,38 +147,93 @@ def _statements() -> list[tuple[str, str]]:
     return out
 
 
+def _module_namespace(source: str, path: Path) -> dict[str, object]:
+    """Evaluate the module's top-level string/dict assignments, IN SOURCE ORDER.
+
+    The previous version pulled the helpers out with one regex and the `RULES` dict with
+    another, and evaluated all the helpers first. That worked only while every helper was
+    built from literals. `_REASON` is now DERIVED from `RULES` - which is the point of it, so
+    that the expectations and the classification cannot be two renderings of the same rule
+    that disagree - and evaluating it before `RULES` existed raised NameError at collection
+    time, taking down the whole module.
+
+    Source order is the only order that works when declarations depend on each other, and the
+    parser knows the source order. Anything this cannot evaluate raises, because a helper
+    silently skipped is a predicate silently unparsed.
+    """
+    namespace: dict[str, object] = {}
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        if not (target.id.isupper() or target.id.lstrip("_").isupper()):
+            continue
+        try:
+            # No builtins: this evaluates string concatenation, dict literals, f-strings and
+            # the comprehension that renders RULES into a CASE, and nothing else can reach a
+            # name it was not handed.
+            namespace[target.id] = eval(
+                compile(ast.Expression(node.value), str(path), "eval"),
+                {"__builtins__": {}},
+                namespace,
+            )
+        except NameError as error:
+            # `LANDING = spark.conf.get(...)` is a runtime value, not a SQL fragment: `spark`
+            # and `dbutils` are injected by the Databricks runtime and cannot exist here. That
+            # is the ONLY thing allowed to be skipped, and it is skipped by name - anything
+            # else raises, because a helper quietly passed over is a predicate quietly
+            # unparsed, which is the failure this file exists to prevent.
+            if error.name in {"spark", "dbutils", "display"}:
+                continue
+            raise AssertionError(
+                f"{path.name}: cannot evaluate {target.id}, so any SQL built from it would "
+                f"go unparsed: {type(error).__name__}: {error}"
+            ) from error
+        except Exception as error:  # pragma: no cover - the message is the point
+            raise AssertionError(
+                f"{path.name}: cannot evaluate {target.id}, so any SQL built from it would "
+                f"go unparsed: {type(error).__name__}: {error}"
+            ) from error
+    return namespace
+
+
 def _expectations() -> list[tuple[str, str]]:
-    """Every pipeline expectation predicate, wrapped in a SELECT so it can be parsed."""
+    """Every expectation predicate AND every derived SQL expression, wrapped in a SELECT.
+
+    `_REASON` and `_UNDECIDED` are SQL too - they are what actually tags every row - and they
+    are generated rather than typed, so nothing had ever handed them to a parser either. They
+    are collected here so the analysis test below evaluates them against the typed views: the
+    round that found this had a CASE returning `accepted` for a record the expectations
+    dropped, and no test could see it because no test ran the CASE at all.
+    """
     out: list[tuple[str, str]] = []
     for path in sorted(LANE.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        module: dict[str, object] = {}
-        blocks = list(_RULES.finditer(source))
-        if not blocks and "expect_all_or_drop" in source:
+        if "RULES = {" not in source and "expect_all_or_drop" in source:
             raise AssertionError(
                 f"{path.name} declares expectations this test cannot read: the rules must be a "
                 f"module-level dict literal named RULES"
             )
-        # Evaluate only the literals the rules are built from, never the module: importing it
-        # would need pyspark.pipelines and a live session. The helper strings are plain
-        # concatenations of literals, which ast.literal_eval-style execution handles safely
-        # enough for a test that then throws the namespace away.
-        helpers = re.findall(
-            r"^(_[A-Z_]+)(?:\s*:[^=]+)?\s*=\s*\((.*?)^\)", source, re.DOTALL | re.MULTILINE
-        )
-        for name, body in helpers:
-            # Evaluated INTO the same namespace, in source order, because one helper is
-            # built from another. An empty namespace per helper raised NameError at import
-            # time, which is a collection error: it takes down the very test written to stop
-            # this module going quietly vacuous.
-            module[name] = eval(f"({body})", {"__builtins__": {}}, module)
-        for block in blocks:
-            rules = eval("{" + block.group(1) + "}", {"__builtins__": {}}, module)
+        namespace = _module_namespace(source, path)
+        rules = namespace.get("RULES")
+        if isinstance(rules, dict):
             for name, predicate in rules.items():
                 out.append(
                     (
                         f"{path.relative_to(REPO)}::expectation:{name}",
                         f"SELECT * FROM t WHERE {predicate}",
+                    )
+                )
+        for name in ("_REASON", "_UNDECIDED"):
+            expression = namespace.get(name)
+            if isinstance(expression, str):
+                out.append(
+                    (
+                        f"{path.relative_to(REPO)}::derived:{name}",
+                        f"SELECT {expression} AS value FROM t",
                     )
                 )
     return out
@@ -260,16 +315,35 @@ def test_the_statement_parses(spark, name: str, statement: str) -> None:  # type
 # the statements are ANALYSED against them. That still cannot run the pipeline, but it does
 # answer "does every column this lane reads exist", which is the question that was open.
 
-BRONZE_COLUMNS = (
-    "event_id STRING, event_type STRING, event_ts STRING, arrival_ts STRING, "
-    "order_id STRING, customer_id STRING, sku STRING, qty BIGINT, new_qty BIGINT, "
-    "unit_price_cents BIGINT, currency STRING, return_id STRING, reason STRING, "
-    "segment STRING, country STRING, boundary STRING, "
-    "_rescued_data STRING, _ingest_file STRING, _ingested_at TIMESTAMP"
-)
+
+def _bronze_columns() -> str:
+    """Bronze, as a DDL string, DERIVED from the one declaration the pipeline uses.
+
+    This dict used to spell the schema out by hand, and it spelled `qty`, `new_qty` and
+    `unit_price_cents` as BIGINT while the deployed pipeline was producing them as STRING -
+    Auto Loader's default for JSON with no hints. So the analysis test asserted the schema it
+    had invented, agreed with itself, and could not see that on the real lane every money
+    column was text and `gross_cents` came out DOUBLE. A test that declares its own fixture
+    schema is testing the fixture.
+
+    `samegold.pipelines.schema.bronze_schema` is now the single source: the OSS reader uses
+    it, `databricks/src/bronze_autoloader.py` carries the same declaration as
+    `cloudFiles.schemaHints`, and tests/fast/test_databricks_bundle.py fails if those two
+    drift. Change the schema and this test changes with it.
+    """
+    from samegold.pipelines.schema import bronze_schema
+
+    fields = ", ".join(f"{f.name} {f.dataType.simpleString()}" for f in bronze_schema().fields)
+    # The two columns bronze_autoloader.py adds after the read, which are not part of the
+    # declared input schema.
+    return f"{fields}, _ingest_file string, _ingested_at timestamp"
+
+
+BRONZE_COLUMNS = _bronze_columns()
 LANE_TABLES = {
     "bronze_events": BRONZE_COLUMNS,
-    "silver_classified": BRONZE_COLUMNS + ", quarantine_reason STRING",
+    # `undecided_rules` is the diagnostic column: which rules could not answer on this row.
+    "silver_classified": BRONZE_COLUMNS + ", quarantine_reason STRING, undecided_rules STRING",
     "silver_events": BRONZE_COLUMNS,
     "t": BRONZE_COLUMNS,  # the wrapper the expectation predicates are analysed in
     # The quarantine table, which is `silver_classified` filtered down to four columns

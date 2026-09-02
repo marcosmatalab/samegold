@@ -6,7 +6,8 @@
 #   export DATABRICKS_TOKEN=dapi...
 #   make databricks
 #
-# It does six things, in this order, and any one of them can be run alone:
+# It does six things, in this order, and any one of them can be run alone (plus
+# `run-full-refresh`, which is `run` with Auto Loader's cached schema thrown away):
 #
 #   catalog   create the Unity Catalog catalog if it is missing, with SQL. A bundle cannot:
 #             there is no `catalogs` resource type, and a schema whose catalog does not exist
@@ -328,11 +329,23 @@ script at whichever directory holds them."
 }
 
 step_run() {
+    # `cloudFiles.schemaLocation` CACHES the schema Auto Loader inferred the first time. The
+    # lane's first deployment inferred every column as STRING, and adding `schemaHints` to
+    # bronze_autoloader.py changes NOTHING for an existing checkpoint until the schema is
+    # inferred again. Without this the type fix looks like it did not work, which is the kind
+    # of thing that gets a correct fix reverted.
+    local refresh=""
+    if [ -n "${SAMEGOLD_FULL_REFRESH:-}" ]; then
+        refresh="--full-refresh-all"
+        say "FULL REFRESH: the pipeline will re-read the landing zone from scratch"
+        echo "  needed after a schemaHints change, because the inferred schema is cached"
+    fi
     say "bundle run samegold_close -t $TARGET"
     # Free Edition stops ALL compute for the rest of the day when the quota runs out, so this
     # is the one command in the repository that can cost you the afternoon. It is never
     # triggered by a push: the schedule in resources/jobs.yml is deployed PAUSED.
-    (cd "$BUNDLE" && databricks bundle run samegold_close -t "$TARGET" --var="catalog=$CATALOG")
+    # shellcheck disable=SC2086 - $refresh is either empty or one known flag
+    (cd "$BUNDLE" && databricks bundle run samegold_close -t "$TARGET" --var="catalog=$CATALOG" $refresh)
 }
 
 step_fetch() {
@@ -432,7 +445,7 @@ PY
 }
 
 usage() {
-    echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|seed|run|fetch]" >&2
+    echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|seed|run|run-full-refresh|fetch]" >&2
     exit 2
 }
 
@@ -445,6 +458,9 @@ case "${1:-all}" in
     deploy)   require_cli; require_auth; step_catalog; step_validate; step_deploy ;;
     seed)     require_cli; require_auth; step_seed ;;
     run)      require_cli; require_auth; step_run ;;
+    # The same step with the schema cache thrown away. Spelled as its own word rather than a
+    # flag on `all`, so that it is a decision someone made.
+    run-full-refresh) SAMEGOLD_FULL_REFRESH=1 require_cli; require_auth; step_run ;;
     fetch)    require_cli; require_auth; step_fetch ;;
     *)        usage ;;
 esac
