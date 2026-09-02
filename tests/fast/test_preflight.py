@@ -14,6 +14,8 @@ less.
 
 from __future__ import annotations
 
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -130,4 +132,74 @@ def test_the_scripts_are_readable_by_a_posix_shell(path: str) -> None:
     raw = (REPO / path).read_bytes()
     assert b"\r\n" not in raw, (
         f"{path} has CRLF line endings; bash cannot execute it on Linux or in WSL2"
+    )
+
+
+# ------------------------------------------------------------------ the executable bit
+#
+# `Makefile` and `.github/workflows/*.yml` invoke these scripts as `scripts/x.sh`, not as
+# `bash scripts/x.sh`, so the kernel needs the executable bit or the line dies with
+# "Permission denied". Both scripts were committed 100644 - and `scripts/preflight.sh`, the
+# gate written in round 14 to stop a half-run reaching CI, was committed with the same defect
+# that had just been pointed out about the script beside it.
+#
+# It is the INDEX that matters, not the disk. A Windows checkout reports every file as
+# executable to `os.access`, and NTFS has no bit to set: a test that asked the filesystem
+# would have passed on the machine where the defect was introduced and failed nowhere.
+
+
+def _shell_scripts_invoked_by_automation() -> set[str]:
+    """Every `scripts/*.sh` named by the Makefile or by a workflow, found by reading them."""
+    invoked: set[str] = set()
+    sources = [REPO / "Makefile", *sorted(WORKFLOWS.glob("*.yml"))]
+    for source in sources:
+        for match in re.findall(r"scripts/[\w.-]+\.sh", source.read_text(encoding="utf-8")):
+            invoked.add(match)
+    return invoked
+
+
+def _index_modes() -> dict[str, str]:
+    """`git ls-files -s` as {path: mode}. Empty when this is not a git checkout."""
+    result = subprocess.run(
+        ["git", "ls-files", "-s"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return {}
+    modes: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        head, _, path = line.partition("\t")
+        if head:
+            modes[path] = head.split()[0]
+    return modes
+
+
+def test_there_are_scripts_to_check() -> None:
+    """The regex finding nothing would make the mode check below vacuously green."""
+    assert _shell_scripts_invoked_by_automation(), (
+        "no scripts/*.sh is invoked by the Makefile or any workflow, which cannot be right "
+        "while `make preflight` and `make databricks` exist"
+    )
+
+
+def test_every_script_automation_invokes_is_executable_in_the_git_index() -> None:
+    modes = _index_modes()
+    if not modes:
+        pytest.skip(
+            "not a git checkout, so the index cannot be read. This is the one check in the "
+            "fast lane that needs the repository rather than the files, and it is stated "
+            "rather than quietly passing: a tarball cannot answer it."
+        )
+    wrong = {
+        script: modes.get(script, "not tracked")
+        for script in sorted(_shell_scripts_invoked_by_automation())
+        if modes.get(script) != "100755"
+    }
+    assert not wrong, (
+        f"these scripts are invoked by automation and are not executable in the git index: "
+        f"{wrong}. `git update-index --chmod=+x <path>` fixes it; chmod on the working copy "
+        f"does not, and on Windows there is nothing to chmod."
     )

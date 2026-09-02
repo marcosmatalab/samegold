@@ -37,7 +37,7 @@ result may be uncomfortable, and it should not be able to delay the rest.
 
 M12 says "runnable, never run", and the distinction is the whole lesson of round 12. The
 bundle now deploys in one command (`make databricks`), the Free Edition limits it has to obey
-are asserted by `tests/fast/test_databricks_lane.py` rather than described in a comment, and
+are asserted by `tests/fast/test_databricks_bundle.py` rather than described in a comment, and
 the run writes a record to `evidence/databricks/`. None of that is the milestone. The
 milestone is a run, and the hours stay at 18 until there has been one: an estimate that goes
 down because the setup got easier is an estimate measuring the wrong thing.

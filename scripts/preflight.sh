@@ -109,7 +109,7 @@ jvm_lanes_can_run() {
             ;;
     esac
     if ! command -v java >/dev/null 2>&1; then
-        skipped+=("spark and delta: no java on PATH; the lanes need a JDK 21 (Temurin), see docs/adr/0002")
+        skipped+=("spark and delta: no java on PATH; the lanes need a JDK 21 (Temurin), see docs/adr/0002-version-pinning.md")
         return 1
     fi
     if ! python -c "import pyspark" >/dev/null 2>&1; then

@@ -400,3 +400,146 @@ def test_the_run_document_agrees_with_the_record() -> None:
         for row in expectations:
             assert str(row["rule"]) in block, f"rule {row['rule']} is missing from the table"
             assert str(row["passed"]) in block and str(row["failed"]) in block, row
+
+
+# ------------------------------------------ the fields the API requires and validate does not
+#
+# `databricks bundle validate -t free` answered `Validation OK!` on a bundle whose very first
+# POST came back `name must be set (400 INVALID_PARAMETER_VALUE)`, and the CI job that runs
+# validate as its default action had been green on that bundle for a round. Validate checks
+# syntax, `include:` and variable resolution, and warns about properties it does not
+# recognise. It does not check that the request body it is about to send is one the API will
+# accept, and the bundle reference says as much: a resource declaration "uses the
+# corresponding object's create operation's request payload", and what that payload requires
+# is documented in the REST API reference, not enforced by the linter.
+#
+# So the required fields are asserted here, from that reference, for every resource type this
+# bundle declares - not just for the one that failed. A test written to the shape of the
+# defect that was found is a test that finds that defect again and nothing else.
+REQUIRED_FIELDS = {
+    # POST /api/2.0/pipelines
+    "pipelines": ("name",),
+    # POST /api/2.2/jobs/create
+    "jobs": ("name", "tasks"),
+    # POST /api/2.1/unity-catalog/schemas
+    "schemas": ("name", "catalog_name"),
+    # POST /api/2.1/unity-catalog/volumes
+    "volumes": ("name", "catalog_name", "schema_name"),
+}
+
+
+@pytest.mark.parametrize("kind", sorted(REQUIRED_FIELDS))
+def test_every_resource_carries_the_fields_its_create_api_requires(kind: str) -> None:
+    """The key a resource is declared under is the BUNDLE's id for it, not a name field.
+
+    That is the whole trap: `resources.pipelines.samegold_pipeline` reads like a name, is not
+    one, and nothing between the editor and the workspace said so.
+    """
+    declared = MERGED.get(kind, {})
+    missing = {
+        resource_id: [field for field in REQUIRED_FIELDS[kind] if field not in resource]
+        for resource_id, resource in declared.items()
+        if any(field not in resource for field in REQUIRED_FIELDS[kind])
+    }
+    assert not missing, (
+        f"these {kind} are missing fields their create API requires: {missing}. "
+        f"`databricks bundle validate` passes on this and the deploy fails on the first POST."
+    )
+
+
+def test_the_pipeline_sets_exactly_one_of_schema_and_target() -> None:
+    """An either/or the API enforces at POST time and validate does not read.
+
+    "Exactly one of `schema` or `target` must be specified" - the create-pipeline reference.
+    Both, or neither, is a 400 on a bundle that validated cleanly.
+    """
+    for name, pipeline in PIPELINES.items():
+        present = [field for field in ("schema", "target") if field in pipeline]
+        assert len(present) == 1, f"{name} sets {present or 'neither'} of schema/target"
+
+
+def test_every_resource_type_the_bundle_declares_has_a_required_field_rule() -> None:
+    """A new resource type must be looked up in the reference before it can be deployed.
+
+    Without this, the check above silently covers only the four types that existed when it was
+    written - which is how `NOT_ANALYSABLE` in the Spark lane stopped covering a statement,
+    and how `ruff check src tests` stopped covering two directories.
+    """
+    unknown = sorted(set(MERGED) - set(REQUIRED_FIELDS))
+    assert not unknown, (
+        f"the bundle declares {unknown}, and nothing here says what their create API "
+        f"requires. Read the REST API reference for each and add it to REQUIRED_FIELDS."
+    )
+
+
+# ------------------------------------------------------------------ the deploy script
+#
+# `scripts/databricks_run.sh` is the one command a reader is told to run, so what it does is
+# checked here rather than left to be discovered against a real workspace. These assertions
+# are about the SHAPE of the calls, which is all a test with no account can see; the calls
+# themselves were found by a deploy that failed.
+SCRIPT = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+# A construct named in a comment is not a construct - the same rule, and the same reason, as
+# `_is_databricks_only` in tests/spark/test_databricks_lane_parses.py. The script explains at
+# length why it does NOT call `catalogs create`, and that sentence must not read as the call.
+CODE = "\n".join(line for line in SCRIPT.splitlines() if not line.lstrip().startswith("#"))
+
+
+def test_the_catalog_is_not_created_through_the_unity_catalog_api() -> None:
+    """`databricks catalogs create` cannot work on Free Edition.
+
+    It goes to the Unity Catalog API, which wants a storage root on the metastore. Free
+    Edition uses Default Storage and has none, so it fails with `Metastore storage root URL
+    does not exist` (databricks/cli#4513). This was found by running the deploy, not by
+    reading it: the call looks perfectly reasonable.
+    """
+    assert "catalogs create" not in CODE, (
+        "the script calls `databricks catalogs create`, which cannot succeed on a Free "
+        "Edition metastore; create the catalog with SQL instead"
+    )
+
+
+def test_the_catalog_is_created_through_the_sql_statements_api() -> None:
+    """The path that does work with Default Storage, with a bounded wait."""
+    assert "/api/2.0/sql/statements" in CODE
+    assert "CREATE CATALOG IF NOT EXISTS" in CODE
+    # Without a wait the call returns PENDING immediately; without CANCEL a timed-out
+    # statement keeps running behind a script that has already moved on.
+    assert '"wait_timeout": "30s"' in CODE
+    assert '"on_wait_timeout": "CANCEL"' in CODE
+
+
+def test_the_script_refuses_to_continue_unless_the_statement_succeeded() -> None:
+    """A statement left PENDING reproduces the missing catalog one step later.
+
+    That is the worse failure: it surfaces at `bundle deploy` as a dependency error, which
+    looks like a different bug in a different place.
+    """
+    assert "SUCCEEDED" in CODE, "nothing checks the statement's terminal state"
+    assert "state" in CODE
+
+
+def test_the_catalog_name_is_validated_before_it_reaches_sql() -> None:
+    """It is interpolated into an identifier position, which cannot be parameterised."""
+    assert "^[A-Za-z_][A-Za-z0-9_]*$" in CODE
+
+
+def test_authentication_accepts_a_configured_profile() -> None:
+    """The script must not be stricter than the CLI it drives.
+
+    `~/.databrickscfg` is how `databricks configure` stores credentials, and a machine set up
+    that way is correctly set up. Requiring the two environment variables aborted on it. The
+    question asked first is now "can the CLI authenticate", and the variables are only named
+    when the answer is no - where their absence is almost always the reason.
+    """
+    body = SCRIPT.split("require_auth()", 1)[1].split("\n}", 1)[0]
+    checks = [
+        line.strip()
+        for line in body.splitlines()
+        if "current-user me" in line or "DATABRICKS_HOST" in line
+    ]
+    assert checks, "require_auth checks nothing"
+    assert "current-user me" in checks[0], (
+        f"require_auth tests the environment before it tests whether the CLI can "
+        f"authenticate, so a valid ~/.databrickscfg profile is rejected: {checks[0]}"
+    )
