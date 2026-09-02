@@ -579,6 +579,41 @@ def test_authentication_accepts_a_configured_profile() -> None:
 # ------------------------------------------------ the types, from one declaration
 
 
+# READ, not imported. `bronze_schema()` builds a pyspark StructType, and importing pyspark in
+# the FAST lane breaks the one promise that lane makes: no JVM, no Spark, no network. The
+# first version of these two tests called it, passed on both machines it was written on -
+# because both have the spark extras installed - and turned the `fast` workflow red on the
+# push, which is `tests/fast/test_architecture.py`'s own rule violated by a test.
+#
+# The declaration is a literal list of `StructField("name", Type(), ...)`, so the parser can
+# read it without executing it. That keeps the single source (the same file the OSS reader
+# uses) and costs nothing.
+_SPARK_TO_SQL = {"StringType": "STRING", "LongType": "BIGINT", "TimestampType": "TIMESTAMP"}
+
+
+def _declared_bronze_types() -> dict[str, str]:
+    """{column: SQL type} from `samegold.pipelines.schema.bronze_schema`, by parsing it."""
+    source = (REPO / "src" / "samegold" / "pipelines" / "schema.py").read_text(encoding="utf-8")
+    out: dict[str, str] = {}
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id != "StructField" or len(node.args) < 2:
+            continue
+        name, spark_type = node.args[0], node.args[1]
+        if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
+            continue
+        # `StructField(RESCUED_COLUMN, StringType(), True)` names its column by constant.
+        if not (isinstance(spark_type, ast.Call) and isinstance(spark_type.func, ast.Name)):
+            continue
+        out[name.value] = _SPARK_TO_SQL[spark_type.func.id]
+    # The rescued column is declared through a module constant rather than a literal.
+    if "_rescued_data" not in out and "RESCUED_COLUMN" in source:
+        out["_rescued_data"] = "STRING"
+    assert len(out) > 10, f"only parsed {len(out)} fields out of the bronze schema"
+    return out
+
+
 def test_the_auto_loader_hints_are_the_declared_bronze_schema() -> None:
     """One schema, two consumers, and a test that breaks if they drift.
 
@@ -592,8 +627,6 @@ def test_the_auto_loader_hints_are_the_declared_bronze_schema() -> None:
     the hints in `databricks/src/bronze_autoloader.py` must be the same fields with the same
     types, so changing one and not the other fails here rather than in a workspace.
     """
-    from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
-
     source = (LANE / "src" / "bronze_autoloader.py").read_text(encoding="utf-8")
     block = source.split("SCHEMA_HINTS = (", 1)[1].split(")", 1)[0]
     hinted = {
@@ -603,9 +636,9 @@ def test_the_auto_loader_hints_are_the_declared_bronze_schema() -> None:
     }
     # `_rescued_data` is Auto Loader's own column and is not hinted; everything else is.
     declared = {
-        field.name: field.dataType.simpleString().upper()
-        for field in bronze_schema().fields
-        if field.name != RESCUED_COLUMN
+        name: sql_type
+        for name, sql_type in _declared_bronze_types().items()
+        if name != "_rescued_data"
     }
     mismatched = {
         name: (hinted[name], declared[name])
@@ -627,8 +660,6 @@ def test_the_money_columns_are_declared_as_integers() -> None:
     DOUBLE, and floating point money in an accounting pipeline is the defect this project
     exists to argue against - it reached production on this lane and nothing said a word.
     """
-    from samegold.pipelines.schema import bronze_schema
-
-    types = {field.name: field.dataType.simpleString() for field in bronze_schema().fields}
+    types = _declared_bronze_types()
     for column in ("qty", "new_qty", "unit_price_cents"):
-        assert types[column] == "bigint", f"{column} is {types[column]}, not bigint"
+        assert types[column] == "BIGINT", f"{column} is {types[column]}, not BIGINT"
