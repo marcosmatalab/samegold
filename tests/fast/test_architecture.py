@@ -144,3 +144,98 @@ def test_every_test_that_reads_the_repository_evidence_is_marked() -> None:
         f"these tests read the repository's own evidence and are not marked "
         f"evidence_dependent, so SG-00 will run them while writing that evidence: {offenders}"
     )
+
+
+# ------------------------------------------------------------------ the numpy shadow
+#
+# `typings/numpy/` is an empty stand-in that exists so mypy can start at all (numpy 2.x ships
+# stubs written in 3.12 syntax, and this project declares python_version 3.11, so mypy refuses
+# to PARSE them). Its docstring states the cost of that trade in one sentence:
+#
+#     "if this project ever uses numpy directly, this file turns its API into `Any` and must
+#      be deleted. tests/fast/test_architecture.py is where an import of it would be refused."
+#
+# That sentence was true about the intent and false about the repository: no such test
+# existed, and `grep numpy tests/fast/test_architecture.py` returned nothing. A file whose
+# entire job is to declare a cost honestly was claiming a guard that was not installed - the
+# same shape as the eleven rounds of "written and not executed here". The guard is below.
+
+SHADOWED = REPO / "typings" / "numpy" / "__init__.pyi"
+# Every directory mypy checks or ruff lints, which is every directory whose imports the shadow
+# would silently turn into `Any`.
+SHADOW_SCOPE = ("src", "tests", "pipelines", "databricks")
+
+
+def _python_files() -> list[Path]:
+    out: list[Path] = []
+    for directory in SHADOW_SCOPE:
+        for path in sorted((REPO / directory).rglob("*.py")):
+            if "__pycache__" not in path.parts:
+                out.append(path)
+    return out
+
+
+def test_nothing_imports_numpy_while_the_stub_shadows_it() -> None:
+    """The refusal `typings/numpy/__init__.pyi` promises, actually installed.
+
+    The stub defines `__getattr__(name) -> Any`, so mypy accepts EVERY attribute of numpy
+    without checking one of them. An import of numpy under the shadow is therefore not a
+    type error and never will be: it is a silent hole, and the only thing that can close it
+    is a test that reads the imports.
+    """
+    files = _python_files()
+    # A glob that matched nothing would make this vacuous, which is the failure mode this
+    # whole file exists to catch elsewhere.
+    assert len(files) > 30, f"only found {len(files)} modules under {SHADOW_SCOPE}"
+
+    offenders = sorted(
+        str(path.relative_to(REPO))
+        for path in files
+        if any(name.split(".")[0] == "numpy" for name in _imports(path))
+    )
+    if not SHADOWED.exists():
+        # The shadow is gone, so the rule is gone with it - but then pyproject.toml must not
+        # still point mypy at a `typings/` that no longer shadows anything. Without this
+        # branch the test above passes for the wrong reason the moment someone deletes the
+        # stub, which is exactly the state it is meant to detect.
+        pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+        assert 'mypy_path = "typings"' not in pyproject, (
+            'typings/numpy/__init__.pyi is gone but pyproject.toml still sets mypy_path = "typings"'
+        )
+        return
+    assert not offenders, (
+        f"{offenders} import numpy, and typings/numpy/ shadows it with a stub whose "
+        f"__getattr__ returns Any: every numpy call in those files would be type-checked "
+        f"against nothing. Delete typings/ first, and the mypy_path line in pyproject.toml "
+        f"with it - and then deal with the problem the shadow was hiding: mypy cannot parse "
+        f"the numpy 2.x stubs under the python_version = 3.11 this project declares."
+    )
+
+
+def test_the_stub_is_only_a_stub() -> None:
+    """The shadow must stay empty: a stub that starts describing numpy starts being wrong.
+
+    The trade the file documents is "nothing here imports numpy, so `Any` costs nothing". A
+    stub with real signatures in it would be a hand-maintained copy of another project's API,
+    checked by nobody, and the sentence in its docstring would stop being true.
+    """
+    if not SHADOWED.exists():
+        return
+    for stub in sorted((REPO / "typings").rglob("*.pyi")):
+        tree = ast.parse(stub.read_text(encoding="utf-8"))
+        declarations = [
+            node
+            for node in tree.body
+            # The module docstring is an Expr holding a string constant; everything else is a
+            # declaration. Counting source lines instead counted the docstring's prose.
+            if not (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            )
+        ]
+        rendered = [ast.unparse(node).splitlines()[0] for node in declarations]
+        assert len(declarations) <= 2, (
+            f"{stub.relative_to(REPO)} has grown real declarations: {rendered}. The shadow is "
+            f"a parser workaround, not a stub package anyone maintains."
+        )

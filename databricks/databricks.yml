@@ -1,11 +1,17 @@
 # Declarative Automation Bundle (formerly Databricks Asset Bundles).
 #
-# Deployed from the GitHub runner, not from inside the workspace: Free Edition restricts
-# outbound traffic to a small set of trusted domains, so a deploy started from a notebook is
-# unreliable. Authentication is a personal access token, because Free Edition has no account
-# console and therefore no OAuth machine-to-machine service principals.
+# Deployed from outside the workspace - a GitHub runner, or `make databricks` on a laptop -
+# and never from inside it: Free Edition restricts outbound traffic to a small set of trusted
+# domains, so a deploy started from a notebook is unreliable. Authentication is a personal
+# access token, because Free Edition has no account console and therefore no OAuth
+# machine-to-machine service principals.
 #
-#   databricks configure --host $DATABRICKS_HOST --token
+#   export DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
+#   export DATABRICKS_TOKEN=dapi...
+#   make databricks            # validate, deploy, seed the volume, run, fetch the evidence
+#
+# or by hand, which is what that target does:
+#
 #   databricks bundle validate -t free
 #   databricks bundle deploy   -t free
 #   databricks bundle run samegold_close -t free
@@ -17,32 +23,48 @@ variables:
   catalog:
     description: Unity Catalog catalog. Free Edition gives you one metastore and no external locations.
     default: samegold
-  landing_volume:
-    description: UC volume the generator writes into. Volumes are the only storage on Free Edition.
-    default: /Volumes/samegold/raw/landing
 
 targets:
   free:
     default: true
-    mode: development
-    # No `host:` here on purpose. ${var.DATABRICKS_HOST} does not validate: ${var.X} resolves
-    # a variable declared in this file's `variables:` block, and DATABRICKS_HOST is an
-    # authentication environment variable for the CLI, not a bundle variable. Leaving the host
-    # out lets `databricks bundle validate -t free` take it from DATABRICKS_HOST or from the
-    # configured profile, which is what the CI job sets.
+    # No `mode: development`. Development mode renames every resource it deploys with a
+    # per-user prefix, and this lane's whole output is an evidence record that NAMES the
+    # tables it read: `samegold.main.revenue_by_month` in the record has to be the table that
+    # exists. There is also nobody to be isolated from - Free Edition is one workspace with
+    # one user. What development mode is actually wanted for here is the pipeline's
+    # no-retry behaviour, and that is a pipeline field, set explicitly below.
+    #
+    # No `host:` here either. ${var.DATABRICKS_HOST} does not validate: ${var.X} resolves a
+    # variable declared in this file's `variables:` block, and DATABRICKS_HOST is an
+    # authentication environment variable for the CLI, not a bundle variable. Leaving the
+    # host out lets `databricks bundle validate -t free` take it from DATABRICKS_HOST or from
+    # the configured profile, which is what the CI job and `make databricks` set.
     resources:
       pipelines:
         samegold_pipeline:
           # One active pipeline per pipeline type is the Free Edition limit, so there is
           # exactly one, and it is serverless because that is the only compute available.
+          # `photon: true` used to be here; serverless compute is Photon and the flag is not
+          # a knob you own there, so it was a claim about the deploy that the deploy does not
+          # honour. tests/fast/test_databricks_bundle.py keeps it out.
           serverless: true
-          photon: true
           continuous: false
+          # Not a mode, a pipeline setting: a development pipeline does NOT retry a failed
+          # update. On Free Edition a retry loop is not an inconvenience, it is the daily
+          # compute quota, and going over it stops all compute until the next day.
+          development: true
           channel: CURRENT
           catalog: ${var.catalog}
           schema: main
           configuration:
-            samegold.landing: ${var.landing_volume}
+            # Read by the pipeline SOURCES through `spark.conf.get`. This reaches the three
+            # files below and nothing else: a `configuration:` entry is pipeline-scoped and
+            # is NOT visible to the notebook tasks in resources/jobs.yml, which is why those
+            # take their catalog as a job parameter instead. `close_month.py` and
+            # `publish_evidence.py` both used to read `spark.conf.get("samegold.catalog")`
+            # and would have silently closed the books in a catalog called "samegold" no
+            # matter what this variable said.
+            samegold.landing: /Volumes/${var.catalog}/raw/landing
           libraries:
             # Paths resolve against the file that declares them, and this file lives at the
             # bundle root, so `../src` pointed OUTSIDE the bundle at a directory that does not

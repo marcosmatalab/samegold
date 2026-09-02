@@ -14,16 +14,55 @@ once per (month, version). Putting it in the pipeline would recompute it on ever
 # mypy: disable-error-code="name-defined"
 
 # COMMAND ----------
+import datetime as dt
 import re
 
 dbutils.widgets.text("as_of", "")
-as_of = dbutils.widgets.get("as_of")
-# Validated, not trusted. The value is interpolated into a TIMESTAMP literal below, and a
-# quote in it would break out of that literal in the one job that writes the signed-off close
-# table. A widget is user input like any other.
-if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?", as_of):
-    raise ValueError(f"as_of must be an ISO timestamp without a zone offset, got {as_of!r}")
-catalog = spark.conf.get("samegold.catalog", "samegold")
+dbutils.widgets.text("catalog", "samegold")
+
+
+def _utc_naive(raw: str) -> str:
+    """Parse an ISO instant and give it back as a zone-less UTC literal.
+
+    Validated, not trusted, and REBUILT rather than passed through: the value is interpolated
+    into a TIMESTAMP literal below, and a quote in it would break out of that literal in the
+    one job that writes the signed-off close table. Every character of the result comes from
+    an integer this function parsed, so there is nothing left to escape.
+
+    It also has to accept what the job actually sends. The task passes
+    `{{job.start_time.iso_datetime}}`, and the runtime renders that in UTC WITH a zone
+    designator; the first version of this check demanded a timestamp with no offset at all
+    and would have raised on the only value this job is ever given - a validation rule that
+    rejects its own caller, in the one task nothing had ever run.
+    """
+    match = re.fullmatch(
+        r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?"
+        r"(Z|[+-]\d{2}:?\d{2})?",
+        raw.strip(),
+    )
+    if not match:
+        raise ValueError(f"as_of must be an ISO instant such as 2026-03-05T22:59:59Z, got {raw!r}")
+    year, month, day, hour, minute, second = (int(part) for part in match.groups()[:6])
+    when = dt.datetime(year, month, day, hour, minute, second, tzinfo=dt.UTC)
+    offset = match.group(7)
+    if offset and offset != "Z":
+        sign = -1 if offset[0] == "-" else 1
+        hours, minutes = int(offset[1:3]), int(offset[-2:])
+        # Subtracting the offset is what converts the local reading to UTC, which is the zone
+        # the SQL below assumes: it wraps `as_of` in `from_utc_timestamp(..., 'Europe/Madrid')`.
+        when -= sign * dt.timedelta(hours=hours, minutes=minutes)
+    return when.strftime("%Y-%m-%d %H:%M:%S")
+
+
+as_of = _utc_naive(dbutils.widgets.get("as_of"))
+# The catalog arrives as a job parameter, not from `spark.conf`: a pipeline's `configuration:`
+# block is visible to the pipeline's own sources and to nothing else, so the previous
+# `spark.conf.get("samegold.catalog", "samegold")` here silently returned the DEFAULT on every
+# run of this task. It is interpolated as an IDENTIFIER, which cannot be quoted or bound, so
+# it is checked against the shape of one.
+catalog = dbutils.widgets.get("catalog") or "samegold"
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
+    raise ValueError(f"catalog must be a bare Unity Catalog identifier, got {catalog!r}")
 
 # COMMAND ----------
 spark.sql(f"""

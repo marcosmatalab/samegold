@@ -36,7 +36,7 @@ transferred.
 | system tables (`system.billing`, `system.access`) | n/a | **no** - they need account-admin, which Free Edition does not grant | cost is measured from Spark metrics and the Delta log instead |
 | Delta Sharing | OSS server, as provider and recipient | recipient only | |
 | Jobs / orchestration | `make` and the CI workflow | Lakeflow Jobs via a bundle | |
-| bundles (Declarative Automation Bundles, formerly Asset Bundles) | n/a | yes, deployed from the CI runner with a PAT | Free Edition restricts outbound traffic, so deploying *from inside* the workspace is unreliable; deploy from outside |
+| bundles (Declarative Automation Bundles, formerly Asset Bundles) | n/a | supported, from outside the workspace with a PAT - **this repository has never deployed one**, see `docs/databricks-run.md` | Free Edition restricts outbound traffic, so deploying *from inside* the workspace is unreliable; deploy from outside |
 | continuous streaming | yes, locally | **no** - time-based triggers are rejected on serverless (`INFINITE_STREAMING_TRIGGER_NOT_SUPPORTED`); one active pipeline per type, and quota exhaustion stops compute for the day | everything is designed around `Trigger.AvailableNow` plus a scheduled job |
 | killing the process mid-write | yes | **no** - serverless gives you no process to kill | the whole crash campaign lives in the OSS lane, and that is stated rather than implied |
 | Delta through a second implementation | yes: delta-rs 1.6.3 reads and writes the same tables, and the cost lab and the purge run on it | n/a | multi-engine interoperability is what the format is for, and it is also how the Delta-protocol claims get executed on a machine with no route to Maven |

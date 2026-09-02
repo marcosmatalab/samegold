@@ -8,7 +8,14 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 3 * * ?"
         timezone_id: Europe/Madrid
-        pause_status: UNPAUSED
+        # PAUSED, and this is the Free Edition limit talking rather than a preference. An
+        # unpaused nightly schedule spends the daily compute quota of a workspace nobody is
+        # watching, and the day it overruns, every lane on this account is dead until
+        # midnight. The schedule is DECLARED so the shape of the close is in the bundle;
+        # `databricks bundle run samegold_close -t free` is how it is actually started.
+        pause_status: PAUSED
+      # Five concurrent job tasks per account is the Free Edition ceiling. This job has three,
+      # and they are a chain, so one runs at a time.
       max_concurrent_runs: 1
       tasks:
         - task_key: ingest_and_transform
@@ -21,11 +28,29 @@ resources:
             notebook_path: ../src/close_month.py
             base_parameters:
               as_of: "{{job.start_time.iso_datetime}}"
+              # Passed, not read from `spark.conf`. A pipeline's `configuration:` block is
+              # visible to the pipeline's own sources and to nothing else, so this notebook's
+              # `spark.conf.get("samegold.catalog", "samegold")` returned the DEFAULT on every
+              # run: point the bundle at another catalog and the close would have been written
+              # into a catalog named "samegold" that the deploy never created.
+              catalog: ${var.catalog}
         - task_key: publish_evidence
           depends_on:
             - task_key: close_month
           notebook_task:
             notebook_path: ../src/publish_evidence.py
-      # Five concurrent job tasks per account is the Free Edition ceiling; three keeps room.
-      email_notifications:
-        on_failure: []
+            base_parameters:
+              catalog: ${var.catalog}
+              # The event log is read through the `event_log(...)` table function, which needs
+              # the pipeline's id. Inside a pipeline source that is `spark.conf.get(
+              # "pipelines.id")`; this is a NOTEBOOK task, where that key does not exist and
+              # the call would have been `event_log('')`. The bundle knows the id, so it says
+              # it here.
+              pipeline_id: ${resources.pipelines.samegold_pipeline.id}
+              out_dir: /Volumes/${var.catalog}/raw/evidence
+              # Dynamic value references, resolved by the runtime at launch. If one of them is
+              # not a name the runtime knows, it is passed through as its own text rather than
+              # rejected - so a literal "{{job.run_id}}" in the published record is how a wrong
+              # reference here becomes visible instead of becoming a plausible-looking blank.
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"

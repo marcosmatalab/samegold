@@ -17,7 +17,11 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 DOCS = sorted(REPO.glob("*.md")) + sorted((REPO / "docs").rglob("*.md"))
 SOURCES = [p for p in (REPO / "src").rglob("*.py") if "__pycache__" not in str(p)]
-PATH_LIKE = re.compile(r"\b(?:src|tests|databricks|pipelines|docs)/[\w./\-]+")
+# The lookbehind matters. Without it the pattern matches in the MIDDLE of a longer path:
+# `evidence/databricks/SG-DBX-01.json` was read as `databricks/SG-DBX-01.json`, which does not
+# exist and never did, so the document citing the real file was the one that failed. A path is
+# only a path from its first segment.
+PATH_LIKE = re.compile(r"(?<![\w/])(?:src|tests|databricks|pipelines|docs)/[\w./\-]+")
 # Paths that are created at runtime rather than committed.
 RUNTIME_PATHS = {"evidence/refutations.jsonl"}
 
