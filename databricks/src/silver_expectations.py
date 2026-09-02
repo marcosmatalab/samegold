@@ -9,6 +9,37 @@ Note which action each rule takes. `expect_or_drop` on the hard rules, never
 `expect_or_fail`: a single malformed record must not stop a nightly close. Dropped rows are
 not lost - they are the quarantine table below, which is what keeps the conservation
 invariant (ingested = accepted + quarantined + rescued + deduplicated) checkable.
+
+AND ONE THING IN THIS FILE DOES ABORT THE UPDATE, WHICH LOOKS LIKE THE OPPOSITE OF THE
+PARAGRAPH ABOVE AND IS NOT. The asymmetry is deliberate and is worth stating here, where the
+principle is, rather than only at the branch that breaks it:
+
+  * A RULE THAT SAYS NO DROPS THE RECORD. `unit_price_cents` is negative, the currency is not
+    EUR, the quantity is zero: these are things a producer does, they will happen at 03:00 on
+    a Sunday, and a close that stops for one of them is a close that stops. The record goes to
+    quarantine with a name on it and the run continues. That is the paragraph above and it is
+    unchanged.
+
+  * A CLASSIFICATION THAT CANNOT DECIDE ABORTS. `_REASON` below ends in a branch that calls
+    `raise_error`, and reaching it fails the pipeline update. This is not a rule saying no; it
+    is every rule having failed to say anything, which after bronze is typed and the bound
+    literals carry their width cannot happen. The branch is an assertion, and the whole value
+    of an assertion is that it stops.
+
+The line between them is WHO IS AT FAULT. A dropped record is a statement about the DATA, and
+the right response to bad data is to set it aside and carry on - the quarantine table is that
+response, and it is why this pipeline can be left running. Reaching the final branch is a
+statement about the CODE: the rules no longer partition the records, so every verdict the run
+is producing is suspect, not just the one row. Continuing there does not save the close, it
+publishes a close nobody can vouch for - and that is exactly what happened on the first real
+deployment, where a rule that could not answer was not a fault anybody could see and 2.7e19
+cents of revenue were published as success. The cost of stopping is one night. The cost of
+carrying on was a month's revenue figure that was wrong by a factor of six and a half million,
+reported green.
+
+So: THE RULES DROP, THE IMPOSSIBILITY OF DECIDING ABORTS. If the second ever fires on a real
+run, the message says it is a defect in the pipeline and not a fault in the record, because
+whoever is woken up by it needs to know which of the two paragraphs above they are in.
 """
 
 from pyspark import pipelines as dp

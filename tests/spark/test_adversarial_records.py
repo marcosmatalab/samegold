@@ -22,7 +22,9 @@ The list is not decoration. Before these tests existed:
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -424,30 +426,85 @@ def _databricks_namespace() -> dict[str, object]:
     return dict(module._module_namespace(lane.read_text(encoding="utf-8"), lane))
 
 
-def _matrix_rows() -> list[dict[str, object]]:
-    """The parity matrix, plus the three amounts that broke the real deployment."""
+def event(**overrides: object) -> dict[str, object]:
+    """A well-formed `order_placed` with every bronze column present, plus the overrides.
+
+    Module level rather than a closure because `_pair_rows` builds on it too: the pair records
+    have to be the SAME base record as the hand-written ones, or a difference between them is
+    a difference in the fixture and not in the rules.
+    """
     from samegold.pipelines.schema import bronze_schema
 
-    ts, arrived = "2026-01-10T10:00:00+00:00", "2026-01-10T10:05:00+00:00"
+    base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
+    base.update(
+        event_id="e",
+        event_type="order_placed",
+        event_ts="2026-01-10T10:00:00+00:00",
+        arrival_ts="2026-01-10T10:05:00+00:00",
+        order_id="O1",
+        customer_id="C1",
+        sku="S1",
+        qty=2,
+        new_qty=None,
+        unit_price_cents=1000,
+        currency="EUR",
+    )
+    base.update(overrides)
+    return base
 
-    def event(**overrides: object) -> dict[str, object]:
-        base: dict[str, object] = dict.fromkeys(bronze_schema().fieldNames())
-        base.update(
-            event_id="e",
-            event_type="order_placed",
-            event_ts=ts,
-            arrival_ts=arrived,
-            order_id="O1",
-            customer_id="C1",
-            sku="S1",
-            qty=2,
-            new_qty=None,
-            unit_price_cents=1000,
-            currency="EUR",
-        )
-        base.update(overrides)
-        return base
 
+# How to make each rule say no, as DATA, so that records breaking two rules at once can be
+# generated instead of written.
+#
+# One per rule is not enough and the reason is the interesting part: two rules can want the
+# same column. `non_positive_quantity` is broken with `qty = 0` and `amount_out_of_range` with
+# `qty = 10001`, and a record cannot carry both - so each rule offers ALTERNATIVES, the
+# generator emits every combination whose columns do not collide, and the test below keeps the
+# ones that Spark says actually break both. Deciding by evaluation rather than by construction
+# is the whole point: a hand-reasoned "this record breaks rules 4 and 7" is a claim about SQL
+# semantics, which is the class of claim this file exists because people get wrong.
+_BREAKERS: dict[str, tuple[dict[str, object], ...]] = {
+    "unparseable_json": ({"event_id": None},),
+    # NULL and a real-but-unknown type are not interchangeable here. With
+    # `event_type = 'warehouse_pinged'` the value rules are all guarded by
+    # `event_type NOT IN (...)` and come out TRUE, so no pair with a value rule is reachable
+    # that way; with NULL they come out NULL, which the classification treats as a rejection.
+    # Both are offered and the evaluation picks.
+    "unknown_event_type": ({"event_type": None}, {"event_type": "warehouse_pinged"}),
+    "missing_required_field": ({"order_id": None}, {"event_ts": "not-a-timestamp"}),
+    "non_positive_quantity": ({"qty": 0}, {"qty": -3}),
+    "negative_price": ({"unit_price_cents": -1},),
+    "unknown_currency": ({"currency": "USD"}, {"currency": None}),
+    "amount_out_of_range": ({"unit_price_cents": 1000001}, {"qty": 10001}),
+}
+
+
+def _pair_rows(rule_names: Sequence[str]) -> list[dict[str, object]]:
+    """One record per pair of rules, per non-colliding way of breaking both.
+
+    Generated from `_BREAKERS` and the lane's own `RULES`, so adding a rule adds its pairs
+    without anybody remembering to. Records that turn out not to break both are harmless -
+    they are more adversarial records in a file made of them - and the coverage test is what
+    decides whether the pair is covered.
+    """
+    rows: list[dict[str, object]] = []
+    for left, right in itertools.combinations(rule_names, 2):
+        for index, (a, b) in enumerate(
+            itertools.product(_BREAKERS.get(left, ()), _BREAKERS.get(right, ()))
+        ):
+            if set(a) & set(b):
+                continue  # the two want the same column; another combination will do it
+            # Tagged in `boundary`, not in `event_id`: one of the breakers is "no event_id at
+            # all", so the id is not a place a fixture can keep its own name. `boundary` is a
+            # payload column no rule reads. The tag is what makes the coverage below
+            # ATTRIBUTABLE - a pair has to be covered by a record generated FOR it, not by some
+            # other record that happens to trip both.
+            rows.append(event(boundary=f"pair:{left}+{right}#{index}", **{**a, **b}))
+    return rows
+
+
+def _matrix_rows() -> list[dict[str, object]]:
+    """The parity matrix, plus the three amounts that broke the real deployment."""
     return [
         event(event_id="ok"),
         event(event_id=None),
@@ -482,6 +539,7 @@ def _matrix_rows() -> list[dict[str, object]]:
         # report is grouped by. The OSS branches are built in the order `RULES` declares them
         # now, and this row is what holds them there.
         event(event_id="two-faults", currency="USD", unit_price_cents=1000001),
+        *_pair_rows(tuple(_BREAKERS)),
     ]
 
 
@@ -601,6 +659,96 @@ def test_the_bound_literals_carry_their_width_so_nothing_is_undecidable_on_strin
         (r["event_id"], r["oss"], r["reason"]) for r in classified if r["oss"] != r["reason"]
     ]
     assert not disagreements, f"the two lanes disagree on STRING columns: {disagreements}"
+
+
+def test_every_pair_of_rules_has_a_record_that_breaks_both(spark) -> None:  # type: ignore[no-untyped-def]
+    """The ORDER of the rules is part of the contract, and only a two-fault record tests it.
+
+    The lanes declare the same seven rules and used to declare them in different orders. Every
+    record in this matrix broke exactly one rule, so the order decided nothing and twenty
+    records reported agreement; on a record that breaks two - priced past the bound AND in
+    dollars - one lane said `amount_out_of_range` and the other `unknown_currency`. Same rules,
+    different door, and a quarantine report is grouped by door.
+
+    Adding that one record fixed the case. This is the class: for EVERY pair of rules there has
+    to be a record that both reject, so that the relative order of every pair is exercised by
+    `test_the_databricks_rules_and_the_oss_case_agree_record_by_record`, which compares the two
+    derivations over this same matrix. Seven rules is twenty-one pairs; they are generated from
+    `_BREAKERS`, not written out, so a rule added tomorrow brings its six new pairs with it and
+    this test fails if it arrives without a way to break it.
+
+    COVERAGE IS ATTRIBUTABLE, and the first version of this test was not. It asked whether ANY
+    record in the matrix broke both rules of a pair, and passed with a whole rule's breakers
+    deleted - because `event_type = NULL` makes every value rule NULL, so the records generated
+    for one pair were incidentally covering five others. The check was satisfied by the fixture
+    it was supposed to be checking. A pair is now covered only by a record generated FOR that
+    pair, tagged in `boundary`, which is what makes deleting a breaker fail.
+
+    "Breaks" means what the classification means by it: `NOT COALESCE(rule, false)`. A rule that
+    cannot answer rejects the row, so it counts - that is the definition the CASE branches and
+    the expectations both use, rather than a third one invented here. The distinction still
+    matters and is asserted separately below.
+    """
+    from pyspark.sql import functions as F
+
+    from samegold.pipelines.schema import bronze_schema
+
+    rules = _databricks_namespace()["RULES"]
+    assert isinstance(rules, dict)
+    assert set(_BREAKERS) == set(rules), (
+        f"the rules and the ways to break them have drifted apart: only in RULES "
+        f"{sorted(set(rules) - set(_BREAKERS))}, only in _BREAKERS "
+        f"{sorted(set(_BREAKERS) - set(rules))}. A rule with no breaker has no pair records, "
+        f"so nothing checks where it sits relative to any other rule."
+    )
+
+    frame = spark.createDataFrame(_matrix_rows(), bronze_schema())
+    # Both readings of each rule on each record: rejected (what the classification acts on),
+    # and decidably false (a real second fault rather than a rule that could not answer).
+    evaluated = frame.select(
+        F.col("boundary"),
+        *[
+            F.expr(f"NOT COALESCE({predicate}, false)").alias(f"reject:{name}")
+            for name, predicate in rules.items()
+        ],
+        *[
+            F.expr(f"({predicate}) IS NOT NULL AND NOT ({predicate})").alias(f"false:{name}")
+            for name, predicate in rules.items()
+        ],
+    ).collect()
+
+    uncovered: list[tuple[str, str]] = []
+    weak_only: list[tuple[str, str]] = []
+    for left, right in itertools.combinations(rules, 2):
+        tag = f"pair:{left}+{right}#"
+        mine = [row for row in evaluated if (row["boundary"] or "").startswith(tag)]
+        rejecting = [r for r in mine if r[f"reject:{left}"] and r[f"reject:{right}"]]
+        if not rejecting:
+            uncovered.append((left, right))
+        elif not any(r[f"false:{left}"] and r[f"false:{right}"] for r in mine):
+            weak_only.append((left, right))
+
+    assert not uncovered, (
+        f"no record GENERATED FOR {uncovered} is rejected by both of its rules. The relative "
+        f"order of those rules is unobservable: the two lanes could declare them the other way "
+        f"round and every test here would still pass, which is exactly what happened to "
+        f"`unknown_currency` and `amount_out_of_range`. Add a way to break them to _BREAKERS."
+    )
+
+    # And the pairs that are covered only by an UNDECIDABLE rule rather than by two real
+    # faults, which is a weaker witness and has one legitimate cause: every value rule is
+    # guarded by the event type (`event_type <> 'order_placed' OR ...`), so with an unknown
+    # event type the guard is either TRUE - the rule passes - or NULL when the type is missing
+    # altogether. There is therefore no record on which `unknown_event_type` and a value rule
+    # are both FALSE, and that is a property of the rules rather than a gap in the fixture.
+    # Any OTHER pair landing here means a rule cannot be broken outright and nobody noticed.
+    unexplained = [pair for pair in weak_only if "unknown_event_type" not in pair]
+    assert not unexplained, (
+        f"{unexplained} are covered only by a rule that could not ANSWER, not by two faults. "
+        f"For a pair not involving `unknown_event_type` that means one of the two rules has no "
+        f"breaker that makes it plainly false, so the pair is being tested by an accident of "
+        f"NULL propagation rather than by the fault it is named after."
+    )
 
 
 def test_a_rule_that_cannot_answer_quarantines_the_row_instead_of_accepting_it(spark) -> None:  # type: ignore[no-untyped-def]
