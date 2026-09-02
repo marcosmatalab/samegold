@@ -173,7 +173,7 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     # derive from the commit. A deselection list that has to be maintained by hand is a
     # deselection list that will be wrong.
     #
-    # `make ci-local` and the fast workflow run the marked tests with nothing deselected, so
+    # `make preflight` and the fast workflow run the marked tests with nothing deselected, so
     # the comparison does happen - just not inside the thing it is comparing against.
     deselected = "evidence_dependent"
     fast_run = subprocess.run(

@@ -240,8 +240,12 @@ of a refutation run: neither is a statement about the data.
 - `CONTRACT.md` — the data contract, the SLA, the restatement policy and the column classification
 - `PARITY.md` — OSS versus Databricks, claim by claim
 - `EXAM_MAP.md` — the Databricks Data Engineer Professional guide (3 July 2026), objective by objective
+- `CONTRIBUTING.md` — **`make preflight` is the command to pass before a push**, and why it
+  refuses to exit 0 on a machine that cannot run the Spark lanes
 - `docs/adr/` — the decisions, with what was given up
 - `docs/limits.md` — what this repository could not verify, and why
+- `docs/databricks-run.md` — what the Databricks lane deploys, and every figure it has not
+  produced yet
 - `docs/postmortem-2026-03-06.md` — the month that closed twice, written up as an incident
 
 Apache-2.0.

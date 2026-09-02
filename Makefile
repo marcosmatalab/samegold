@@ -98,13 +98,18 @@ refute: install ## run every claim with a seed of your choosing: make refute SEE
 report: install ## render the close as one self-contained HTML page
 	$(BIN)/samegold report --out close-report.html
 
-.PHONY: ci-local
-ci-local: install ## exactly what the fast workflow runs, in the order it runs it
-	$(BIN)/pytest tests/fast -q
-	$(BIN)/ruff check src tests databricks pipelines
-	$(BIN)/ruff format --check src tests databricks pipelines
-	$(BIN)/mypy
-	$(BIN)/samegold check
+.PHONY: preflight
+preflight: install ## THE ONE TO PASS BEFORE A PUSH: everything the fast and spark workflows run
+	# This replaces `ci-local`, which ran the FAST workflow and was named as though it ran
+	# CI. A change under tests/spark/ could pass it and arrive red in the spark workflow,
+	# and that happened twice: round 12 found a Delta job that had been red for two days,
+	# and round 13 - the round that wrote the ADR about it - pushed a red Spark lane of its
+	# own. See docs/adr/0006-mutants-are-generated-not-planted.md.
+	#
+	# It exits NON-ZERO for a lane it could not run, not only for a lane that failed. On
+	# native Windows the Spark lanes cannot run at all, and it says that in one sentence
+	# instead of printing a green half-run.
+	SAMEGOLD_BIN=$(BIN) scripts/preflight.sh
 
 .PHONY: doctor
 doctor: install ## what is installed and what each lane needs
@@ -132,7 +137,7 @@ lint: install ## ruff + mypy strict, over every directory that holds code
 	$(BIN)/mypy
 
 .PHONY: all
-all: fast lint check ## what CI runs on every push
+all: preflight ## an alias for preflight, which is the gate
 
 .PHONY: clean
 clean: ## remove build artefacts and scratch data (never touches evidence/)
