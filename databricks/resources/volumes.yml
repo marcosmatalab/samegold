@@ -1,6 +1,11 @@
 # The storage. Free Edition has no external locations, so a Unity Catalog volume is the only
-# place a file can live, and both of these are MANAGED - `volume_type` is not written because
-# MANAGED is the only kind a bundle can create and the only kind this account can hold.
+# place a file can live, and both of these are MANAGED.
+#
+# `volume_type` is written out rather than left to be inferred. The bundle reference lists
+# `catalog_name`, `schema_name` and `name` as the required fields and does not mark
+# `volume_type` either way, and "the documentation is ambiguous" is not a reason to find out
+# at POST time on someone else's workspace - which is exactly how the missing pipeline `name`
+# was found. MANAGED is what is meant here, so MANAGED is what is said.
 #
 # These did not exist. The pipeline read `/Volumes/samegold/raw/landing` and nothing in the
 # bundle created it, so `databricks bundle deploy` succeeded and the first run failed on a
@@ -12,11 +17,13 @@ resources:
       catalog_name: ${var.catalog}
       schema_name: raw
       name: landing
+      volume_type: MANAGED
       comment: "Bronze events as they land. Auto Loader lists this directory; nothing else writes here."
     evidence:
       catalog_name: ${var.catalog}
       schema_name: raw
       name: evidence
+      volume_type: MANAGED
       # A SEPARATE volume, not a subdirectory of the landing zone. Auto Loader lists the
       # landing path recursively and would ingest the evidence record as if it were an event.
       # (`_schema/` survives inside it only because Spark's file source skips names starting

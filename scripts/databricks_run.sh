@@ -8,9 +8,10 @@
 #
 # It does six things, in this order, and any one of them can be run alone:
 #
-#   catalog   create the Unity Catalog catalog if it is missing (a bundle cannot: there is no
-#             `catalogs` resource type, and a schema whose catalog does not exist fails at
-#             DEPLOY time, which is the first thing that would have gone wrong here)
+#   catalog   create the Unity Catalog catalog if it is missing, with SQL. A bundle cannot:
+#             there is no `catalogs` resource type, and a schema whose catalog does not exist
+#             fails at DEPLOY time. Neither can `databricks catalogs create` on Free Edition:
+#             that API wants a metastore storage root, and Default Storage has none.
 #   validate  databricks bundle validate -t free
 #   deploy    databricks bundle deploy   -t free   (schemas, volumes, pipeline, job)
 #   seed      generate events with the OSS generator and upload them to the landing volume,
@@ -47,15 +48,28 @@ traffic, so a bundle deploy started from a notebook in the workspace is unreliab
 }
 
 require_auth() {
+    # The CLI resolves credentials from several places, and the environment is only one of
+    # them: a profile in ~/.databrickscfg is the way the CLI itself tells you to store them
+    # (`databricks configure`). Demanding the two variables made this script STRICTER than the
+    # tool it drives, and it aborted on machines that were correctly configured.
+    #
+    # So the question asked is the one that matters - can the CLI authenticate - and the
+    # variables are only checked when the answer is no, because then their absence is almost
+    # always the reason and the message should say so.
+    if databricks current-user me >/dev/null 2>&1; then
+        return 0
+    fi
     [ -n "${DATABRICKS_HOST:-}" ] || die \
-"DATABRICKS_HOST is not set.
+"the CLI cannot authenticate, and DATABRICKS_HOST is not set.
 
   export DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
+  export DATABRICKS_TOKEN=dapi...
 
 That is the workspace URL, with the scheme and no trailing path. Free Edition has no account
-console, so there is no account-level host to use instead."
+console, so there is no account-level host to use instead. A configured profile works too:
+  databricks configure --host https://<your-workspace>.cloud.databricks.com --token"
     [ -n "${DATABRICKS_TOKEN:-}" ] || die \
-"DATABRICKS_TOKEN is not set.
+"the CLI cannot authenticate, and DATABRICKS_TOKEN is not set.
 
   export DATABRICKS_TOKEN=dapi...
 
@@ -66,27 +80,101 @@ service principals - docs/limits.md says so, and this is the line where you feel
         https://*) ;;
         *) die "DATABRICKS_HOST must start with https://, got '$DATABRICKS_HOST'" ;;
     esac
-    databricks current-user me >/dev/null 2>&1 || die \
+    die \
 "the CLI could not authenticate against $DATABRICKS_HOST.
 
   databricks current-user me
 
-failed. The usual causes are an expired PAT, a token from a different workspace, or a host
-with a trailing slash or path on it."
+failed with both variables set. The usual causes are an expired PAT, a token from a different
+workspace, or a host with a trailing slash or path on it."
+}
+
+python_bin() {
+    for candidate in python3 python; do
+        command -v "$candidate" >/dev/null 2>&1 && { echo "$candidate"; return 0; }
+    done
+    return 1
 }
 
 step_catalog() {
     say "catalog $CATALOG"
+    # Interpolated into SQL below, in an identifier position that cannot be parameterised, so
+    # it is checked against the shape of an identifier first. Same rule as close_month.py.
+    printf '%s' "$CATALOG" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$' || die \
+"catalog must match ^[A-Za-z_][A-Za-z0-9_]*\$, got '$CATALOG'"
+
     if databricks catalogs get "$CATALOG" >/dev/null 2>&1; then
         echo "  exists"
-    else
-        # Not a bundle resource: Declarative Automation Bundles have no `catalogs` type, so
-        # this is the one piece of the lane that is created imperatively, and saying that out
-        # loud is better than a deploy that fails on a missing parent nobody declared.
-        databricks catalogs create "$CATALOG" \
-            --comment "samegold: created by scripts/databricks_run.sh, not by the bundle"
-        echo "  created"
+        return 0
     fi
+
+    # NOT `databricks catalogs create`. That goes to the Unity Catalog API, which wants a
+    # storage root on the metastore; Free Edition uses Default Storage and has none, so it
+    # fails with `Metastore storage root URL does not exist` (databricks/cli#4513). The same
+    # `CREATE CATALOG` in SQL works, because the SQL path resolves the location through
+    # Default Storage. A catalog is also not a bundle resource type at all, so this is the one
+    # piece of the lane created imperatively, and saying so beats a deploy that dies on a
+    # parent nobody declared.
+    local py warehouse statement state
+    py="$(python_bin)" || die "no python on PATH, which this step needs to read the CLI's JSON"
+
+    warehouse="$(databricks warehouses list -o json 2>/dev/null | "$py" -c '
+import json, sys
+try:
+    warehouses = json.load(sys.stdin)
+except Exception:
+    warehouses = []
+# Any warehouse will do: Free Edition gives exactly one, 2X-Small, and this statement is a
+# single DDL. Preferring a RUNNING one only avoids waiting for a cold start.
+running = [w for w in warehouses if str(w.get("state", "")).upper() == "RUNNING"]
+chosen = (running or warehouses)
+print(chosen[0]["id"] if chosen else "")
+')" || warehouse=""
+
+    [ -n "$warehouse" ] || die \
+"catalog '$CATALOG' does not exist and there is no SQL warehouse to create it with.
+
+Free Edition includes one 2X-Small warehouse; if it has been deleted, recreate it from
+SQL Warehouses in the workspace, or just run this once in the SQL Editor:
+
+  CREATE CATALOG IF NOT EXISTS $CATALOG;
+
+The Unity Catalog API cannot do it here: it wants a metastore storage root, and Free Edition
+uses Default Storage and has none (databricks/cli#4513)."
+
+    echo "  creating via SQL on warehouse $warehouse"
+    statement="$(databricks api post /api/2.0/sql/statements --json "$(cat <<JSON
+{
+  "warehouse_id": "$warehouse",
+  "statement": "CREATE CATALOG IF NOT EXISTS $CATALOG COMMENT 'samegold: created by scripts/databricks_run.sh, not by the bundle'",
+  "wait_timeout": "30s",
+  "on_wait_timeout": "CANCEL"
+}
+JSON
+)")" || die "the CREATE CATALOG statement could not be submitted; the CLI output is above"
+
+    # The state is the whole point. `wait_timeout` returns after 30 seconds whatever has
+    # happened, so a PENDING statement with the script marching on reproduces the same missing
+    # catalog one step later - at `bundle deploy`, where it looks like a different bug.
+    state="$(printf '%s' "$statement" | "$py" -c '
+import json, sys
+try:
+    body = json.load(sys.stdin)
+except Exception:
+    print("UNREADABLE"); raise SystemExit
+status = body.get("status") or {}
+print(status.get("state", "NO_STATE"))
+if status.get("error"):
+    print(json.dumps(status["error"]), file=sys.stderr)
+')"
+    [ "$state" = "SUCCEEDED" ] || die \
+"CREATE CATALOG did not succeed: the statement finished in state '$state'.
+
+A state of PENDING or RUNNING means it was still going when the 30s wait_timeout expired and
+was cancelled; FAILED means the workspace refused it and the error is above. Either way the
+catalog is not there, and continuing would fail at \`bundle deploy\` instead, which looks
+like a different problem."
+    echo "  created"
 }
 
 step_validate() { say "bundle validate -t $TARGET"; (cd "$BUNDLE" && databricks bundle validate -t "$TARGET"); }
@@ -170,7 +258,7 @@ JSON
     # The two per-rule tables, rendered ready to paste into the anchored blocks in
     # docs/databricks-run.md. The scalars there are filled in by hand from the record; these
     # two are tables, and a table typed out by hand is a table with a transcription error in
-    # it. tests/fast/test_databricks_lane.py checks the paste against the record afterwards.
+    # it. tests/fast/test_databricks_bundle.py checks the paste against the record afterwards.
     local py=""
     command -v python3 >/dev/null 2>&1 && py=python3
     [ -z "$py" ] && command -v python >/dev/null 2>&1 && py=python

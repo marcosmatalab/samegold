@@ -42,6 +42,15 @@ targets:
     resources:
       pipelines:
         samegold_pipeline:
+          # `name` is REQUIRED by POST /api/2.0/pipelines, and this key is the bundle's
+          # resource id, not the pipeline's name. Without it the first real deploy died with
+          # `name must be set (400 INVALID_PARAMETER_VALUE)` - after
+          # `databricks bundle validate -t free` had answered `Validation OK!` on this exact
+          # file, and after the CI job that runs validate had been green on it for a round.
+          # Validate checks syntax, includes and variable resolution, and warns about
+          # properties it does not recognise; it does not check that the request it will send
+          # is one the API will accept. tests/fast/test_databricks_bundle.py does now.
+          name: samegold
           # One active pipeline per pipeline type is the Free Edition limit, so there is
           # exactly one, and it is serverless because that is the only compute available.
           # `photon: true` used to be here; serverless compute is Photon and the flag is not
@@ -55,6 +64,8 @@ targets:
           development: true
           channel: CURRENT
           catalog: ${var.catalog}
+          # Exactly one of `schema` or `target` must be set - the API's words. Setting both,
+          # or neither, is rejected at POST time and passes validate.
           schema: main
           configuration:
             # Read by the pipeline SOURCES through `spark.conf.get`. This reaches the three

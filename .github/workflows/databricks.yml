@@ -12,6 +12,15 @@ name: databricks
 # Every step goes through scripts/databricks_run.sh, which is also what `make databricks`
 # runs. Two definitions of what this lane does is how they drift, and a lane that behaves
 # differently in CI from the way it behaves on a laptop is the thing round 12 was about.
+#
+# READ THIS BEFORE TRUSTING A GREEN TICK ON THIS WORKFLOW. The default action is `validate`,
+# and `databricks bundle validate` is not a deploy. It checks syntax, `include:` resolution
+# and variable substitution, and warns about properties it does not recognise; it does NOT
+# check that the request body it will send is one the API accepts. This job was green for a
+# round on a bundle whose first POST came back `name must be set`. The required fields are
+# asserted in tests/fast/test_databricks_bundle.py, in the FAST lane, which is where a check
+# that needs no credentials belongs - a green tick here still means only "the YAML is
+# well-formed and the variables resolve".
 
 on:
   workflow_dispatch:

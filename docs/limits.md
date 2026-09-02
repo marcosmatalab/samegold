@@ -61,9 +61,16 @@ where a `SparkSession | None` was used as a `SparkSession`.
 The Databricks lane needs a workspace: the bundle, Unity Catalog, expectations, AUTO CDC, the
 event log and the dashboard. Its sources are parsed, its rules are compared record by record
 against the OSS implementation in `tests/spark`, and since round 12 its three Databricks-only
-API calls are pinned by the open-source signatures they fail against - but **nothing here has
-deployed it or watched it run**, and this section is worth exactly as much as the identical
-sentence about the Delta lane was worth for eleven rounds, which is to say: check it.
+API calls are pinned by the open-source signatures they fail against.
+
+**A deploy was attempted for the first time on 2 September 2026, against a real Free Edition
+workspace, and it failed.** `databricks bundle validate -t free` passed; `databricks bundle
+deploy -t free` died on the first POST because the pipeline resource carried no `name`, which
+that API requires and validate does not check. The catalog step failed before that, for a
+different reason: `databricks catalogs create` cannot work on a Default Storage metastore.
+Both are fixed and both now have tests. **Nothing has yet run the pipeline**, so every figure
+in `docs/databricks-run.md` still reads `NOT RUN`, and this section is worth exactly as much
+as the identical sentence about the Delta lane was worth for eleven rounds: check it.
 
 What changed in round 13 is that the lane is now deployable in one command and produces a
 record when it is, so the sentence above has a date on it rather than being open-ended:
@@ -71,10 +78,10 @@ record when it is, so the sentence above has a date on it rather than being open
 - `make databricks` reads `DATABRICKS_HOST` and `DATABRICKS_TOKEN` and runs the whole lane -
   catalog, validate, deploy, seed, run, fetch. `scripts/databricks_run.sh` is the script.
 - `docs/databricks-run.md` holds the results, with every run-produced figure inside an anchor
-  that currently reads `NOT RUN`. `tests/fast/test_databricks_lane.py` fails if any of them
+  that currently reads `NOT RUN`. `tests/fast/test_databricks_bundle.py` fails if any of them
   holds a number while `evidence/databricks/SG-DBX-01.json` does not exist. A document cannot
   get ahead of its run by hand any more; that is the round-12 finding turned into a test.
-- `tests/fast/test_databricks_lane.py` also checks the bundle against the Free Edition limits
+- `tests/fast/test_databricks_bundle.py` also checks the bundle against the Free Edition limits
   it has to live inside, which is how four defects that would have failed the first deploy or
   the first run were found: a landing volume nothing created, two notebook tasks reading their
   catalog from a `spark.conf` key only a pipeline populates, an `event_log('')` built from a
@@ -94,6 +101,8 @@ record when it is, so the sentence above has a date on it rather than being open
 | row filters and column masks, enforced | `databricks/sql/policies.sql` needs a SQL warehouse id to be applied, and a bundle on Free Edition can neither create a warehouse nor learn its id; `is_account_group_member` is false for everyone anyway | the file is deployed with the bundle, parsed by `tests/spark/test_databricks_lane_parses.py`, and **not applied by `make databricks`** - stated here rather than left to be assumed from its presence |
 | a grant that keeps anyone out | `account users` is the only principal that exists, and it has one member: whoever deployed | the grants in `databricks/resources/grants.yml` show that the privilege was applied and can be read back, which is a different and much smaller claim |
 | Delta Sharing as a provider | provider registration is not available on Free Edition | out of scope, stated rather than faked |
+| creating a catalog through the Unity Catalog API | Free Edition uses **Default Storage**, so the metastore has no storage root and `databricks catalogs create` fails with `Metastore storage root URL does not exist` ([databricks/cli#4513](https://github.com/databricks/cli/issues/4513)) | `scripts/databricks_run.sh` issues `CREATE CATALOG IF NOT EXISTS` through the SQL Statement Execution API instead, which resolves the location through Default Storage; it checks the statement reached `SUCCEEDED` rather than assuming |
+| `databricks bundle validate` as a deploy gate | it checks syntax, includes and variable resolution, and warns about unknown properties - it does **not** check that the request body it will send is one the API accepts | the required fields for every resource type are asserted from the REST API reference in `tests/fast/test_databricks_bundle.py`. This was found by a deploy dying on `name must be set` after validate said `Validation OK!` |
 | Lakehouse Federation | needs an external database and a connector | out of scope |
 
 ## Things a reader should distrust

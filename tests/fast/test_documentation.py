@@ -22,20 +22,51 @@ SOURCES = [p for p in (REPO / "src").rglob("*.py") if "__pycache__" not in str(p
 # exist and never did, so the document citing the real file was the one that failed. A path is
 # only a path from its first segment.
 PATH_LIKE = re.compile(r"(?<![\w/])(?:src|tests|databricks|pipelines|docs)/[\w./\-]+")
+# `databricks/cli#4513` is a GitHub issue in another repository, not a path in this one. The
+# slug happens to start with a directory name this project also has, which is how a correct
+# citation of an upstream bug became a broken-path failure.
+GITHUB_SLUG = re.compile(r"#\d")
 # Paths that are created at runtime rather than committed.
 RUNTIME_PATHS = {"evidence/refutations.jsonl"}
+
+# The same check over the files that are NOT documents but carry the same kind of reference.
+# `databricks/databricks.yml` pointed at `tests/fast/test_databricks_bundle.py` for a whole
+# round while the file was called something else, and nothing looked: this test read `.md` and
+# `src/**/*.py` only. Only `tests/` and `docs/` are checked in these, because a bundle file
+# resolves `src/...` against its own directory rather than against the repository root - a
+# boundary worth stating rather than a check worth skipping.
+CONFIG_FILES = sorted(
+    [
+        *(REPO / ".github" / "workflows").glob("*.yml"),
+        *(REPO / "databricks").rglob("*.yml"),
+        *(REPO / "scripts").glob("*.sh"),
+    ]
+)
+CONFIG_PATH_LIKE = re.compile(r"(?<![\w/])(?:tests|docs)/[\w./\-]+")
+
+
+def _broken(text: str, pattern: re.Pattern[str]) -> list[str]:
+    broken = []
+    for match in pattern.finditer(text):
+        candidate = match.group().rstrip(".,;:)`")
+        if candidate in RUNTIME_PATHS:
+            continue
+        if GITHUB_SLUG.match(text[match.end() : match.end() + 2]):
+            continue
+        if not (REPO / candidate).exists():
+            broken.append(candidate)
+    return broken
+
+
+@pytest.mark.parametrize("config", CONFIG_FILES, ids=lambda p: str(p.name))
+def test_every_repository_path_a_config_file_cites_exists(config: Path) -> None:
+    broken = _broken(config.read_text(encoding="utf-8"), CONFIG_PATH_LIKE)
+    assert not broken, f"{config.relative_to(REPO)} cites paths that do not exist: {broken}"
 
 
 @pytest.mark.parametrize("document", DOCS + SOURCES, ids=lambda p: str(p.name))
 def test_every_repository_path_mentioned_exists(document: Path) -> None:
-    text = document.read_text(encoding="utf-8")
-    broken = []
-    for match in PATH_LIKE.findall(text):
-        candidate = match.rstrip(".,;:)`")
-        if candidate in RUNTIME_PATHS:
-            continue
-        if not (REPO / candidate).exists():
-            broken.append(candidate)
+    broken = _broken(document.read_text(encoding="utf-8"), PATH_LIKE)
     assert not broken, f"{document.relative_to(REPO)} cites paths that do not exist: {broken}"
 
 

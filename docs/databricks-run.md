@@ -1,11 +1,17 @@
 # The Databricks lane: what was deployed, and what it returned
 
-> **State: deployed zero times.** Every figure below sits inside an HTML-comment anchor named
-> `dbx:<field>`, and every one of them currently reads `NOT RUN`.
-> `tests/fast/test_databricks_lane.py` fails if any of them holds a
-> number while `evidence/databricks/SG-DBX-01.json` is absent, and fails if any of them
-> disagrees with that record once it is present. So this document cannot get ahead of the run
-> by hand, which is the failure mode the whole repository is about: for eleven rounds
+> **State: deploy attempted once, on 2 September 2026, against a real Free Edition workspace.
+> It failed, so every figure below still reads `NOT RUN`.** `databricks bundle validate -t
+> free` answered `Validation OK!` and `databricks bundle deploy -t free` then died on the
+> first POST with `cannot create resources.pipelines.samegold_pipeline: name must be set (400
+> INVALID_PARAMETER_VALUE)`, taking the job with it as a failed dependency. Ten files had
+> already uploaded. What that cost and what was done about it is in the last two sections.
+>
+> Every figure below sits inside an HTML-comment anchor named `dbx:<field>`, and every one of
+> them currently reads `NOT RUN`. `tests/fast/test_databricks_bundle.py` fails if any of them
+> holds a number while `evidence/databricks/SG-DBX-01.json` is absent, and fails if any of
+> them disagrees with that record once it is present. So this document cannot get ahead of the
+> run by hand, which is the failure mode the whole repository is about: for eleven rounds
 > `docs/limits.md` said the Delta lane was "not executed here" while CI had been running it,
 > red, for two days.
 
@@ -24,7 +30,7 @@ make databricks
 
 | step | what it does | why it is a step |
 |---|---|---|
-| `catalog` | creates the Unity Catalog catalog if missing | a bundle **cannot**: there is no `catalogs` resource type, and a schema whose catalog does not exist fails at deploy time |
+| `catalog` | creates the Unity Catalog catalog if missing, **with SQL** | a bundle cannot: there is no `catalogs` resource type. Nor can the Unity Catalog API on Free Edition - see below |
 | `validate` | `databricks bundle validate -t free` | the only step that needs no compute |
 | `deploy` | `databricks bundle deploy -t free` | schemas, volumes, the pipeline, the job |
 | `seed` | generates events with the OSS generator and uploads them to the landing volume | a pipeline over an empty directory reports nothing, and "no expectation failed" would arrive looking exactly like "no row was read" |
@@ -130,6 +136,7 @@ and in `docs/limits.md` rather than papered over.
 | no SSO, no SCIM | no service principals, no account groups | a PAT for authentication; `account users` is the only principal a grant can name, and it contains exactly one person - the deployer |
 | no external locations | nowhere to put files but a volume | two managed volumes; Auto Loader runs in directory-listing mode, not file notification |
 | quota exhaustion stops compute for the day | an unattended nightly schedule can take the account down | the schedule is deployed `PAUSED`; runs are started by hand |
+| Default Storage, and therefore no metastore storage root | `databricks catalogs create` fails with `Metastore storage root URL does not exist` ([databricks/cli#4513](https://github.com/databricks/cli/issues/4513)) | the catalog is created with `CREATE CATALOG IF NOT EXISTS` through `POST /api/2.0/sql/statements` on the one 2X-Small warehouse, which resolves its location through Default Storage. The script waits 30s, cancels on timeout, and refuses to continue unless the statement reports `SUCCEEDED` |
 
 Two consequences worth stating plainly, because they are the ones that would otherwise be read
 as achievements:
@@ -143,14 +150,36 @@ as achievements:
   cost work lives in the OSS lane, where files and bytes come out of the Delta log and are
   labelled as a proxy for DBUs rather than converted into one.
 
-## If the first command fails
+## The prediction, scored
 
-This bundle has never been handed to a `databricks` CLI, and neither has the script. The
-statements in it are parsed by a real Spark parser in `tests/spark`, and the bundle is checked
-against the Free Edition limits in `tests/fast/test_databricks_lane.py`, but neither of those
-is `databricks bundle validate`. These are the fields most likely to be the first thing that
-goes wrong, and what each one means - written before the run rather than after it, so that the
-list is a prediction and can be scored:
+The section below was written before the lane had ever been deployed, as a list of the fields
+most likely to break first, "so that the list is a prediction and can be scored". It has now
+been scored, and it lost.
+
+**What actually broke was not on the list.** `resources.pipelines.samegold_pipeline` carried no
+`name`. The key a resource is declared under is the bundle's id for it, not the pipeline's
+name, and `POST /api/2.0/pipelines` requires `name`. Every prediction below is about a field
+whose VALUE might be refused; the defect was a field that was not there at all, and the list
+did not contain the idea that a required field could be missing.
+
+**And the thing that should have caught it did not exist.** `databricks bundle validate -t
+free` answered `Validation OK!` on this bundle, and `.github/workflows/databricks.yml` runs
+validate as its default action, so that job had been green on a bundle the API rejects at the
+first request. Validate checks syntax, `include:` resolution and variable substitution, and
+warns about properties it does not recognise. It does not check that the request body it is
+about to send is one the API will accept - the bundle reference says a resource declaration
+"uses the corresponding object's create operation's request payload", and what that payload
+requires lives in the REST API reference. `tests/fast/test_databricks_bundle.py` now asserts
+the required fields for every resource type in the bundle, from that reference: `name` for all
+four, `catalog_name` for schemas and volumes, `schema_name` for volumes, `tasks` for jobs, and
+exactly one of `schema`/`target` for the pipeline.
+
+## If the next command fails
+
+These were the fields predicted to break, kept as written. One of them has since been made
+explicit rather than left to be inferred: `volume_type: MANAGED` is now spelled out, because
+the reference does not mark it required or optional and "the documentation is ambiguous" is
+not a reason to find out at POST time on someone else's workspace.
 
 | symptom | field | what it means |
 |---|---|---|

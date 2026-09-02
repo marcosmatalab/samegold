@@ -113,7 +113,7 @@ This is the weakest section of the project and the honest reason is money, not e
 
 | objective | where | evidence |
 |---|---|---|
-| "Build and deploy Databricks resources using Declarative Automation Bundles" | `databricks/databricks.yml`, `make databricks` (one command: catalog, validate, deploy, seed, run, fetch) and the CI job that calls the same script. The bundle is checked against the Free Edition limits by `tests/fast/test_databricks_lane.py`; it has still never been deployed | `docs/databricks-run.md` |
+| "Build and deploy Databricks resources using Declarative Automation Bundles" | `databricks/databricks.yml`, `make databricks` (one command: catalog, validate, deploy, seed, run, fetch) and the CI job that calls the same script. The bundle is checked against the Free Edition limits, and against the fields its create APIs require, by `tests/fast/test_databricks_bundle.py`. First real deploy attempted 2 September 2026: validate passed, deploy failed on a missing pipeline `name`, both fixed; **nothing has run yet** | `docs/databricks-run.md` |
 | "Configure and integrate with Git-based CI/CD workflows" | four workflows; the evidence workflow opens a pull request rather than pushing to a protected branch | SG-00 |
 | "Analyze the errors and remediate the failed job runs with job repairs and parameter overrides" | `faults/harness.py` keeps every failed run's output and names the injection that produced it | SG-07 |
 | reproducing a run exactly | commit-derived seeds and a hash-chained history | SG-06 |
