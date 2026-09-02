@@ -250,11 +250,24 @@ class EvidenceStore:
         _validate(payload)
         payload["prev"] = self.head_hash()
         payload["hash"] = record_hash(payload)
-        with self.history.open("a", encoding="utf-8") as handle:
+        # `newline="\n"`, explicitly, and it is not a style choice. Python's text mode
+        # translates "\n" to "\r\n" on Windows, so this file grew CRLF lines when a claim ran
+        # from a Windows shell and LF lines when the same claim ran under WSL: 67 of one and 83
+        # of the other in one append-only chain, measured. The hashes are over the record's
+        # JSON and not over the file's bytes, so nothing verified wrongly - but a chain whose
+        # bytes depend on which shell appended to them is the wrong artifact to be casual about,
+        # and it had a second-order cost that was not obvious: `git status --porcelain` under a
+        # git that does not normalise (WSL's, on a checkout Windows made) reported thirty-seven
+        # modified files, so `current_tree()` called a clean tree DIRTY and every record
+        # produced there carried "on an uncommitted tree" in its provenance. A false caveat on
+        # good evidence is still a wrong label.
+        with self.history.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(payload, sort_keys=True, allow_nan=False) + "\n")
         latest = self.runs_dir / f"{record.claim_id}.json"
         latest.write_text(
-            json.dumps(payload, indent=2, sort_keys=True, allow_nan=False), encoding="utf-8"
+            json.dumps(payload, indent=2, sort_keys=True, allow_nan=False),
+            encoding="utf-8",
+            newline="\n",
         )
 
     def head_hash(self) -> str:
