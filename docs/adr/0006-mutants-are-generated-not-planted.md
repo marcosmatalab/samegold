@@ -108,3 +108,48 @@ list of what that currently excludes is asserted by name, so it can only be wron
 
 So the sentence gets a second clause: **a measurement's scope includes the machine it ran on,
 and a gate that cannot run a lane must not be able to report success.**
+
+## The fifth: two forms of one rule are not one rule until they are compared where they run
+
+`databricks/src/silver_expectations.py` declared the same quality rules twice - once as
+`expect_all_or_drop(RULES)`, once as a `CASE` producing `quarantine_reason` - and the same
+NULL meant the opposite thing in each. An expectation treats a predicate that is not TRUE as
+not satisfied, so NULL drops the row: fail closed. A `CASE` does not match a NULL `WHEN`, so
+the row falls past every branch into the `ELSE`: fail open.
+
+On the first real deployment the two disagreed about three records. `unit_price_cents` arrived
+as a STRING (Auto Loader infers STRING for JSON with no hints), `unit_price_cents > 1000000`
+coerced that string to the INT32 literal's type, `9223372036854775807` overflowed it, and
+non-ANSI Spark returned NULL. The expectations dropped the rows. The CASE accepted them, and
+2.7e19 cents of revenue - six and a half million times the contract's ceiling for one line -
+appeared in a month's close from events the generator emits in order to be rejected.
+
+`tests/spark/test_adversarial_records.py` had compared the two derivations record by record
+for a round and reported agreement every time, because it built its records with
+`bronze_schema()`, where those columns are BIGINT and no predicate is ever NULL. **It was
+comparing the right rules on the wrong types.** The rules were never the problem. The matrix
+now runs twice - on the declared types, where no rule may return NULL, and on STRING columns,
+where the only thing that must hold is that nothing undecidable becomes revenue - and the
+classification is generated from `RULES` rather than restated beside them, so there is one
+declaration and two renderings of it rather than two chances to be different.
+
+The general form: **a differential test proves agreement only under the conditions it runs in,
+and "the same rules" is not the same claim as "the same behaviour".** The conditions are part
+of the result, which is this ADR's first sentence again, arriving through the type system.
+
+## The sixth, which is shorter and harder
+
+**If acceptance is the default case, everything the system does not understand becomes
+revenue.**
+
+`ELSE 'accepted'` is a policy, not a syntax detail. It says: a record about which every rule
+was silent is income. Every predicate that cannot answer - a coercion that overflows, a column
+that arrived as the wrong type, a function that returns NULL on an edge nobody considered -
+resolves in favour of the number going up.
+
+The inversion costs nothing and is worth stating as a rule for anything that classifies value:
+acceptance must be established POSITIVELY, by every rule returning TRUE, and anything else -
+false, unknown, unrepresentable - leaves through a door with a name on it. In this repository
+that is one `COALESCE(predicate, false)` per branch. What it buys is that the failure mode of
+a bug becomes "revenue is missing", which someone chases, instead of "revenue is too high",
+which the deployment reported as success.

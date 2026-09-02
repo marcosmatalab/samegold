@@ -232,7 +232,7 @@ of a refutation run: neither is a statement about the data.
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |
 | privacy: masking, exposure check, retention purge | done |
 | Delta on Spark (MERGE, CDF, OPTIMIZE ZORDER, time travel) | done, <!--sg:SG-00.artifact.tests_delta-->6<!--/sg--> tests, run for the first time in round 12; two defects fell out, see `docs/limits.md` |
-| Databricks Free Edition lane (bundle, UC, expectations, AUTO CDC, dashboard) | written, needs a workspace |
+| Databricks Free Edition lane (bundle, UC, expectations, AUTO CDC, dashboard) | **deployed and run once, 2 September 2026, and it was wrong**: three rejected events were booked as 2.7e19 of revenue because bronze was inferred as STRING and the classification's `ELSE` was `accepted`. Both causes fixed, neither yet re-run. See `PARITY.md` and `docs/databricks-run.md` |
 
 ## Documents
 

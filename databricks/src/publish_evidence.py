@@ -173,6 +173,33 @@ quarantine = _read(
     ),
 )
 
+# Rows whose classification was decided by a rule that could not answer. This should always be
+# zero: bronze declares its types, so every predicate is total. It is REPORTED rather than
+# assumed because the alternative is what happened on the first deployment - an undecidable
+# predicate quietly turning into `accepted`, and 2.7e19 of revenue nobody questioned until
+# `close_month` happened to overflow a BIGINT on the way out.
+undecided = _read(
+    "undecided_rules",
+    lambda: _rows(
+        f"SELECT undecided_rules AS rule, COUNT(*) AS n "
+        f"FROM {catalog}.main.silver_classified "
+        f"WHERE undecided_rules IS NOT NULL AND undecided_rules <> '' "
+        f"GROUP BY 1 ORDER BY 2 DESC"
+    ),
+)
+
+# The bound the contract puts on a single line, checked against what the lane actually booked.
+# A gross that exceeds (rows x max_qty x max_price) cannot be a business number, and saying so
+# in the record costs one query. The deployed run would have failed this by six orders.
+bounds = _read(
+    "gross_within_contract_bounds",
+    lambda: _rows(
+        f"SELECT accounting_month, gross_cents, line_count, "
+        f"       gross_cents > line_count * 10000 * 1000000 AS above_contract_ceiling "
+        f"FROM {catalog}.main.revenue_by_month ORDER BY accounting_month"
+    ),
+)
+
 # AUTO CDC is the Databricks-only primitive this lane exists to show, so what it produced is
 # reported in the shape the OSS lane's hand-written MERGE is checked in: one open row per key,
 # and closed rows that meet the open ones. `__START_AT` and `__END_AT` are the columns AUTO CDC
@@ -231,6 +258,8 @@ record = {
     "update": update_state,
     "expectations": expectations,
     "quarantine_by_reason": quarantine,
+    "undecided_rules": undecided,
+    "gross_within_contract_bounds": bounds,
     "rows": rows,
     "dim_customer_scd2": dimension,
     "revenue_closed": close,

@@ -574,3 +574,61 @@ def test_authentication_accepts_a_configured_profile() -> None:
         f"require_auth tests the environment before it tests whether the CLI can "
         f"authenticate, so a valid ~/.databrickscfg profile is rejected: {checks[0]}"
     )
+
+
+# ------------------------------------------------ the types, from one declaration
+
+
+def test_the_auto_loader_hints_are_the_declared_bronze_schema() -> None:
+    """One schema, two consumers, and a test that breaks if they drift.
+
+    Auto Loader reading JSON with no `cloudFiles.schemaHints` infers every column as STRING,
+    and on the first real deployment it did: `DESCRIBE silver_classified` came back with 21
+    STRING columns, `gross_cents` came out DOUBLE because `qty * unit_price_cents` on two
+    strings promotes to double, and `close_month` died writing that double into a BIGINT.
+
+    The OSS lane never had the problem because it DECLARES the schema
+    (`samegold.pipelines.schema.bronze_schema`). That declaration is now the single source:
+    the hints in `databricks/src/bronze_autoloader.py` must be the same fields with the same
+    types, so changing one and not the other fails here rather than in a workspace.
+    """
+    from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
+
+    source = (LANE / "src" / "bronze_autoloader.py").read_text(encoding="utf-8")
+    block = source.split("SCHEMA_HINTS = (", 1)[1].split(")", 1)[0]
+    hinted = {
+        part.strip().split()[0]: part.strip().split()[1].upper()
+        for part in "".join(re.findall(r'"([^"]*)"', block)).split(",")
+        if part.strip()
+    }
+    # `_rescued_data` is Auto Loader's own column and is not hinted; everything else is.
+    declared = {
+        field.name: field.dataType.simpleString().upper()
+        for field in bronze_schema().fields
+        if field.name != RESCUED_COLUMN
+    }
+    mismatched = {
+        name: (hinted[name], declared[name])
+        for name in hinted.keys() & declared.keys()
+        if hinted[name] != declared[name]
+    }
+    assert hinted == declared, (
+        f"the Auto Loader hints and the declared bronze schema disagree.\n"
+        f"  only in the hints:  {sorted(set(hinted) - set(declared))}\n"
+        f"  only in the schema: {sorted(set(declared) - set(hinted))}\n"
+        f"  different types:    {mismatched}"
+    )
+
+
+def test_the_money_columns_are_declared_as_integers() -> None:
+    """The thesis of the repository, asserted where it can be violated silently.
+
+    Money is an integer number of cents. A STRING column multiplied by a STRING column is a
+    DOUBLE, and floating point money in an accounting pipeline is the defect this project
+    exists to argue against - it reached production on this lane and nothing said a word.
+    """
+    from samegold.pipelines.schema import bronze_schema
+
+    types = {field.name: field.dataType.simpleString() for field in bronze_schema().fields}
+    for column in ("qty", "new_qty", "unit_price_cents"):
+        assert types[column] == "bigint", f"{column} is {types[column]}, not bigint"
