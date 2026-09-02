@@ -1,9 +1,12 @@
 # Data contract
 
-Version 1.3.0. The machine-readable half lives in `src/samegold/domain/contract.py`; a test
-fails if this document and that module disagree about the version, the window, the timezone
-or the set of quarantine reasons: the reasons are enumerated below and
+Version 2.0.0. The machine-readable half lives in `src/samegold/domain/contract.py`; a test
+fails if this document and that module disagree about the version, the window, the timezone,
+the money bounds or the set of quarantine reasons: the reasons are enumerated below and
 `tests/fast/test_contract_documents.py` compares that list with the enum in both directions.
+
+The major bump narrows rule 6: a unit price that was legal under 1.3.0 can be quarantined
+under 2.0.0. Adding a door is a minor version; turning a producer away is not.
 
 ## Producers and events
 
@@ -41,11 +44,17 @@ clock-like column allowed downstream and it is excluded from every digest.
    returns no longer reconcile is a line for a person to look at, not one to keep partially
    refunding. Per-return the rule is not a rule at all, because three returns of three units
    each pass it against one sale of three, and the close then reports negative revenue.
-6. **Money is bounded.** A quantity above 10 000 000 or a unit price above 10 000 000 000
-   cents is quarantined as `amount_out_of_range`. `qty * unit_price_cents` is a BIGINT
-   multiplication and BIGINT overflows: unbounded, three legal order lines were enough to end
-   a close outright in one engine and to publish a figure that does not fit its own column in
-   the other.
+6. **Money is bounded.** A quantity above 10 000 units on one line, or a unit price above
+   1 000 000 cents (10 000,00 EUR), is quarantined as `amount_out_of_range`.
+   `qty * unit_price_cents` is a BIGINT multiplication and BIGINT overflows: unbounded, three
+   legal order lines were enough to end a close outright in one engine and to publish a figure
+   that does not fit its own column in the other. These are business bounds - a pallet order,
+   and the priciest single item such a shop sells - and they are checked to be safe rather
+   than assumed to be: the largest legal line is 10^10 cents, so a month would need 922 337 203
+   of them before the SUM itself wrapped. The first version of this rule bounded at ten million
+   units and a hundred million euros a unit and claimed a headroom of a hundred billion lines;
+   the true figure was ninety-two, and a bound that large is also one no test can afford to sit
+   a record on.
 7. **A close is a version.** At each close, `revenue_by_month` records what was known at that
    instant. Later arrivals never rewrite a version; they add one, with `restated_at` and a
    reason.
@@ -82,7 +91,7 @@ nothing can emit, and refuses an implementation that can emit one that is not he
 | `non_positive_quantity` | a sale, a return, or an amendment to zero or fewer units |
 | `negative_price` | a unit price below zero |
 | `unknown_currency` | a currency other than EUR |
-| `amount_out_of_range` | a quantity above 10 000 000 or a unit price above 10 000 000 000 cents |
+| `amount_out_of_range` | a quantity above 10 000, or a unit price above 1 000 000 cents |
 | `return_without_order` | a return whose `(order_id, sku)` matches no accepted sale |
 | `return_outside_window` | a return before the sale, or more than 45 days after it |
 | `return_exceeds_sold_qty` | a return that takes the line's CUMULATIVE returned quantity past its effective quantity |

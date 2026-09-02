@@ -12,7 +12,7 @@ invariant (ingested = accepted + quarantined + rescued + deduplicated) checkable
 """
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 spark = SparkSession.getActiveSession()
@@ -69,9 +69,9 @@ RULES = {
     # Bounded, because qty * unit_price_cents is a BIGINT multiplication. See
     # domain/contract.py: three lines at the maximum legal price ended the close outright.
     "amount_out_of_range": (
-        "(event_type NOT IN ('order_placed','return_registered') OR qty <= 10000000)"
-        " AND (event_type <> 'order_line_amended' OR new_qty <= 10000000)"
-        " AND (event_type <> 'order_placed' OR unit_price_cents <= 10000000000)"
+        "(event_type NOT IN ('order_placed','return_registered') OR qty <= 10000)"
+        " AND (event_type <> 'order_line_amended' OR new_qty <= 10000)"
+        " AND (event_type <> 'order_placed' OR unit_price_cents <= 1000000)"
     ),
 }
 
@@ -103,24 +103,22 @@ _REASON = (
     " WHEN event_type = 'order_line_amended' AND new_qty <= 0 THEN 'non_positive_quantity'"
     " WHEN event_type = 'order_placed' AND unit_price_cents < 0 THEN 'negative_price'"
     " WHEN event_type = 'order_placed' AND currency <> 'EUR' THEN 'unknown_currency'"
-    " WHEN (event_type IN ('order_placed','return_registered') AND qty > 10000000)"
-    " OR (event_type = 'order_line_amended' AND new_qty > 10000000)"
-    " OR (event_type = 'order_placed' AND unit_price_cents > 10000000000)"
+    " WHEN (event_type IN ('order_placed','return_registered') AND qty > 10000)"
+    " OR (event_type = 'order_line_amended' AND new_qty > 10000)"
+    " OR (event_type = 'order_placed' AND unit_price_cents > 1000000)"
     " THEN 'amount_out_of_range'"
     " ELSE 'accepted' END"
 )
 
 
 @dp.table(name="silver_classified", comment="Every event, tagged with why it was accepted.")
-def silver_classified():
-    return spark.readStream.table("bronze_events").withColumn(
-        "quarantine_reason", F.expr(_REASON)
-    )
+def silver_classified() -> DataFrame:
+    return spark.readStream.table("bronze_events").withColumn("quarantine_reason", F.expr(_REASON))
 
 
 @dp.table(name="silver_events", comment="Validated events. Duplicates are resolved in gold.")
 @dp.expect_all_or_drop(RULES)
-def silver_events():
+def silver_events() -> DataFrame:
     """The same rules as `_REASON`, declared as expectations.
 
     This table exists for the EVENT LOG: expectations are what make pass and fail counts per
@@ -139,7 +137,7 @@ def silver_events():
 
 
 @dp.table(name="silver_quarantine", comment="Everything silver_events dropped, with the reason.")
-def silver_quarantine():
+def silver_quarantine() -> DataFrame:
     return (
         spark.readStream.table("silver_classified")
         .where(F.col("quarantine_reason") != "accepted")

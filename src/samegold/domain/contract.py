@@ -23,7 +23,14 @@ from typing import Any
 # 1.3.0: `amount_out_of_range` joins the closed enum, and the two bounds below join the
 # contract. A change to the set of quarantine reasons is a contract change; calling it a
 # patch would be the kind of quiet reinterpretation this file exists to prevent.
-CONTRACT_VERSION = "1.3.0"
+#
+# 2.0.0: the two bounds are NARROWED to numbers a retail data owner would sign. A MAJOR bump
+# and not a minor one, because the direction is what matters: 1.3.0 opened a door, and a
+# producer that was compliant with it saw nothing change. This version refuses records 1.3.0
+# accepted - a unit price of 50 000 euros was legal yesterday and is quarantined today - and a
+# version number that cannot tell "we added a door" from "we now turn people away" is the
+# quiet reinterpretation again, one field further along.
+CONTRACT_VERSION = "2.0.0"
 
 # All accounting periods are computed in this timezone, never in UTC and never in the
 # session timezone. A close is a legal artefact of a Spanish entity; UTC would move
@@ -57,12 +64,40 @@ CURRENCY = "EUR"
 # no rule bounded either factor, so this was the last record shape in the pipeline with no
 # door: not quarantined, not counted, just the end of the close.
 #
-# The bounds are business bounds, not type bounds, and deliberately far above anything real:
-# ten million units on a line, and a hundred million euros a unit. Their product is 10^17
-# cents, so a close would need a hundred billion such lines before the SUM itself overflowed
-# a BIGINT, which is a comfortable margin rather than a coincidence.
-MAX_LINE_QUANTITY = 10_000_000
-MAX_UNIT_PRICE_CENTS = 10_000_000_000
+# The bounds are BUSINESS bounds: the largest line a retail data owner would put a name to.
+# Ten thousand units of one SKU on one line is a pallet order; ten thousand euros a unit is
+# the most expensive single item a shop like this sells. Both are generous, and both are
+# numbers somebody could defend in a review, which is what a contract term has to be.
+#
+# The first version of them was not, in two ways that turned out to be the same way.
+#
+# It was ten million units and a hundred million euros a unit, chosen to be "deliberately far
+# above anything real", and the comment defending them did the arithmetic wrong: it claimed a
+# close would need a hundred billion maximum-value lines before the SUM overflowed. The true
+# figure was NINETY-TWO. A line was 10^7 * 10^10 = 10^17 cents, and (2^63 - 1) // 10^17 is 92,
+# so ninety-three such lines re-created the exact incident the bounds were introduced to
+# prevent. The bounds moved the threshold from three lines to ninety-three and the comment
+# claimed nine orders of magnitude of headroom that were not there.
+#
+# And a bound has to be MEASURED against, which means a record has to sit exactly on it (see
+# boundary case 11 in generator/events.py), which means the bound's size is the size of a
+# fixture that lands in a published month. At a hundred million euros a unit that single line
+# was a hundred and sixty-eight times the entire simulated business of the month it fell in.
+# It moved the restatement figure on the front page of the README from 6.48% to 3.38% and
+# moved which month was worst - not because the pipeline changed, but because scaffolding
+# entered the denominator. A bound nobody would sign is also a bound nothing can afford to
+# test, and the two failures are one failure: the numbers were picked to be safely enormous
+# instead of being picked and then checked.
+#
+# The margin now, with the arithmetic done out loud rather than asserted:
+#     largest legal line = 10 000 * 1 000 000                   =            10 000 000 000
+#     BIGINT maximum     = 2^63 - 1                             = 9 223 372 036 854 775 807
+#     maximum-value lines a month can hold before the SUM wraps =               922 337 203
+# Nine hundred million of them, against a simulation that emits a few thousand a month and a
+# real shop that would emit fewer. `tests/fast/test_contract_documents.py` recomputes that
+# division rather than trusting this comment, which is the lesson of the first version.
+MAX_LINE_QUANTITY = 10_000
+MAX_UNIT_PRICE_CENTS = 1_000_000
 
 
 class EventType(StrEnum):

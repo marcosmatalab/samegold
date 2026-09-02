@@ -1,29 +1,31 @@
 {
   "artifact_digest": null,
   "artifacts": {
+    "measured_over": "business_revenue",
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -2867773,
-        "delta_pct": -0.0285,
-        "final_net_cents": 10061497330,
-        "first_close_net_cents": 10064365103,
+        "delta_cents": -3446452,
+        "delta_pct": -5.5925,
+        "final_net_cents": 58179774,
+        "first_close_net_cents": 61626226,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -877209,
-        "delta_pct": -3.3824,
-        "final_net_cents": 25057179,
-        "first_close_net_cents": 25934388,
+        "delta_cents": -1226653,
+        "delta_pct": -4.108,
+        "final_net_cents": 28633571,
+        "first_close_net_cents": 29860224,
         "versions": 3
       }
     ],
-    "worst_delta_eur": "8 772,09",
-    "worst_final_eur": "250 571,79",
-    "worst_first_close_eur": "259 343,88",
-    "worst_month": "2026-02",
-    "worst_move_pct": 3.3824,
+    "worst_delta_eur": "34 464,52",
+    "worst_final_eur": "581 797,74",
+    "worst_first_close_eur": "616 262,26",
+    "worst_month": "2026-01",
+    "worst_move_pct": 5.5925,
+    "worst_move_pct_including_boundary_fixtures": 5.482,
     "worst_versions": 3
   },
   "ci_commit_sha": null,
@@ -39,16 +41,17 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "ea86bf9834f083543fbb305ed0130bff",
+  "hash": "94b40c4d1ce6d9cc6fb0cdafd810d133",
   "not_claimed": [
-    "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one"
+    "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one",
+    "that they describe the close. They describe the simulated shop: the boundary fixtures, which sit on the contract's bounds by construction and are therefore the largest lines it admits, are held out of this measurement and are included in every claim that compares implementations"
   ],
-  "prev": "97d23796a8696cdf011288da8270f99f",
+  "prev": "496f688c7807eb1519b50e0fbbdec5f1",
   "runtime": "oss-local",
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 3.38% of the first close",
+    "note": "largest move 5.59% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -60,19 +63,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
-      "duration_s": 2.012,
+      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
+      "duration_s": 1.999,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "restatement",
       "seed_source": "commit",
       "seeds": [
-        15262264277807298629
+        18082679871196289581
       ],
-      "started_at": "2026-09-02T08:56:59+00:00",
+      "started_at": "2026-09-02T10:22:26+00:00",
       "tree_dirty": true,
-      "tree_sha": "eb805e7128db32ae9825f4131f30827a3178c4ce"
+      "tree_sha": "1ffa850fd19751ba1c6f6e173f580abd1f73fccd"
     }
   }
 }

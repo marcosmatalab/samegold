@@ -96,8 +96,8 @@ report: install ## render the close as one self-contained HTML page
 .PHONY: ci-local
 ci-local: install ## exactly what the fast workflow runs, in the order it runs it
 	$(BIN)/pytest tests/fast -q
-	$(BIN)/ruff check src tests
-	$(BIN)/ruff format --check src tests
+	$(BIN)/ruff check src tests databricks pipelines
+	$(BIN)/ruff format --check src tests databricks pipelines
 	$(BIN)/mypy
 	$(BIN)/samegold check
 
@@ -106,9 +106,11 @@ doctor: install ## what is installed and what each lane needs
 	$(BIN)/samegold doctor
 
 .PHONY: lint
-lint: install ## ruff + mypy strict
-	$(BIN)/ruff check src tests
-	$(BIN)/ruff format --check src tests
+lint: install ## ruff + mypy strict, over every directory that holds code
+	# `databricks` and `pipelines` are in the list because for ten rounds they were not, and
+	# "All checks passed" was reporting the scope of the command. See docs/adr/0006-mutants-are-generated-not-planted.md.
+	$(BIN)/ruff check src tests databricks pipelines
+	$(BIN)/ruff format --check src tests databricks pipelines
 	$(BIN)/mypy
 
 .PHONY: all

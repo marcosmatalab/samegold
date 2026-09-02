@@ -132,9 +132,9 @@ lines AS (
     FROM dedup
     WHERE event_type = 'order_placed'
       AND order_id IS NOT NULL AND sku IS NOT NULL AND customer_id IS NOT NULL
-      AND qty > 0 AND qty <= 10000000
+      AND qty > 0 AND qty <= 10000
       AND unit_price_cents IS NOT NULL AND unit_price_cents >= 0
-      AND unit_price_cents <= 10000000000
+      AND unit_price_cents <= 1000000
       AND currency = 'EUR'
 ),
 amendments AS (
@@ -143,7 +143,7 @@ amendments AS (
                row_number() OVER (PARTITION BY order_id, sku
                                   ORDER BY event_ts DESC, event_id DESC) AS rn
         FROM dedup WHERE event_type = 'order_line_amended' AND new_qty IS NOT NULL
-                     AND new_qty > 0 AND new_qty <= 10000000
+                     AND new_qty > 0 AND new_qty <= 10000
                      AND order_id IS NOT NULL AND sku IS NOT NULL
     ) WHERE rn = 1
 ),
@@ -170,7 +170,7 @@ return_candidates AS (
     FROM dedup d
     LEFT JOIN effective e ON e.order_id = d.order_id AND e.sku = d.sku
     WHERE d.event_type = 'return_registered' AND d.qty IS NOT NULL AND d.qty > 0
-      AND d.qty <= 10000000
+      AND d.qty <= 10000
       AND d.order_id IS NOT NULL AND d.sku IS NOT NULL
 ),
 -- Eligibility first, then the CUMULATIVE quantity rule over the ELIGIBLE returns only.

@@ -12,11 +12,33 @@ from pathlib import Path
 from samegold.domain.contract import (
     ACCOUNTING_TIMEZONE,
     CONTRACT_VERSION,
+    MAX_LINE_QUANTITY,
+    MAX_UNIT_PRICE_CENTS,
     RETURN_WINDOW_DAYS,
     QuarantineReason,
 )
 
-CONTRACT = (Path(__file__).resolve().parents[2] / "CONTRACT.md").read_text(encoding="utf-8")
+REPO = Path(__file__).resolve().parents[2]
+CONTRACT = (REPO / "CONTRACT.md").read_text(encoding="utf-8")
+
+# Every lane that decides `amount_out_of_range` by comparing a number against a bound. The
+# three of them spell the bound as a LITERAL, because the reference is a .sql file the
+# mutation engine parses and the Databricks rules are SQL strings a notebook evaluates:
+# neither can import a Python constant, and templating the reference would change the shape
+# of the mutants generated from it. So the copies are unavoidable and the test below is what
+# stands in for the import.
+BOUNDED_LANES = (
+    "src/samegold/oracle/gold_revenue.sql",
+    "src/samegold/oracle/duckdb_gold.py",
+    "databricks/src/silver_expectations.py",
+)
+# `new_qty` before `qty` so the alternation does not match the tail of the longer name.
+COMPARISON = re.compile(r"\b(new_qty|qty|unit_price_cents)\b[^\n]{0,40}?(<=|>=|<|>)\s*(\d+)")
+
+
+def _spaced(value: int) -> str:
+    """1000000 -> "1 000 000", the way CONTRACT.md writes a number."""
+    return f"{value:,}".replace(",", " ")
 
 
 def test_the_version_matches() -> None:
@@ -29,6 +51,60 @@ def test_the_window_matches() -> None:
 
 def test_the_timezone_matches() -> None:
     assert ACCOUNTING_TIMEZONE in CONTRACT
+
+
+def test_the_money_bounds_match() -> None:
+    """The bounds are a contract term, so the document has to carry the same numbers.
+
+    They were not checked here for the round in which they were introduced, and the document
+    went on stating ten million and ten billion after the module had been narrowed. A rule a
+    reader can read and nothing can execute is the failure this whole file exists for.
+    """
+    assert _spaced(MAX_LINE_QUANTITY) in CONTRACT
+    assert _spaced(MAX_UNIT_PRICE_CENTS) in CONTRACT
+
+
+def test_every_lane_compares_against_the_contracts_bounds_and_nothing_else() -> None:
+    """The three SQL lanes cannot import the constant, so this is the import.
+
+    The check is stronger than "the right number appears somewhere": it collects EVERY
+    integer each lane compares a bounded column against and requires the set to be the
+    contract's bound and zero. A lane that grew a second, different threshold - which is
+    exactly what a hand-edit of one of three copies produces - fails here rather than in a
+    claim, or worse, nowhere.
+    """
+    for name in BOUNDED_LANES:
+        text = (REPO / name).read_text(encoding="utf-8")
+        found: dict[str, set[int]] = {"qty": set(), "price": set()}
+        for column, _operator, literal in COMPARISON.findall(text):
+            key = "price" if column == "unit_price_cents" else "qty"
+            found[key].add(int(literal))
+        assert found["qty"] <= {0, MAX_LINE_QUANTITY}, f"{name} bounds a quantity elsewhere"
+        assert found["price"] <= {0, MAX_UNIT_PRICE_CENTS}, f"{name} bounds a price elsewhere"
+        assert MAX_LINE_QUANTITY in found["qty"], f"{name} does not apply the quantity bound"
+        assert MAX_UNIT_PRICE_CENTS in found["price"], f"{name} does not apply the price bound"
+
+
+def test_the_bounds_leave_the_headroom_the_contract_states() -> None:
+    """Recomputed, because the first version of this rule asserted it and was wrong.
+
+    The bounds exist so that `qty * unit_price_cents` and the SUM over a month cannot
+    overflow a BIGINT. The comment defending the original pair claimed a close would need a
+    hundred billion maximum-value lines to overflow; the arithmetic gives ninety-two, so
+    ninety-three of them re-created the incident the bounds were introduced to prevent. The
+    margin is a division, and a division that nothing performs is a sentence.
+    """
+    bigint_max = 2**63 - 1
+    largest_line = MAX_LINE_QUANTITY * MAX_UNIT_PRICE_CENTS
+    assert largest_line <= bigint_max, "one legal line already overflows a BIGINT"
+    headroom = bigint_max // largest_line
+    assert headroom >= 1_000_000, (
+        f"only {headroom:,} maximum-value lines fit in a BIGINT sum; the bounds are too "
+        f"loose to protect the close they were introduced to protect"
+    )
+    assert _spaced(headroom) in CONTRACT, (
+        f"CONTRACT.md does not state the headroom these bounds actually give ({headroom:,})"
+    )
 
 
 def test_the_document_lists_exactly_the_quarantine_reasons_the_enum_has() -> None:
