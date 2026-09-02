@@ -29,7 +29,13 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from samegold.domain.bitemporal import collapse_versions
-from samegold.domain.contract import ACCOUNTING_TIMEZONE, CURRENCY, QuarantineReason
+from samegold.domain.contract import (
+    ACCOUNTING_TIMEZONE,
+    CURRENCY,
+    MAX_LINE_QUANTITY,
+    MAX_UNIT_PRICE_CENTS,
+    QuarantineReason,
+)
 from samegold.domain.rules import accounting_month, is_return_within_window
 
 _TZ = ZoneInfo(ACCOUNTING_TIMEZONE)
@@ -498,6 +504,16 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # was measuring the generator, not the pipeline. See
     # docs/adr/0006-mutants-are-generated-not-planted.md and the README note on how the score
     # moved once the boundaries existed.
+    #
+    # Cases 11 to 14 are the same lesson learned a second time, and the way it came back is
+    # the part worth keeping. Contract 1.3.0 added rules - two bounds on the money arithmetic,
+    # and which of two sales sharing a line key is the line - and this block was not extended
+    # with them. Both implementations grew the rules; nothing grew the data that reaches them,
+    # so fifteen mutants of those rules produced the original's numbers exactly and the
+    # campaign fell to 52 of 67. A rule can therefore be correct in both lanes and untested
+    # from the day it lands. The rule this block now follows: a change to the contract that
+    # adds a comparison adds a case here in the same commit, or the campaign quietly stops
+    # measuring the pipeline again.
     boundary_seq = 0
 
     def _boundary_order(sale_ts: dt.datetime, qty: int, price: int, tag: str) -> tuple[str, str]:
@@ -523,7 +539,22 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 },
             )
         )
-        if qty > 0 and price >= 0:
+        # The branches, in the order the contract applies them - the same order as the CASE in
+        # src/samegold/pipelines/transform.py and as the WHERE of the `lines` CTE in
+        # gold_revenue.sql. The first that matches is the reason, so a line that is both
+        # zero-quantity and out of range leaves through `non_positive_quantity`; getting that
+        # order wrong here would make the ledger disagree with both implementations about a
+        # record neither of them accepts.
+        if qty <= 0:
+            quarantine_counts[str(QuarantineReason.NON_POSITIVE_QUANTITY)] += 1
+        elif price < 0:
+            quarantine_counts[str(QuarantineReason.NEGATIVE_PRICE)] += 1
+        elif qty > MAX_LINE_QUANTITY or price > MAX_UNIT_PRICE_CENTS:
+            # The door the bounds opened in contract 1.3.0. Until boundary case 11 below
+            # existed nothing walked through it from this helper, because no boundary case
+            # asked for an amount anywhere near a bound.
+            quarantine_counts[str(QuarantineReason.AMOUNT_OUT_OF_RANGE)] += 1
+        else:
             facts[(order_id, sku)] = {
                 "customer_id": customers[0],
                 "qty0": qty,
@@ -532,15 +563,110 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 "sale_ts": sale_ts,
                 "arrival_ts": arrival,
             }
-        else:
-            quarantine_counts[
-                str(
-                    QuarantineReason.NON_POSITIVE_QUANTITY
-                    if qty <= 0
-                    else QuarantineReason.NEGATIVE_PRICE
-                )
-            ] += 1
         return order_id, sku
+
+    def _boundary_amendment(
+        order_id: str,
+        sku: str,
+        suffix: str,
+        amend_ts: dt.datetime,
+        new_qty: int,
+        arrival: dt.datetime,
+        tag: str,
+        outcome: str,
+    ) -> None:
+        """One amendment, and the outcome the contract gives it, written down rather than
+        derived.
+
+        ``outcome`` is a decision, not a computation. That is the whole design of this file:
+        the ledger records what was INTENDED, so it is an oracle rather than a second copy of
+        the rules that would agree with the pipeline by sharing its mistakes. Every caller
+        says in a comment why the contract gives its event the outcome it passes.
+        """
+        events.append(
+            (
+                arrival,
+                {
+                    "event_id": f"am-{order_id}-{sku}-{suffix}",
+                    "event_type": "order_line_amended",
+                    "event_ts": amend_ts.isoformat(),
+                    "order_id": order_id,
+                    "sku": sku,
+                    "new_qty": new_qty,
+                    "boundary": tag,
+                },
+            )
+        )
+        if outcome != "accepted":
+            quarantine_counts[str(outcome)] += 1
+            return
+        fact = facts[(order_id, sku)]
+        fact["qty"] = new_qty
+        fact.setdefault("amendments", []).append(
+            {
+                "event_id": f"am-{order_id}-{sku}-{suffix}",
+                "event_ts": amend_ts,
+                "arrival_ts": arrival,
+                "qty": new_qty,
+            }
+        )
+
+    def _boundary_return(
+        order_id: str,
+        sku: str,
+        suffix: str,
+        sale_ts: dt.datetime,
+        return_ts: dt.datetime,
+        qty: int,
+        price: int,
+        arrival: dt.datetime,
+        tag: str,
+        outcome: str,
+    ) -> None:
+        """One return, and the outcome the contract gives it. Same rule as above.
+
+        The two kinds of refusal are NOT interchangeable and the branch below is the whole
+        reason this helper exists. A return the RETURN STAGE refuses - outside the window, or
+        past what the line sold - is reported per month in gold, so it belongs in
+        ``rejected_returns`` and is compared against the reference by
+        verify/invariants.returns_accounted_by_reason. One refused at INGEST, for a quantity
+        outside the contract's bounds, never reaches that stage in either implementation, so
+        counting it there would make the generator's accounting disagree with both.
+        """
+        events.append(
+            (
+                arrival,
+                {
+                    "event_id": f"rt-{order_id}-{sku}-{suffix}",
+                    "event_type": "return_registered",
+                    "event_ts": return_ts.isoformat(),
+                    "return_id": f"R-{order_id}-{suffix}",
+                    "order_id": order_id,
+                    "sku": sku,
+                    "qty": qty,
+                    "reason": "size",
+                    "boundary": tag,
+                },
+            )
+        )
+        if outcome == "accepted":
+            returns.append(
+                {
+                    "order_id": order_id,
+                    "sku": sku,
+                    "qty": qty,
+                    "unit_price_cents": price,
+                    "sale_ts": sale_ts,
+                    "arrival_ts": arrival,
+                }
+            )
+            return
+        quarantine_counts[str(outcome)] += 1
+        if outcome in (
+            str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
+            str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY),
+        ):
+            rejected_returns.append({"sale_ts": sale_ts, "arrival_ts": arrival, "reason": outcome})
 
     mid = base_ts + dt.timedelta(days=max(1, profile.days // 3), hours=9)
 
@@ -855,6 +981,260 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 },
             ],
         }
+
+    # 11. The money bounds, exactly ON them and exactly one past them, at all four places the
+    #     contract applies them: a line's quantity, a line's unit price, an amendment's new
+    #     quantity and a return's quantity. Eight mutants lived here - SQL-041, 047, 048, 052,
+    #     059, 067, 068 and 072 - four of which move a bound by one and four of which turn its
+    #     `<=` into `<`. Every one of them survived the whole campaign.
+    #
+    #     Not because the witnesses are weak: because no record ever came near a bound. The
+    #     bounds joined the contract at version 1.3.0 and no data joined with them, so the
+    #     generator kept emitting what it always had - quantities of one to four against a
+    #     bound of ten million units, prices under 250 euros against a bound of a hundred
+    #     million a unit - plus the single deliberately absurd 2^63-1 in the corrupt block,
+    #     which is so far past both bounds that moving either by one cannot change how it is
+    #     classified. A bound that no record sits on is a bound whose exact position is
+    #     unobservable, and eight mutants said so.
+    #
+    #     The constants are IMPORTED from domain/contract.py, not written out here. If a bound
+    #     ever moves, the data that tests it moves in the same commit; spelling `10000000`
+    #     into the generator would make this block agree with a bound it had copied rather
+    #     than with the bound the two implementations enforce.
+
+    # A line AT the price bound is legal and must be counted; one cent past it is
+    # amount_out_of_range. Without the first, `unit_price_cents <= MAX` and
+    # `unit_price_cents < MAX` classify every row identically (SQL-041 survives); without the
+    # second, `<= MAX` and `<= MAX + 1` do (SQL-047 survives).
+    _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS, tag="price_at_bound")
+    _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS + 1, tag="price_past_bound")
+    # The same pair for the quantity bound (SQL-059 and SQL-067), priced at one cent so that
+    # ten million units is a hundred thousand euros: the case has to reach the bound, not
+    # dominate the close it is measured in.
+    bound_oid, bound_sku = _boundary_order(mid, qty=MAX_LINE_QUANTITY, price=1, tag="qty_at_bound")
+    _boundary_order(mid, qty=MAX_LINE_QUANTITY + 1, price=1, tag="qty_past_bound")
+    # A return AT the quantity bound, against the line that sold exactly that many units, so
+    # it is accepted and the whole line comes back: without it `d.qty <= MAX` and
+    # `d.qty < MAX` agree on every return ever generated (SQL-048 survives). And one unit past
+    # the bound, which leaves at INGEST through amount_out_of_range and never reaches the
+    # return stage at all - so under `d.qty <= MAX + 1` the reference admits a return the
+    # contract refuses and the month's returns_rejected_count moves (SQL-052 survives without
+    # it). Both arrive at one instant: they sit on one line, and a close that saw only one of
+    # them would apply the cumulative rule to a different set of returns than the one the
+    # ledger recorded.
+    bound_return_arrival = mid + dt.timedelta(days=11, minutes=5)
+    _boundary_return(
+        bound_oid,
+        bound_sku,
+        "atbound",
+        sale_ts=mid,
+        return_ts=mid + dt.timedelta(days=10),
+        qty=MAX_LINE_QUANTITY,
+        price=1,
+        arrival=bound_return_arrival,
+        tag="return_qty_at_bound",
+        outcome="accepted",
+    )
+    _boundary_return(
+        bound_oid,
+        bound_sku,
+        "pastbound",
+        sale_ts=mid,
+        return_ts=mid + dt.timedelta(days=11),
+        qty=MAX_LINE_QUANTITY + 1,
+        price=1,
+        arrival=bound_return_arrival,
+        tag="return_qty_past_bound",
+        outcome=str(QuarantineReason.AMOUNT_OUT_OF_RANGE),
+    )
+    # And the same pair for an amendment's new quantity (SQL-068 and SQL-072). An amendment
+    # carries `new_qty`, which is a different column under a different branch of the
+    # classification, so the two rows the line needed do not test it: it needs its own two.
+    amend_oid, amend_sku = _boundary_order(mid, qty=2, price=1, tag="amend_qty_at_bound")
+    _boundary_amendment(
+        amend_oid,
+        amend_sku,
+        "atbound",
+        amend_ts=mid + dt.timedelta(hours=2),
+        new_qty=MAX_LINE_QUANTITY,
+        arrival=mid + dt.timedelta(hours=2, minutes=5),
+        tag="amend_qty_at_bound",
+        outcome="accepted",
+    )
+    amend_oid, amend_sku = _boundary_order(mid, qty=3, price=100, tag="amend_qty_past_bound")
+    _boundary_amendment(
+        amend_oid,
+        amend_sku,
+        "pastbound",
+        amend_ts=mid + dt.timedelta(hours=2),
+        new_qty=MAX_LINE_QUANTITY + 1,
+        arrival=mid + dt.timedelta(hours=2, minutes=5),
+        tag="amend_qty_past_bound",
+        outcome=str(QuarantineReason.AMOUNT_OUT_OF_RANGE),
+    )
+
+    # 12. Two order_placed events sharing one (order_id, sku). The key of a sale is its
+    #     event_id, so this is contract-legal, and gold keeps exactly ONE of them: the first
+    #     by (sale_ts, event_id). SQL-042 and SQL-043 flip the two halves of that order and
+    #     both survived, because no seed has ever produced the shape - `rng.sample` draws each
+    #     sku at most once per order, so every partition of that window held a single row, and
+    #     ranking one row is the same job in any order.
+    #
+    #     TWO pairs, and the second is not belt and braces. The order has two keys and one
+    #     pair can only exercise one of them: with different sale timestamps the event_id half
+    #     is never consulted, so flipping it changes nothing and SQL-043 lives; with equal
+    #     timestamps the sale_ts half decides nothing, so flipping THAT changes nothing and
+    #     SQL-042 lives. It is the lesson of boundary case 10 one level up - a tie-break is
+    #     only tested by a tie.
+    #
+    #     Both copies of a pair arrive at ONE instant on purpose. A close that saw only the
+    #     loser would elect the loser, correctly, while the ledger recorded the winner: the
+    #     generator would then be describing a close that never happened, and the failure
+    #     would read as a pipeline bug.
+    for tag, second_hours in (
+        # Different sale instants: the earlier sale is the line. Kills SQL-042.
+        ("duplicate_line_key_by_time", 4),
+        # The same sale instant, so only the event_id decides. Kills SQL-043.
+        ("duplicate_line_key_by_event_id", 0),
+    ):
+        boundary_seq += 1
+        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
+        pair_arrival = mid + dt.timedelta(minutes=5)
+        # Named rather than positional, and the ledger below reads the SAME tuple the event
+        # does. `winner` earns the name in both pairs: it is the earlier sale in the first and
+        # the lower event_id in the second, which is what (sale_ts, event_id) ascending means.
+        # Boundary case 9 records what it costs when a ledger repeats a value instead of
+        # sharing it - the two agree until someone edits one of them.
+        winner = ("a", 0, 2, 1100)
+        loser = ("b", second_hours, 5, 700)
+        for suffix, hours, pair_qty, pair_price in (winner, loser):
+            events.append(
+                (
+                    pair_arrival,
+                    {
+                        "event_id": f"op-{oid}-{sku}-{suffix}",
+                        "event_type": "order_placed",
+                        "event_ts": (mid + dt.timedelta(hours=hours)).isoformat(),
+                        "order_id": oid,
+                        "customer_id": customers[0],
+                        "sku": sku,
+                        "qty": pair_qty,
+                        "unit_price_cents": pair_price,
+                        "currency": CURRENCY,
+                        "boundary": tag,
+                    },
+                )
+            )
+        # The winner, and only the winner. The loser is not quarantined either: no reason in
+        # the closed enum covers a duplicated line key, both implementations simply rank it
+        # second and drop it, and inventing a counter here would make the ledger disagree with
+        # both. The quantities and the prices differ so that electing the other one is visible
+        # in cents and not only in a row count.
+        facts[(oid, sku)] = {
+            "customer_id": customers[0],
+            "qty0": winner[2],
+            "qty": winner[2],
+            "unit_price_cents": winner[3],
+            "sale_ts": mid + dt.timedelta(hours=winner[1]),
+            "arrival_ts": pair_arrival,
+        }
+
+    # 13. One line, three returns, and the cumulative window that decides which of them takes
+    #     units off it. Three mutants of that window survived - SQL-055 turns its SUM into a
+    #     MAX, SQL-064 and SQL-065 flip the two halves of its ORDER BY - and a fourth,
+    #     SQL-069, turns the window's `ELSE 0` into `ELSE 1`, which lets a REFUSED return
+    #     consume a unit of the line. All four were invisible for one reason: no line had ever
+    #     carried more than one return. With a single row per partition a running SUM and a
+    #     running MAX are the same number, every ordering of one row is the same ordering, and
+    #     there is no refused return for the `ELSE` to give anything to.
+    #
+    #     The line sells 3 units at 5 000 cents and takes:
+    #       * one return dated BEFORE the sale, refused as return_outside_window. It takes
+    #         nothing - that is what the `ELSE 0` says - and SQL-069, which gives it one unit,
+    #         then pushes the return below past the quantity sold and refuses a refund the
+    #         contract owes;
+    #       * one return of 3 units inside the window, which fits EXACTLY. Exactly matters: at
+    #         2 units the extra unit SQL-069 invents would still fit, and a case written to
+    #         kill that mutant would not kill it;
+    #       * one return of 2 units after it, which no longer fits and leaves as
+    #         return_exceeds_sold_qty even though 2 units on their own would have fitted.
+    #     Read in the other direction (SQL-064) the 2 is accepted and the 3 refused; taking
+    #     their MAX instead of their SUM (SQL-055) accepts both. Both move the month's
+    #     returns_cents, which is the number a reader of gold would have watched move.
+    cumulative_oid, cumulative_sku = _boundary_order(
+        mid, qty=3, price=5000, tag="return_cumulative_window"
+    )
+    # One arrival for all three, for the reason given in case 11: the cumulative rule is a
+    # property of the SET of returns that has arrived, so a close that splits the set is a
+    # close the ledger's single classification cannot describe.
+    cumulative_arrival = mid + dt.timedelta(days=2, minutes=5)
+    for suffix, offset_days, return_qty, outcome in (
+        ("before", -1, 1, str(QuarantineReason.RETURN_OUTSIDE_WINDOW)),
+        ("fits", 1, 3, "accepted"),
+        ("overflows", 2, 2, str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY)),
+    ):
+        _boundary_return(
+            cumulative_oid,
+            cumulative_sku,
+            suffix,
+            sale_ts=mid,
+            return_ts=mid + dt.timedelta(days=offset_days),
+            qty=return_qty,
+            price=5000,
+            arrival=cumulative_arrival,
+            tag="return_cumulative_window",
+            outcome=outcome,
+        )
+    # And the tie the three returns above cannot produce: two returns of one line at the SAME
+    # instant, where only `return_event_id` decides which of them takes the units. The three
+    # above have distinct return timestamps, so the second half of that ORDER BY is never
+    # consulted and SQL-065 survives them exactly as SQL-043 survives a pair of sales at
+    # different times. The line sells 3; the first by event_id takes 1 and is accepted, the
+    # second wants 3 and is refused. Read the other way the 3 is accepted and the 1 refused,
+    # which is 12 000 cents of refund instead of 4 000.
+    tie_oid, tie_sku = _boundary_order(mid, qty=3, price=4000, tag="return_tie_on_instant")
+    tie_return_ts = mid + dt.timedelta(days=3)
+    for suffix, return_qty, outcome in (
+        ("a", 1, "accepted"),
+        ("b", 3, str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY)),
+    ):
+        _boundary_return(
+            tie_oid,
+            tie_sku,
+            suffix,
+            sale_ts=mid,
+            return_ts=tie_return_ts,
+            qty=return_qty,
+            price=4000,
+            arrival=tie_return_ts + dt.timedelta(minutes=5),
+            tag="return_tie_on_instant",
+            outcome=outcome,
+        )
+
+    # 14. An amendment to a quantity of ZERO, which is non_positive_quantity: the contract
+    #     admits an amendment that changes how many units were sold, not one that unsells the
+    #     line. SQL-071 turns the amendments filter's `new_qty > 0` into `new_qty >= 0` and
+    #     survived because no amendment has ever been zero - the random path builds each new
+    #     quantity with `max(1, ...)`, and the corrupt block's non-positive quantity is an
+    #     order_placed carrying `qty`, not an amendment carrying `new_qty`. The mutant widened
+    #     a door nobody was standing at.
+    #
+    #     With this case the difference is a booked figure: the amendment is refused, the line
+    #     keeps the 4 units it was sold with, and under the mutant it wins its window and the
+    #     COALESCE takes the zero - 10 000 cents of gross the close simply stops reporting,
+    #     with the line still counted. It is the same failure an amendment to -5 once caused
+    #     in the other direction, which is why the branch exists at all.
+    zero_oid, zero_sku = _boundary_order(mid, qty=4, price=2500, tag="amendment_to_zero")
+    _boundary_amendment(
+        zero_oid,
+        zero_sku,
+        "zero",
+        amend_ts=mid + dt.timedelta(hours=3),
+        new_qty=0,
+        arrival=mid + dt.timedelta(hours=3, minutes=5),
+        tag="amendment_to_zero",
+        outcome=str(QuarantineReason.NON_POSITIVE_QUANTITY),
+    )
 
     # ---- the ledger ------------------------------------------------------------------
     for close in closes:

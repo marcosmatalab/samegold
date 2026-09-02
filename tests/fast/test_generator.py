@@ -37,8 +37,11 @@ def test_different_seeds_produce_different_data(tmp_path: Path) -> None:
 def test_every_boundary_case_is_present(tmp_path: Path) -> None:
     """The mutation campaign is only as good as the boundaries the data reaches.
 
-    These ten tags were added *because* mutants survived without them; asserting their
-    presence keeps a future refactor from quietly removing them and inflating the score.
+    Every tag here was added *because* mutants survived without it; asserting their presence
+    keeps a future refactor from quietly removing one and inflating the score. The set is
+    compared for EQUALITY rather than containment so that a tag which stops being emitted
+    fails here instead of only showing up, months later, as a surviving mutant nobody can
+    explain.
     """
     generate(tmp_path / "g", seed=99, profile=FAST)
     tags = set()
@@ -57,6 +60,21 @@ def test_every_boundary_case_is_present(tmp_path: Path) -> None:
         "arrives_after_close",
         "amendment_after_close",
         "amendment_tie",
+        # Boundary cases 11-14: the rules contract 1.3.0 added, and the two windows whose
+        # ordering nothing exercised. Fifteen mutants survived until these existed.
+        "price_at_bound",
+        "price_past_bound",
+        "qty_at_bound",
+        "qty_past_bound",
+        "return_qty_at_bound",
+        "return_qty_past_bound",
+        "amend_qty_at_bound",
+        "amend_qty_past_bound",
+        "duplicate_line_key_by_time",
+        "duplicate_line_key_by_event_id",
+        "return_cumulative_window",
+        "return_tie_on_instant",
+        "amendment_to_zero",
     }
 
 

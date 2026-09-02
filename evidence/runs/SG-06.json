@@ -2,8 +2,8 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "8f521422aa579d07a2d516354b2454bfe4975618",
-    "records_verified": 81,
+    "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
+    "records_verified": 117,
     "seed_source": "commit"
   },
   "ci_commit_sha": null,
@@ -11,48 +11,48 @@
   "claim_id": "SG-06",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "4.4.0",
+    "delta_spark": "absent",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "4.2.0",
-    "python": "3.11.15",
+    "pyspark": "absent",
+    "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "a0de0f8ac4a1d6f6e4d80f38e4e7207c",
+  "hash": "b207e41766eb49658efb7db705b062b9",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "797d5dd279fe3724505029cb3b47b605",
+  "prev": "33351127fbcd3c328e18dd2cfdb39f30",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "81 records verified against commit 8f521422aa57",
+    "note": "117 records verified against commit c6117c0cdd8d",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 81,
-      "trials": 81,
+      "successes": 117,
+      "trials": 117,
       "wilson95": [
-        0.954722,
+        0.968211,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "8f521422aa579d07a2d516354b2454bfe4975618",
-      "duration_s": 0.369,
+      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
+      "duration_s": 3.211,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        1654847581503475098
+        123684788706243249
       ],
-      "started_at": "2026-09-01T23:14:06+00:00",
+      "started_at": "2026-09-02T08:59:59+00:00",
       "tree_dirty": true,
-      "tree_sha": "ace4d16663d25a8eacc05092cec36298701fd8d6"
+      "tree_sha": "2440f5b7ac1ac4632da55de1edfe2f48ac75e3ad"
     }
   }
 }

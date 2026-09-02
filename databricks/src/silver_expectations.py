@@ -60,7 +60,8 @@ RULES = {
         # no lane rejected it: `NON_POSITIVE_QUANTITY` was gated on the two event types that
         # carry `qty` and an `order_line_amended` carries `new_qty`. All three lanes agreed,
         # so no parity test could see it, and the generator's `max(1, ...)` guaranteed no
-        # seed would produce it. An amendment to -5 drove gross revenue negative.
+        # seed would produce it. An amendment to -5 drove gross revenue negative. The
+        # generator emits the zero now, as boundary case 14.
         " AND (event_type <> 'order_line_amended' OR new_qty > 0)"
     ),
     "negative_price": "event_type <> 'order_placed' OR unit_price_cents >= 0",
