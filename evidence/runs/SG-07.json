@@ -1,10 +1,10 @@
 {
-  "artifact_digest": "0b98e3644a2e038276effeb0117b595b",
+  "artifact_digest": "6bc84b7f0c3b8a8a7c60e17958d78bc6",
   "artifacts": {
     "batches_available": 8,
     "clean_digest": {
-      "content": "fe8572a1a00abce5bbbec317706b71ef",
-      "multiset": "321ac7dee896628fbe6404df995ab1e9"
+      "content": "32b459675375d00a354f7a2ac5a2be8a",
+      "multiset": "e5b09ebf6559114b30c5ad79ad5b0a14"
     },
     "divergence_rate_upper95_per_point": {
       "after_batch_write_before_commit": 0.299573,
@@ -12,7 +12,7 @@
     },
     "divergence_rate_upper95_per_run": 0.149787,
     "divergences": [],
-    "duration_s": 412.56,
+    "duration_s": 409.04,
     "injected_runs": 20,
     "missed_injections": [],
     "negative_control": {
@@ -20,8 +20,8 @@
         "multiset"
       ],
       "digest": {
-        "content": "fe8572a1a00abce5bbbec317706b71ef",
-        "multiset": "e220c23978f672bdf7cb2876120bc20a"
+        "content": "32b459675375d00a354f7a2ac5a2be8a",
+        "multiset": "ffa0b41f69e5ac679de32869bc788afd"
       },
       "note": "the content digest deduplicates by event_id and is blind to double writes; the multiset digest is the one that has to catch this",
       "status": "detected",
@@ -61,12 +61,12 @@
     "python": "3.12.3",
     "sqlglot": "30.17.0"
   },
-  "hash": "29c66c1360a5b7c2dd4ad414705cb5ae",
+  "hash": "bdc9072044b2b374dd5deee320fcea73",
   "not_claimed": [
     "crash safety of the engine: the reachable points are the ones the writer owns, and the points inside a Delta commit or a state-store checkpoint are listed in faults/points.py as not covered",
     "anything about Databricks: serverless gives you no process to kill"
   ],
-  "prev": "73d3ad44402ad2980e17a22279d220e9",
+  "prev": "3a53ed59c69d234ca7aa236579fd5ff3",
   "runtime": "oss-local",
   "title": "the silver writer survives a crash at each of its structural points",
   "verdict": {
@@ -83,19 +83,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "c8c4a07458ce1d6ddf7222f54d3d88cbc8a578bf",
-      "duration_s": 414.586,
+      "commit_sha": "16af667fb8b35232750161e208b75687a4ad8c39",
+      "duration_s": 410.155,
       "n": 1,
       "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "faults",
       "seed_source": "commit",
       "seeds": [
-        5387308987834931543
+        3079184151805036238
       ],
-      "started_at": "2026-09-02T22:16:02+00:00",
+      "started_at": "2026-09-02T22:39:12+00:00",
       "tree_dirty": true,
-      "tree_sha": "beade96c9cad915532a54ea2883b75cb59d51d01"
+      "tree_sha": "1c24637d6d59434f721d05aaaecae36c46cd91a2"
     }
   }
 }
