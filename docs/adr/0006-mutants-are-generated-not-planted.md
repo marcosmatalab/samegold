@@ -153,3 +153,79 @@ false, unknown, unrepresentable - leaves through a door with a name on it. In th
 that is one `COALESCE(predicate, false)` per branch. What it buys is that the failure mode of
 a bug becomes "revenue is missing", which someone chases, instead of "revenue is too high",
 which the deployment reported as success.
+
+
+## The seventh: a rule that is correct by an argument is not a rule
+
+Round seventeen replaced `ELSE 'accepted'` with `WHEN NOT COALESCE(rule, false) THEN reason
+... ELSE 'accepted'`. That is **correct**: every branch is total, so falling past all of them
+means every rule returned TRUE. It is also correct the same way the version before it was
+correct - by an argument that lives in a comment and in the reviewer's head, in the exact spot
+where the last argument turned out to be wrong.
+
+Add a rule and forget a `COALESCE`; reword a predicate; write the branch by hand instead of
+generating it. The property does not fail loudly, it just stops being true, and `accepted` is
+once again whatever is left over after the branches - which is exactly what the system did not
+understand.
+
+So the rule is: **state the invariant, do not leave it as the residue of the cases.**
+
+    WHEN <every rule holds> THEN 'accepted'
+
+built from the same declaration the rejection branches are built from. The two forms select
+the same rows today. Only the second one keeps saying so after an edit, and only the second
+one can be read without reconstructing the proof.
+
+The corollary is what to do with the branch that is now unreachable. Three options and only
+one survives:
+
+- **return NULL** (delete the `ELSE`). The quietest possible answer to "the classification did
+  not classify"; it flows into every consumer that compares a reason to a string and none of
+  them notice.
+- **name it in the closed enum** (`undecidable_rule`). Tempting and wrong. A quarantine reason
+  is a statement about a RECORD that an operator can act on; this is a statement about the
+  code. And `test_every_quarantine_reason_is_actually_produced_by_a_run` requires a generated
+  run to produce every declared reason, precisely because `return_exceeds_sold_qty` sat
+  unreachable in all three implementations for the life of the repository - so the new member
+  would be dead the day it landed.
+- **raise.** A record the classification cannot classify is a defect in the pipeline. It stops
+  the update and puts the message in the event log, which is what "loud" means here.
+
+## The eighth: fixing the consequence is not fixing the cause
+
+The same round fixed "a NULL predicate can be accepted" and left "the predicate is NULL". The
+literal `1000000` is an INT32, Spark coerces the COLUMN to the literal's type, and on a STRING
+column that cast overflows and yields NULL. Round seventeen made that NULL fail closed - the
+row left through the first rule that could not answer, which is the right outcome reached by
+the wrong door and for a reason nothing had established.
+
+Writing the width down (`1000000L`, `_bound()`) removes the NULL itself. Re-measured on the
+exact reproduction - STRING columns, ANSI pinned off - **no rule is undecidable any more** and
+the record leaves through `amount_out_of_range`, which is the door the contract has for it.
+
+That has an uncomfortable second-order effect, and it is the reason this entry is here rather
+than in a commit message: **the property is now vacuous on the real rules.** Nothing can be
+undecidable, so "an undecidable rule must not produce revenue" holds because its premise never
+occurs, and the test that checked it was passing for the wrong reason. The renderer is a
+function (`_classification(rules)`) so a test can hand it a rule that is NULL by construction
+and watch the row be quarantined. A property worth having is worth being able to exercise
+after you have made it unreachable.
+
+## The ninth: a fault that erases itself needs a counter, not just a door
+
+A value too wide for its column is not rejected by any rule, because no rule ever sees it. The
+reader nulls that column, keeps the record, and puts the raw line in the rescue column; after
+that the record is indistinguishable from one whose producer never sent the field, and it
+leaves through `missing_required_field`. Fail-closed, correctly classified, and completely
+silent about the fact that a value was LOST rather than absent.
+
+The conservation identity could not see it either: the record is counted once, under
+`quarantined`, so the identity balances. `claims.py` passed `rescued=0` with a comment
+explaining that the rescue door "is one this pipeline never uses" - true of the data the
+generator wrote, false of the pipeline, and the deployed lane received one of these on its
+first run.
+
+**Trading a loud failure for a quiet one is the worst available outcome of a type fix.** The
+generator now emits the shape deliberately, the count is written by the generator and
+recounted independently by the reference, and the two are compared. A door is where a record
+leaves. A counter is how you know something left.

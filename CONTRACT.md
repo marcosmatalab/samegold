@@ -60,13 +60,30 @@ clock-like column allowed downstream and it is excluded from every digest.
    reason.
 8. **A record leaves through exactly one door**: accepted, quarantined with one of the
    reasons in the closed enum, rescued, or deduplicated. `ingested = accepted + quarantined +
-   rescued + deduplicated`, cumulatively over the whole input. `rescued` is structurally zero
-   in this pipeline and is kept in the identity because the door exists in the medallion
-   design, not because anything walks through it: the reader declares a `_rescued_data`
-   column and no consumer reads it, so a malformed record leaves through `unparseable_json`.
-   A term that cannot move is not a check, and saying which term that is costs one sentence. It is checked over the input,
+   rescued + deduplicated`, cumulatively over the whole input. `rescued` is zero, and the
+   reason is narrower than this rule used to claim. It said the rescue column "is never
+   populated: a malformed record arrives with every field NULL and leaves through
+   `unparseable_json`", which was true of the data the generator wrote and false of the
+   pipeline. A value too wide for its column - a price of 2^63, which is what a real producer
+   sent the deployed lane - is rescued PER COLUMN: every reader in this project nulls that one
+   field, keeps the rest of the record, and puts the raw line in the rescue column. The record
+   then leaves through `missing_required_field`, because after the rescue the field is
+   missing. So it is counted exactly once, under `quarantined`, and the rescue is an
+   annotation rather than a fourth door.
+   What that leaves unsaid is that a value was LOST rather than never sent, and a fault that
+   erases itself is the one this identity cannot see. `values_beyond_bigint` is counted by the
+   generator as it writes and recounted independently by the reference, and the two are
+   compared in `conservation_against_ledger`; `docs/limits.md` has the measurement for all
+   three engines. A term that cannot move is not a check, and a term that quietly starts
+   moving while the document says it cannot is worse. It is checked over the input,
    not per batch: there is no per-batch accounting in this repository and claiming one would
    be describing a mechanism that does not exist.
+   **Acceptance is a conjunction, never a default.** A record is `accepted` only when every
+   rule evaluated explicitly to true; a rule that returns NULL - "cannot answer" - quarantines
+   the record under that rule's own reason. There is no "undecidable" member of the enum: a
+   classification that reaches no branch is a fault in the PIPELINE, and it raises rather than
+   naming a reason. This is rule 8 because it is an accounting rule: when acceptance is the
+   leftover case, everything the system does not understand becomes revenue.
 9. **A refused return is reported, not dropped.** Returns outside the window and for more
    units than were sold are counted in `returns_rejected_count` on the month of the sale. A
    return **without an order** has no sale month to be counted on, so it is classified

@@ -6,6 +6,7 @@ the module is the machine-readable one, and this test is the join between them.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -34,6 +35,93 @@ BOUNDED_LANES = (
 )
 # `new_qty` before `qty` so the alternation does not match the tail of the longer name.
 COMPARISON = re.compile(r"\b(new_qty|qty|unit_price_cents)\b[^\n]{0,40}?(<=|>=|<|>)\s*(\d+)")
+
+
+# The bound literals, and the WIDTH they are written with.
+#
+# `1000000` is an INT32 literal in Spark SQL, and Spark coerces the OTHER operand to the
+# literal's type. On the STRING columns Auto Loader inferred before this lane had schema hints
+# that meant casting 9223372036854775807 to INT32, which overflows; non-ANSI Spark answers NULL
+# for that cast, the rule could not decide, and a classification whose default was `accepted`
+# booked three deliberately-bad events as 2.7e19 of revenue. Measured on pyspark 4.2.0 with `v`
+# a STRING holding 9223372036854775807: `v > 1000000` is NULL with ANSI off and true with it on;
+# `v > 1000000L` is true in both. docs/limits.md carries the table and the reason a single
+# workspace has both modes.
+#
+# The policy this pair of tests enforces, and its one deliberate exemption:
+#
+#   * Spark SQL (the Databricks rules): every bound literal carries `L`.
+#   * PySpark (`transform.py`): every bound literal goes through `_bound()`, which is
+#     `lit(value).cast("bigint")` - the same width, said in the dialect that file is written in.
+#   * DuckDB (`gold_revenue.sql`, `duckdb_gold.py`): EXEMPT, because the hazard does not exist
+#     there and pretending it does would be cargo. Measured on duckdb 1.5.5: comparing a VARCHAR
+#     column against an INTEGER literal is a BINDER ERROR, not a NULL - the reference refuses to
+#     run rather than quietly answering "unknown". Its numeric columns are JSON, converted
+#     through an explicit `json_type` guard and `TRY_CAST(... AS BIGINT)` before any comparison,
+#     so a literal never decides a type there.
+SPARK_DIALECT_LANE = "databricks/src/silver_expectations.py"
+PYSPARK_LANE = "src/samegold/pipelines/transform.py"
+BOUNDED_COLUMNS = ("qty", "new_qty", "unit_price_cents")
+BOUND_CONSTANTS = ("MAX_LINE_QUANTITY", "MAX_UNIT_PRICE_CENTS")
+# The bound literal, plus whatever character follows it. `L` is the one that must.
+SUFFIXED = re.compile(r"\b(new_qty|qty|unit_price_cents)\b[^\n]{0,40}?(<=|>=|<|>)\s*(\d+)(.?)")
+
+
+def _rule_predicates(relative: str) -> dict[str, str]:
+    """The lane's `RULES`, read WITHOUT importing it.
+
+    The fast workflow installs `.[dev]` and no Spark, and this file imports `pyspark` at module
+    level - which is how round seventeen pushed a red `fast` workflow. So the dict is read from
+    the AST, and every string constant inside each value is joined: implicit concatenation, the
+    f-string that splices `_PRESENT_FOR_TYPE`, all of it. Nothing is skipped, because a
+    predicate silently unread is a predicate silently unchecked.
+
+    Reading the RULES rather than grepping the file is also what keeps this test honest: the
+    file's own comments quote `unit_price_cents > 1000000` while explaining why that spelling
+    was the defect, and a regex over the text would fail on the explanation.
+    """
+    tree = ast.parse((REPO / relative).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "RULES" for t in node.targets
+        ):
+            assert isinstance(node.value, ast.Dict)
+            out: dict[str, str] = {}
+            for key, value in zip(node.value.keys, node.value.values, strict=True):
+                assert isinstance(key, ast.Constant)
+                out[str(key.value)] = " ".join(
+                    part.value
+                    for part in ast.walk(value)
+                    if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                )
+            return out
+    raise AssertionError(f"{relative} declares no RULES")
+
+
+def _bounded_comparisons(relative: str) -> list[tuple[str, ast.expr]]:
+    """Every comparison in a PySpark file whose left side is a bounded column.
+
+    Returned as (rendered comparison, the node on the right) so a test can inspect the RIGHT
+    side, which is where the literal's width is decided.
+
+    The first version of this helper deleted comments and string literals and ran a regex over
+    what was left. That cannot work in PySpark: the column name lives in a string literal, so
+    `F.col("qty") > 10000` becomes `F . col ( ) > 10000` and the regex has nothing to anchor on.
+    It found no offenders on a file that had them, which is a test that passes by being blind -
+    the exact failure mode this whole file exists to catch, committed while writing the test
+    for it.
+    """
+    tree = ast.parse((REPO / relative).read_text(encoding="utf-8"))
+    found: list[tuple[str, ast.expr]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        rendered = ast.unparse(node)
+        if not any(f"'{column}'" in rendered for column in BOUNDED_COLUMNS):
+            continue
+        for comparator in node.comparators:
+            found.append((rendered, comparator))
+    return found
 
 
 def _spaced(value: int) -> str:
@@ -83,6 +171,75 @@ def test_every_lane_compares_against_the_contracts_bounds_and_nothing_else() -> 
         assert found["price"] <= {0, MAX_UNIT_PRICE_CENTS}, f"{name} bounds a price elsewhere"
         assert MAX_LINE_QUANTITY in found["qty"], f"{name} does not apply the quantity bound"
         assert MAX_UNIT_PRICE_CENTS in found["price"], f"{name} does not apply the price bound"
+
+
+def test_the_spark_dialect_bound_literals_carry_their_width() -> None:
+    """The value was already checked. This checks the TYPE, which is what decided a close.
+
+    `test_every_lane_compares_against_the_contracts_bounds_and_nothing_else` above collects the
+    NUMBERS each lane compares against and requires them to be the contract's. Every one of them
+    was right on the lane that booked 2.7e19 as revenue: `1000000` is the contract's ceiling and
+    `1000000` is an INT32, and it was the second fact that decided the row. A test that reads a
+    literal's value and not its width cannot see that class of defect at all.
+    """
+    for name, predicate in _rule_predicates(SPARK_DIALECT_LANE).items():
+        for column, operator, literal, following in SUFFIXED.findall(predicate):
+            assert following == "L", (
+                f"{SPARK_DIALECT_LANE}: rule `{name}` compares {column} {operator} {literal} "
+                f"against a bare INT32 literal. Spark coerces the COLUMN to the literal's type, "
+                f"so on a string column this is the cast that overflowed and returned NULL. "
+                f"Write it {literal}L."
+            )
+
+
+def test_the_pyspark_lane_builds_its_bounds_with_a_declared_width() -> None:
+    """The same policy in the other dialect: `_bound()`, never a bare Python int.
+
+    `F.col("qty") > 10000` builds an INT32 literal exactly like the SQL spelling does. This lane
+    reads a declared schema, so its columns are BIGINT and the coercion is harmless here - which
+    is the argument for writing it anyway. The lane that could reach the hazard should not be
+    the only one that remembers it exists, and `transform.py` is the file the declarative
+    pipeline imports.
+    """
+    comparisons = _bounded_comparisons(PYSPARK_LANE)
+    typed = [
+        rendered
+        for rendered, comparator in comparisons
+        if isinstance(comparator, ast.Call)
+        and isinstance(comparator.func, ast.Name)
+        and comparator.func.id == "_bound"
+    ]
+    offenders = [
+        rendered
+        for rendered, comparator in comparisons
+        if (isinstance(comparator, ast.Constant) and isinstance(comparator.value, int))
+        or (isinstance(comparator, ast.Name) and comparator.id in BOUND_CONSTANTS)
+    ]
+    assert not offenders, (
+        f"{PYSPARK_LANE} compares a bounded column against a bare integer: {offenders}. Spark "
+        f"builds an INT32 literal for it and coerces the COLUMN to that type. Use _bound(), "
+        f"which casts it to bigint."
+    )
+    # And the check is not vacuous: the helper is what those comparisons are actually built
+    # with. The version of this test before it asserted over a token stream with the string
+    # literals stripped out, where a column name cannot appear at all, and reported a clean
+    # lane without having examined a single comparison.
+    assert len(typed) >= 6, (
+        f"only {len(typed)} bounded comparisons in {PYSPARK_LANE} go through _bound(); the "
+        f"classification declares six of them, so this test is not reading what it thinks"
+    )
+
+
+def test_the_limits_document_records_the_two_ansi_modes() -> None:
+    """The measurement that explains the policy has to live somewhere a reader will find it.
+
+    It was in a commit message. A commit message is not a document: nobody reading the rules
+    goes looking through `git log` for the reason one of them is spelled `1000000L`.
+    """
+    limits = (REPO / "docs" / "limits.md").read_text(encoding="utf-8")
+    assert "ansi" in limits.lower()
+    for phrase in ("1000000L", "9223372036854775807", "spark.sql.ansi.enabled"):
+        assert phrase in limits, f"docs/limits.md does not carry {phrase}"
 
 
 def test_the_bounds_leave_the_headroom_the_contract_states() -> None:

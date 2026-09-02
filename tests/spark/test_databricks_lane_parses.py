@@ -160,10 +160,32 @@ def _module_namespace(source: str, path: Path) -> dict[str, object]:
     Source order is the only order that works when declarations depend on each other, and the
     parser knows the source order. Anything this cannot evaluate raises, because a helper
     silently skipped is a predicate silently unparsed.
+
+    Module-level FUNCTIONS are evaluated too, and that is round eighteen rather than reach for
+    its own sake. `_REASON` is now `_classification(RULES)`: the rendering is a function so a
+    test can hand it a rule that is NULL by construction and watch the row be quarantined,
+    which is the only way to observe that property once the real rules are all decidable. A
+    reader that skipped the `def` would raise NameError on the very next line.
+
+    The namespace is its own globals, so a function defined here sees the constants defined
+    above it when it is CALLED, not only when it is compiled. `__builtins__` is empty in it for
+    the same reason it was empty before.
     """
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"__builtins__": {}}
     tree = ast.parse(source)
     for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            # Private, undecorated helpers only. A `@dp.table` in these files decorates the
+            # pipeline's own sources, and evaluating that decorator needs a Databricks runtime;
+            # a `def` with no decorator evaluates nothing but its own signature.
+            if node.decorator_list or not node.name.startswith("_"):
+                continue
+            exec(
+                compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"),
+                namespace,
+                namespace,
+            )
+            continue
         if not isinstance(node, ast.Assign) or len(node.targets) != 1:
             continue
         target = node.targets[0]
@@ -172,12 +194,12 @@ def _module_namespace(source: str, path: Path) -> dict[str, object]:
         if not (target.id.isupper() or target.id.lstrip("_").isupper()):
             continue
         try:
-            # No builtins: this evaluates string concatenation, dict literals, f-strings and
-            # the comprehension that renders RULES into a CASE, and nothing else can reach a
-            # name it was not handed.
+            # No builtins: this evaluates string concatenation, dict literals, f-strings, the
+            # comprehension that renders RULES into a CASE and the call to the renderer, and
+            # nothing else can reach a name it was not handed.
             namespace[target.id] = eval(
                 compile(ast.Expression(node.value), str(path), "eval"),
-                {"__builtins__": {}},
+                namespace,
                 namespace,
             )
         except NameError as error:

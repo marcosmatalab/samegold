@@ -265,6 +265,25 @@ SELECT
     -- being reported through the `no_event_id` door instead. Both are the same door in the
     -- Spark pipeline (`unparseable_json`), and this is now the same count.
     (SELECT count(*) FROM raw WHERE event_id IS NULL)            AS no_event_id,
+    -- A NUMBER THE COLUMN CANNOT HOLD, counted before anything nulls it.
+    --
+    -- The `typed` CTE above turns such a value into NULL, deliberately and in step with the
+    -- Spark reader, which drops it into `_rescued_data` and leaves the column NULL. From that
+    -- point on it is indistinguishable from a field the producer never sent: both leave through
+    -- `missing_required_field`, which is fail-closed and correct, and neither says that a value
+    -- was LOST rather than absent. The conservation invariant carried a `rescued=0` term with a
+    -- comment calling the rescue door structurally unused, and that stopped being true the
+    -- moment the generator emitted one of these.
+    --
+    -- `TRY_CAST(x AS HUGEINT) IS NOT NULL AND TRY_CAST(x AS BIGINT) IS NULL` is the whole
+    -- numbers that need more than 64 bits, and only those: a float (`2.5`) casts to BIGINT
+    -- without complaint and is a different fault, a quoted number casts too, and NULL casts to
+    -- NULL on both sides. Measured on duckdb 1.5.5 rather than reasoned about.
+    (SELECT count(*) FROM raw WHERE
+        (TRY_CAST(qty AS HUGEINT) IS NOT NULL AND TRY_CAST(qty AS BIGINT) IS NULL)
+     OR (TRY_CAST(new_qty AS HUGEINT) IS NOT NULL AND TRY_CAST(new_qty AS BIGINT) IS NULL)
+     OR (TRY_CAST(unit_price_cents AS HUGEINT) IS NOT NULL
+         AND TRY_CAST(unit_price_cents AS BIGINT) IS NULL))    AS beyond_bigint,
     (SELECT count(*) FROM tagged WHERE rn > 1)                   AS duplicates,
     (SELECT count(*) FROM unique_events)                         AS unique_events,
     (SELECT count(*) FROM classified WHERE bucket = 'accepted')  AS accepted,
@@ -323,7 +342,9 @@ def reference_counts(bronze_dir: Path) -> dict[str, int]:
     finally:
         con.close()
     assert row is not None
-    parsed, no_id, duplicates, unique_events, accepted, rejected = (int(x) for x in row)
+    parsed, no_id, beyond_bigint, duplicates, unique_events, accepted, rejected = (
+        int(x) for x in row
+    )
     # "unparseable_json" is the reason name from the contract, and it covers two shapes that
     # DuckDB reports differently: a line the reader dropped entirely (raw_lines - parsed) and
     # a line it read into an all-NULL row because the columns are declared (counted as
@@ -335,6 +356,11 @@ def reference_counts(bronze_dir: Path) -> dict[str, int]:
         "parsed_rows": parsed,
         "unparseable": (raw_lines - parsed) + no_id,
         "no_event_id": no_id,
+        # Not a door of its own: the record is still counted through whichever reason it leaves
+        # by (`missing_required_field`, once the rescue has emptied the column). This is the
+        # count that says the value was lost rather than never sent, and it is compared against
+        # the generator's own tally in verify/invariants.conservation_against_ledger.
+        "beyond_bigint": beyond_bigint,
         "duplicates": duplicates,
         "unique_events": unique_events,
         "accepted": accepted,

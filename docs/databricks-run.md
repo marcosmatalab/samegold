@@ -116,6 +116,32 @@ pass". The same NULL meant *drop* in one rendering and *accept* in the other.
 - The three events now land in `amount_out_of_range`, which is where the other two lanes send
   them, and needs no new quarantine reason.
 
+### What a review of that fix changed again, still without a re-run
+
+The fix above was read back a round later and three things in it were not finished. All three
+are in the repository and none of them has been near a workspace, which is the same sentence
+as the one at the top of this section and is why it is repeated rather than assumed.
+
+- **The literal still had no width.** Making a NULL predicate fail closed fixed the
+  consequence; the predicate was still NULL. Every bound literal in the rules now carries `L`
+  (`1000000L`, `10000L`, `0L`), which is the cheaper fix and the one that survives a pipeline
+  running before its schema is re-inferred. Re-measured on the reproduction - STRING columns,
+  ANSI off - no rule is undecidable and the Long.MaxValue record leaves through
+  `amount_out_of_range` rather than through the first rule that could not answer.
+- **`accepted` was still the `ELSE`.** Correct, because the branches are total, and correct by
+  an argument rather than by construction. It is now `WHEN <every rule holds> THEN 'accepted'`
+  over the same `RULES`, and the `ELSE` that remains is unreachable and raises: a record the
+  classification cannot classify is a pipeline fault, and is deliberately NOT a new member of
+  the closed enum.
+- **The rules agreed and their ORDER did not.** The OSS lane tested the bounds before the
+  currency; `RULES` declares the currency first. Measured on a record that breaks both: two
+  different doors for one record, on rules that are identical. The OSS branches follow `RULES`
+  now.
+
+`silver_expectations.py` is therefore not byte-identical to the file that produced the numbers
+below, and the next run has to be a `run-full-refresh` for the type hints to take effect at
+all.
+
 ## What the run returned
 
 ### The pipeline update

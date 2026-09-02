@@ -23,6 +23,30 @@ if TYPE_CHECKING:  # pragma: no cover
 
 ACCEPTED = "accepted"
 
+# The branch that must never be taken, and why it raises instead of naming a reason.
+#
+# `quarantine_reason()` below classifies positively: every fault test fails closed, and
+# `accepted` is the conjunction of their negations rather than the leftover case. Those two are
+# exhaustive, so the `otherwise` cannot be reached - and a branch that cannot be reached is
+# either deleted or made loud. Deleting it puts NULL in the column, which is the quietest
+# possible answer to "the classification did not classify"; NULL then flows into every consumer
+# that compares the reason to a string, and none of them would notice.
+#
+# It is deliberately NOT a new member of `QuarantineReason`. A quarantine reason is a statement
+# about a RECORD that an operator can act on; "no branch matched" is a statement about the
+# code. And the contract's enum is checked by
+# `tests/fast/test_contract_documents.py::test_every_quarantine_reason_is_actually_produced_by_
+# a_run`, which requires a generated run to produce every declared reason - so a reason for a
+# case that cannot happen would be a dead enum member from the day it landed, which is the
+# state `return_exceeds_sold_qty` was in for the whole life of the repository before that test
+# existed. The full ruling is in `databricks/src/silver_expectations.py`, next to the same
+# branch on the other lane.
+_UNREACHABLE = (
+    "raise_error('samegold: a record reached no branch of the classification. Every branch is "
+    "COALESCE(fault, true) and acceptance is the conjunction of their negations, so the two "
+    "are exhaustive. This is a defect in the pipeline, not a fault in the record.')"
+)
+
 # The columns the deduplication tie-break hashes. Every payload column, in this order, on
 # both sides of the comparison: the reference SQL concatenates the same names in the same
 # order and applies sha256 to the result. A column missing from this list is a column two
@@ -158,6 +182,34 @@ def deduplicate(df: DataFrame) -> DataFrame:
     )
 
 
+def _bound(value: int) -> Column:
+    """A bound literal with its WIDTH written down, never the bare Python int.
+
+    `F.col("qty") > 10000` builds an INT32 literal, and Spark coerces the other operand to the
+    LITERAL's type rather than the other way round. On a BIGINT column that is harmless - the
+    literal widens - and on a STRING column it is the defect that put 2.7e19 of revenue into a
+    published month: the string is cast to INT32, 9223372036854775807 overflows it, non-ANSI
+    Spark returns NULL for the cast, and a classification whose default was `accepted` booked
+    it. This lane reads a DECLARED schema, so its columns are BIGINT and the hazard is not
+    reachable here; the cast is the policy applied where it costs nothing, so that the one lane
+    that could reach it is not the only one that remembers. docs/limits.md has the measurement.
+    """
+    F = _f()
+    return F.lit(value).cast("bigint")
+
+
+def _closed(condition: Column) -> Column:
+    """A test for a FAULT that cannot answer counts as having found one.
+
+    The dual of the Databricks lane's `COALESCE(rule, false)`, and the same rule: the branches
+    here detect faults rather than assert health, so failing closed means COALESCE(fault, TRUE).
+    Without it a comparison the engine cannot evaluate is NULL, the `when` does not match, and
+    the row walks on to the next branch and eventually into `accepted`.
+    """
+    F = _f()
+    return F.coalesce(condition, F.lit(True))
+
+
 def quarantine_reason() -> Column:
     """The closed enum, as a single expression.
 
@@ -176,6 +228,17 @@ def quarantine_reason() -> Column:
     So the required fields are enumerated per event type in REQUIRED_FIELDS and checked for
     presence FIRST, and only then are the value rules applied to columns now known to be
     non-NULL.
+
+    ACCEPTANCE IS NOT THE `otherwise`. Every branch below is wrapped in `_closed`, so a test
+    that cannot answer finds a fault instead of passing the row along, and the accepted branch
+    then states its own condition - every fault test explicitly answered "no fault" - over the
+    same list the branches are built from. The `otherwise` that is left cannot be reached and
+    raises rather than classifying, which is the ruling recorded in
+    `databricks/src/silver_expectations.py`: a record the classification cannot classify is a
+    defect in the pipeline, not a reason in the contract's closed enum. This lane reads a
+    declared schema, so nothing here is undecidable today; the shape is what keeps that from
+    being the only thing between an unreadable value and a published month, which is all it was
+    on the lane that shipped.
     """
     F = _f()
 
@@ -190,30 +253,36 @@ def quarantine_reason() -> Column:
     for event_type in ("order_line_amended", "return_registered", "customer_upserted"):
         missing_any = missing_any | missing(event_type)
 
-    return (
+    # ONE declaration of the branches, in the ORDER the Databricks lane declares its `RULES`.
+    # The order is part of the contract between the two: it decides which door a record that
+    # breaks two rules leaves by, and the two lanes disagreed about exactly one pair -
+    # `unknown_currency` ran after the bounds here and before them there, so a line priced past
+    # the bound AND denominated in dollars was `amount_out_of_range` on this side and
+    # `unknown_currency` on that one. No record in the parity matrix broke two rules at once,
+    # so eighteen records agreed and the divergence sat underneath them. There is such a record
+    # in the matrix now.
+    branches: list[tuple[Column, str]] = [
         # A line the parser could not read at all arrives with every column NULL, including
         # event_id. It used to fall through to `accepted` and then be dropped by the
         # event_id filter in deduplicate(): a record leaving the pipeline with no counter,
         # which is exactly the failure the rest of this module exists to make impossible.
-        F.when(F.col("event_id").isNull(), F.lit("unparseable_json"))
-        .when(
+        (F.col("event_id").isNull(), "unparseable_json"),
+        (
             F.col("event_type").isNull()
             | ~F.col("event_type").isin(
                 "order_placed", "order_line_amended", "return_registered", "customer_upserted"
             ),
-            F.lit("unknown_event_type"),
-        )
+            "unknown_event_type",
+        ),
         # A timestamp the producer sent as something that is not a timestamp is a missing
         # required field, not a crash. _ts() returns NULL for it; so does the reference.
-        .when(
-            _ts("event_ts").isNull() | _ts("arrival_ts").isNull(),
-            F.lit("missing_required_field"),
-        )
-        .when(missing_any, F.lit("missing_required_field"))
-        .when(
-            (F.col("event_type").isin("order_placed", "return_registered")) & (F.col("qty") <= 0),
-            F.lit("non_positive_quantity"),
-        )
+        (_ts("event_ts").isNull() | _ts("arrival_ts").isNull(), "missing_required_field"),
+        (missing_any, "missing_required_field"),
+        (
+            (F.col("event_type").isin("order_placed", "return_registered"))
+            & (F.col("qty") <= _bound(0)),
+            "non_positive_quantity",
+        ),
         # An amendment to a quantity of zero or less is the same fault under another column
         # name, and no lane rejected it: the rule was gated on the two event types that carry
         # `qty`, and an order_line_amended carries `new_qty`. All three implementations agreed,
@@ -223,39 +292,57 @@ def quarantine_reason() -> Column:
         # A seed produces the zero now (boundary case 14 in generator/events.py), and it had
         # to: while nothing was standing at this door, widening it to `new_qty >= 0` unsold a
         # whole line and no witness noticed.
-        .when(
-            (F.col("event_type") == "order_line_amended") & (F.col("new_qty") <= 0),
-            F.lit("non_positive_quantity"),
-        )
-        .when(
-            (F.col("event_type") == "order_placed") & (F.col("unit_price_cents") < 0),
-            F.lit("negative_price"),
-        )
+        (
+            (F.col("event_type") == "order_line_amended") & (F.col("new_qty") <= _bound(0)),
+            "non_positive_quantity",
+        ),
+        (
+            (F.col("event_type") == "order_placed") & (F.col("unit_price_cents") < _bound(0)),
+            "negative_price",
+        ),
+        (
+            (F.col("event_type") == "order_placed") & (F.col("currency") != F.lit(CURRENCY)),
+            "unknown_currency",
+        ),
         # Bounded, because `qty * unit_price_cents` is a BIGINT multiplication and BIGINT
         # overflows. Three lines at the maximum legal price made this side refuse to produce
         # any close at all (ARITHMETIC_OVERFLOW) while the reference published a gross that
         # does not fit its own column. Every value was a legal BIGINT; nothing bounded them.
-        .when(
+        (
             (
                 F.col("event_type").isin("order_placed", "return_registered")
-                & (F.col("qty") > MAX_LINE_QUANTITY)
+                & (F.col("qty") > _bound(MAX_LINE_QUANTITY))
             )
             | (
                 (F.col("event_type") == "order_line_amended")
-                & (F.col("new_qty") > MAX_LINE_QUANTITY)
+                & (F.col("new_qty") > _bound(MAX_LINE_QUANTITY))
             )
             | (
                 (F.col("event_type") == "order_placed")
-                & (F.col("unit_price_cents") > MAX_UNIT_PRICE_CENTS)
+                & (F.col("unit_price_cents") > _bound(MAX_UNIT_PRICE_CENTS))
             ),
-            F.lit("amount_out_of_range"),
+            "amount_out_of_range",
+        ),
+    ]
+
+    classification = None
+    for condition, reason in branches:
+        closed = _closed(condition)
+        classification = (
+            F.when(closed, F.lit(reason))
+            if classification is None
+            else classification.when(closed, F.lit(reason))
         )
-        .when(
-            (F.col("event_type") == "order_placed") & (F.col("currency") != F.lit(CURRENCY)),
-            F.lit("unknown_currency"),
-        )
-        .otherwise(F.lit(ACCEPTED))
-    )
+    assert classification is not None
+
+    # `accepted`, stated. Not "whatever is left over": the conjunction of every fault test
+    # having explicitly answered no, built from the same list the branches were. The two select
+    # the same rows; only this one still says what it means after somebody adds a branch.
+    no_fault = ~_closed(branches[0][0])
+    for condition, _ in branches[1:]:
+        no_fault = no_fault & ~_closed(condition)
+
+    return classification.when(no_fault, F.lit(ACCEPTED)).otherwise(F.expr(_UNREACHABLE))
 
 
 def classify(df: DataFrame) -> DataFrame:

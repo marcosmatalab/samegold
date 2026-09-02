@@ -46,6 +46,26 @@ _PRESENT_FOR_TYPE = (
     " ELSE TRUE END"
 )
 
+# EVERY BOUND LITERAL CARRIES ITS WIDTH: `0L`, `10000L`, `1000000L`, never the bare number.
+#
+# `1000000` is an INT32 literal in Spark SQL, and the operand it is compared against is coerced
+# to THE LITERAL'S type, not the other way round. On the STRING columns Auto Loader inferred
+# before this lane had schema hints, `unit_price_cents > 1000000` therefore cast a string
+# holding 9223372036854775807 to INT32, which overflows; non-ANSI Spark yields NULL for that
+# cast, and the CASE whose ELSE was `accepted` turned three deliberately-bad events into 2.7e19
+# of revenue. Measured on pyspark 4.2.0, `v` a STRING holding 9223372036854775807:
+#
+#     expression        ansi=false   ansi=true
+#     v > 1000000       NULL         true
+#     v > 1000000L      true         true
+#     v >= 0            NULL         true
+#     CAST(v AS INT)    NULL         raises CAST_INVALID_INPUT
+#
+# The suffix is not a belt on top of the schema hints' braces. It is the cheaper of the two and
+# the one that keeps working when the other is not in force: the hints only apply after a full
+# refresh re-infers the schema, and the same expression is read by a SQL warehouse whose ANSI
+# mode is not the pipeline's (docs/limits.md records the divergence). `tests/fast/
+# test_contract_documents.py` refuses a bound literal here without its width.
 RULES = {
     "unparseable_json": "event_id IS NOT NULL",
     "unknown_event_type": (
@@ -60,23 +80,23 @@ RULES = {
         f" AND ({_PRESENT_FOR_TYPE})"
     ),
     "non_positive_quantity": (
-        "(event_type NOT IN ('order_placed','return_registered') OR qty > 0)"
+        "(event_type NOT IN ('order_placed','return_registered') OR qty > 0L)"
         # An amendment to a quantity of zero or less is the same fault by another name, and
         # no lane rejected it: `NON_POSITIVE_QUANTITY` was gated on the two event types that
         # carry `qty` and an `order_line_amended` carries `new_qty`. All three lanes agreed,
         # so no parity test could see it, and the generator's `max(1, ...)` guaranteed no
         # seed would produce it. An amendment to -5 drove gross revenue negative. The
         # generator emits the zero now, as boundary case 14.
-        " AND (event_type <> 'order_line_amended' OR new_qty > 0)"
+        " AND (event_type <> 'order_line_amended' OR new_qty > 0L)"
     ),
-    "negative_price": "event_type <> 'order_placed' OR unit_price_cents >= 0",
+    "negative_price": "event_type <> 'order_placed' OR unit_price_cents >= 0L",
     "unknown_currency": "event_type <> 'order_placed' OR currency = 'EUR'",
     # Bounded, because qty * unit_price_cents is a BIGINT multiplication. See
     # domain/contract.py: three lines at the maximum legal price ended the close outright.
     "amount_out_of_range": (
-        "(event_type NOT IN ('order_placed','return_registered') OR qty <= 10000)"
-        " AND (event_type <> 'order_line_amended' OR new_qty <= 10000)"
-        " AND (event_type <> 'order_placed' OR unit_price_cents <= 1000000)"
+        "(event_type NOT IN ('order_placed','return_registered') OR qty <= 10000L)"
+        " AND (event_type <> 'order_line_amended' OR new_qty <= 10000L)"
+        " AND (event_type <> 'order_placed' OR unit_price_cents <= 1000000L)"
     ),
 }
 
@@ -108,17 +128,88 @@ RULES = {
 #     revenue. Now a predicate that cannot answer sends the row through that rule's own door -
 #     the same door the expectation sends it through, by construction rather than by review.
 #
+# AND `accepted` IS NOT THE ELSE, which is round eighteen and is the same finding one step
+# further in. `WHEN NOT COALESCE(p, false) THEN reason ... ELSE 'accepted'` is CORRECT - the
+# branches are total, so falling through them means every rule said TRUE - and it is correct by
+# an argument a reader has to reconstruct, in the exact place where the last version was wrong
+# for want of that argument. Whoever next adds a rule to `RULES` and a hand-written branch
+# beside it, or drops a `COALESCE` while rewording a predicate, re-opens the door silently:
+# `accepted` is again whatever is left over after the branches, and what is left over is
+# exactly what the system did not understand. So it is written as what it means:
+#
+#     WHEN <every rule holds> THEN 'accepted'
+#
+# a conjunction over the SAME `RULES`, in the same generated expression. The two forms select
+# the same rows today; only this one keeps saying so after an edit.
+#
+# The ELSE is then unreachable by construction, and gets the only honest occupant for a branch
+# that must never be taken: `raise_error`. See the ruling in `_UNREACHABLE` below - the case is
+# a PIPELINE fault, not a quarantine reason, and the difference is that a quarantine reason is
+# a statement about the data.
+#
 # `undecided_rules` names any rule that evaluated to NULL on a row. With the types declared at
 # ingest it should always be empty; it is carried and counted so that if it is ever non-empty
 # the run says so, instead of the row being quietly quarantined under a business reason and the
 # defect going unnoticed. tests/spark asserts it is empty for every record in the matrix.
-_REASON = (
-    "CASE "
-    + " ".join(
-        f"WHEN NOT COALESCE({predicate}, false) THEN '{name}'" for name, predicate in RULES.items()
-    )
-    + " ELSE 'accepted' END"
+
+# What happens to a record that reaches no branch at all, and why it is not a quarantine reason.
+#
+# It was tempting to give this case a name in the closed enum - `undecidable_rule`, say - and
+# route it there. That is the wrong shape, and `test_every_quarantine_reason_is_actually_
+# produced_by_a_run` is what says so: every declared reason must be PRODUCED by a generated
+# run, because a reason nobody can produce is a branch nobody maintains (that test exists
+# because `return_exceeds_sold_qty` sat unreachable in all three implementations for the whole
+# life of the repository). With the columns typed at ingest, no rule can be undecidable, so no
+# seed could produce the new reason and the enum would gain a dead member the moment the fix
+# landed. Extending a closed enum to describe something that cannot happen makes the enum
+# describe the code's fears rather than the data's shapes.
+#
+# The other honest exit is the one taken: this is a fault in the PIPELINE, not in the record.
+# A quarantine reason is a statement about a record - "this price is negative" - that an
+# operator can act on. "The classification did not classify" is a statement about the
+# classification, and the right response is to stop and say so, loudly, with the row that did
+# it. `raise_error` fails the pipeline update; the event log carries the message.
+#
+# So the accounting is unchanged: a record is accepted, quarantined under one of the contract's
+# reasons, rescued, or deduplicated. There is no fifth door, and this branch does not open one.
+_UNREACHABLE = (
+    "raise_error('samegold: a record reached no branch of the classification. Acceptance is "
+    "the conjunction of every rule in RULES and each rejection branch is COALESCE(rule, "
+    "false), so the two are exhaustive and this is unreachable unless the derivation itself "
+    "was changed. This is a defect in the pipeline, not a fault in the record.')"
 )
+
+
+def _classification(rules: dict[str, str]) -> str:
+    """`RULES` rendered as the CASE the pipeline evaluates. A FUNCTION, so a test can feed it
+    rules of its own.
+
+    That is not a convenience. The property the round-seventeen defect turned on - a rule that
+    cannot answer must not produce revenue - is unobservable on this lane's real rules, because
+    once bronze is typed and the bound literals carry their width, none of them CAN return NULL
+    (that is the point of both fixes, and `test_no_rule_is_undecidable_on_any_record_of_the_
+    matrix` asserts it). A property that only holds vacuously is a property nothing is testing.
+
+    So the test passes in a rule that is NULL by construction and asserts the classification
+    quarantines the row. Rendering it here rather than in the test is the whole argument: the
+    version of this comparison that existed before rebuilt the CASE inside the test, in the
+    open-failing form, and therefore agreed with the defect instead of finding it.
+    """
+    return (
+        "CASE "
+        + " ".join(
+            f"WHEN NOT COALESCE({predicate}, false) THEN '{name}'"
+            for name, predicate in rules.items()
+        )
+        + " WHEN "
+        + " AND ".join(f"COALESCE({predicate}, false)" for predicate in rules.values())
+        + " THEN 'accepted'"
+        + f" ELSE {_UNREACHABLE} END"
+    )
+
+
+_REASON = _classification(RULES)
+
 
 # The rule that DECIDED the row, and only if it could not answer.
 #
@@ -131,15 +222,19 @@ _REASON = (
 # What matters is the rule the row actually left through. If THAT one returned NULL, the row
 # was quarantined under a reason nothing established - fail closed, which is right, but on a
 # guess - and the run has to say so.
-_UNDECIDED = (
-    "CASE "
-    + " ".join(
-        f"WHEN NOT COALESCE({predicate}, false) "
-        f"THEN (CASE WHEN ({predicate}) IS NULL THEN '{name}' ELSE '' END)"
-        for name, predicate in RULES.items()
+def _undecided(rules: dict[str, str]) -> str:
+    return (
+        "CASE "
+        + " ".join(
+            f"WHEN NOT COALESCE({predicate}, false) "
+            f"THEN (CASE WHEN ({predicate}) IS NULL THEN '{name}' ELSE '' END)"
+            for name, predicate in rules.items()
+        )
+        + " ELSE '' END"
     )
-    + " ELSE '' END"
-)
+
+
+_UNDECIDED = _undecided(RULES)
 
 
 @dp.table(name="silver_classified", comment="Every event, tagged with why it was accepted.")

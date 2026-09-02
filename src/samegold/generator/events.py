@@ -443,6 +443,27 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         (QuarantineReason.RETURN_WITHOUT_ORDER, "orphan_return"),
         (QuarantineReason.UNKNOWN_CURRENCY, "bad_currency"),
         (QuarantineReason.AMOUNT_OUT_OF_RANGE, "huge_amount"),
+        # A number that does not FIT the column, as opposed to one that fits and breaks a
+        # business rule. `huge_amount` above is Long.MaxValue: a legal BIGINT, read into the
+        # column, refused by the contract's bound. This one is Long.MaxValue plus one, and no
+        # rule ever sees it, because the READER cannot put it in a BIGINT column.
+        #
+        # Every lane does the same thing with it, measured rather than assumed: Spark reading
+        # a declared schema in PERMISSIVE mode nulls that ONE column and copies the raw line
+        # into `_rescued_data` (the rest of the record survives); Auto Loader with the schema
+        # hints does the same into its rescued column; DuckDB reads it as JSON, `json_type`
+        # calls it UBIGINT and `TRY_CAST(... AS BIGINT)` returns NULL. So the value is gone and
+        # the column is NULL in all three - and `missing_required_field` catches it, because
+        # after the rescue the field IS missing.
+        #
+        # It is generated for the failure it is one edit away from: the door out of here is a
+        # NULL column, which is the quietest thing a pipeline can produce. Nothing counted the
+        # rescue at all - `claims.py` passed `rescued=0` to the conservation invariant and
+        # called the term structurally zero - so a value that vanished into the rescue column
+        # was accounted for only by the presence rule that happened to be standing behind it.
+        # `values_beyond_bigint` in the ledger is now counted at write time and compared
+        # against the reference's own recount, so the row is counted as WELL as classified.
+        (QuarantineReason.MISSING_REQUIRED_FIELD, "beyond_bigint"),
     ]
     for i in range(n_corrupt):
         reason, kind = corrupt_kinds[i % len(corrupt_kinds)]
@@ -499,6 +520,21 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 "sku": skus[0],
                 "qty": 1,
                 "unit_price_cents": 9223372036854775807,
+                "currency": CURRENCY,
+            }
+        elif kind == "beyond_bigint":
+            # 2^63, one past the largest BIGINT. Written as a JSON NUMBER on purpose: quoting
+            # it would test the reader's string handling instead, and the shape that reached
+            # production was a number.
+            rec = {
+                "event_id": eid,
+                "event_type": "order_placed",
+                "event_ts": ts,
+                "order_id": f"OBAD{i}",
+                "customer_id": customers[0],
+                "sku": skus[0],
+                "qty": 1,
+                "unit_price_cents": 2**63,
                 "currency": CURRENCY,
             }
         elif kind == "orphan_return":
@@ -1376,6 +1412,12 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     parseable_event_ids: set[str] = set()
     duplicate_lines = 0
     unparseable_lines = 0
+    # Counted the same way and for the same reason as the three above: at write time, over the
+    # lines that actually reach the files, so that the reference can recount it from the bytes
+    # and the two derivations are independent. A value outside BIGINT is dropped by every
+    # reader in this project into a NULL column, which is the one fault shape that leaves no
+    # trace of itself in the record - so the count is the trace.
+    beyond_bigint_lines = 0
     try:
         for arrival, rec in events:
             key = int(arrival.timestamp()) // bucket
@@ -1402,6 +1444,13 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             if raw is not None or rec.get("event_id") is None:
                 unparseable_lines += 1
                 continue
+            if any(
+                isinstance(rec.get(column), int)
+                and not isinstance(rec.get(column), bool)
+                and not (-(2**63) <= int(rec[column]) <= 2**63 - 1)
+                for column in ("qty", "new_qty", "unit_price_cents")
+            ):
+                beyond_bigint_lines += 1
             event_id = str(rec["event_id"])
             if event_id in parseable_event_ids:
                 duplicate_lines += 1
@@ -1421,6 +1470,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         # drawn with replacement, so drawing the same original twice writes three copies of
         # one event rather than two copies of two.
         "unparseable_lines": unparseable_lines,
+        "values_beyond_bigint": beyond_bigint_lines,
         "duplicates_planned": n_dup,
         "unique_originals": len(originals),
         "duplicates_late": duplicates_late,

@@ -92,7 +92,7 @@ def test_heavy_dependencies_stay_in_their_lane(package: str, path: Path) -> None
         return
     for name in _imports(path):
         root = name.split(".")[0]
-        if root in HEAVY and package not in HEAVY[root] and path.name != "record.py":
+        if root in HEAVY and package not in HEAVY[root]:
             pytest.fail(
                 f"{path.relative_to(SRC)} imports {root}, which is only allowed in "
                 f"{sorted(HEAVY[root])}. The fast lane must run with none of them installed."
@@ -106,6 +106,44 @@ def test_the_fast_lane_does_not_need_pyspark() -> None:
     assert "pyspark" not in sys.modules, (
         "importing the fast lane pulled in pyspark; something in domain/verify/generator "
         "started depending on Spark and the fast lane just became a 25-second lane"
+    )
+
+
+def test_recording_the_environment_does_not_import_what_it_reports_on() -> None:
+    """The version fingerprint is read from distribution metadata, never by importing.
+
+    It used to be `__import__("pyspark")`, which answers the question and leaves `pyspark`,
+    `delta` and `py4j` in `sys.modules`. Every fast-lane test that writes an evidence record
+    therefore tripped the session hook in `conftest.py` and the fast lane exited 1 on any
+    machine with the Spark extras installed - two files, sixteen tests, on both machines this
+    project is developed on, while pytest's summary line still read `57 passed` and nobody read
+    the exit status. The `fast` workflow, which has no Spark to import, stayed green throughout.
+
+    So this is not a style rule. It is the check that the fast lane's own gate is measuring the
+    thing it claims to measure, on the machines where it can be wrong.
+    """
+    import sys
+
+    from samegold.evidence.record import environment_fingerprint
+
+    before = set(sys.modules)
+    fingerprint = environment_fingerprint()
+    leaked = sorted(
+        name
+        for name in set(sys.modules) - before
+        if name.split(".")[0] in {"pyspark", "delta", "py4j", "deltalake", "duckdb", "pyarrow"}
+    )
+    assert not leaked, (
+        f"recording the environment imported {leaked}. It is read from installed distribution "
+        f"metadata precisely so that it does not have to."
+    )
+    # And it is not answering "absent" to everything, which would pass the check above while
+    # recording nothing. Whatever this machine has, the fingerprint has to name it: python and
+    # platform are always there, and duckdb is a hard dependency of every lane.
+    assert fingerprint["python"] and fingerprint["platform"]
+    assert fingerprint["duckdb"] != "absent", (
+        "duckdb is a required dependency and the fingerprint calls it absent, so the metadata "
+        "lookup is failing and every version in every evidence record is a blank"
     )
 
 
