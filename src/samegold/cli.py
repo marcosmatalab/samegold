@@ -202,7 +202,12 @@ def cmd_readme(args: argparse.Namespace) -> int:
         if not path.exists():
             continue
         text = path.read_text(encoding="utf-8")
-        path.write_text(render_readme(text, latest), encoding="utf-8")
+        # LF, for the same reason `EvidenceStore.append` writes LF: `make readme` from a
+        # Windows shell used to rewrite every rendered document with CRLF, which git hides
+        # (this repository normalises on commit) and a second git on the same checkout does
+        # not - and a document whose bytes say "modified" makes every evidence record produced
+        # beside it claim an uncommitted tree.
+        path.write_text(render_readme(text, latest), encoding="utf-8", newline="\n")
         print(f"rendered {name}")
     return 0
 
@@ -290,7 +295,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     versions = revenue_versions(work / "report" / "bronze", closes)
     page = render_report(versions, dt.datetime.now(dt.UTC))
     out = Path(args.out)
-    out.write_text(page, encoding="utf-8")
+    out.write_text(page, encoding="utf-8", newline="\n")
     months = len({version["accounting_month"] for version in versions})
     print(f"{out} ({len(versions)} versions of {months} months)")
     if not args.work:

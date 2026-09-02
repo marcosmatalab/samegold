@@ -350,3 +350,41 @@ def test_the_append_only_policy_is_stated_before_the_numbers() -> None:
     )
     assert adr.exists(), "the policy names an ADR that does not exist"
     assert adr.name in policy, "README does not point at the ADR that holds the full policy"
+
+
+def test_the_chain_is_written_with_one_kind_of_line_ending(tmp_path: Path) -> None:
+    """A record's bytes must not depend on which shell appended it.
+
+    Python's text mode translates "\n" to "\r\n" on Windows, so `evidence/history.jsonl` grew
+    CRLF lines when a claim ran from the Windows shell and LF lines when the same claim ran
+    under WSL - 67 of one and 83 of the other, measured, in one append-only chain. Nothing
+    verified wrongly: the hashes are over each record's JSON, not over the file's bytes.
+
+    The damage was one level out. A git that normalises line endings on read (the Windows
+    checkout's) called the tree clean; a git that does not (WSL's, on the same directory)
+    called thirty-seven files modified - so `current_tree()` reported DIRTY on a tree that was
+    byte-for-byte a commit, and every record produced under WSL carried "on an uncommitted
+    tree" in its provenance. SG-07 is the claim that has to run there, because it needs a JVM.
+    A false caveat on good evidence is still a wrong label, and provenance is the one field
+    this chain exists to make trustworthy.
+    """
+    store = EvidenceStore(tmp_path)
+    store.append(_record("SG-01"))
+    store.append(_record("SG-02"))
+    written = (tmp_path / "history.jsonl").read_bytes()
+    assert written.count(b"\r\n") == 0, "the chain was written with CRLF line endings"
+    assert written.count(b"\n") == 2
+    assert (tmp_path / "runs" / "SG-01.json").read_bytes().count(b"\r\n") == 0
+
+
+@pytest.mark.evidence_dependent
+def test_this_repositorys_own_chain_has_no_crlf() -> None:
+    """And the artifact itself, because the fix above only governs records written after it."""
+    written = (REPO / "evidence" / "history.jsonl").read_bytes()
+    crlf = written.count(b"\r\n")
+    assert crlf == 0, (
+        f"{crlf} of the {written.count(chr(10).encode())} records in the chain are CRLF-"
+        f"terminated. They verify - the hashes are over the JSON - but the file's bytes now "
+        f"depend on which shell wrote each line, and a second git on the same checkout reads "
+        f"that as an uncommitted tree."
+    )
