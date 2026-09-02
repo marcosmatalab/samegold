@@ -272,6 +272,21 @@ LANE_TABLES = {
     "silver_classified": BRONZE_COLUMNS + ", quarantine_reason STRING",
     "silver_events": BRONZE_COLUMNS,
     "t": BRONZE_COLUMNS,  # the wrapper the expectation predicates are analysed in
+    # The quarantine table, which is `silver_classified` filtered down to four columns
+    # (silver_expectations.py). It was missing from this dict too, and nothing said so: the
+    # only statement that reads it is the row-count query, and that statement was the one the
+    # by-ordinal exclusion list below was silently skipping.
+    "silver_quarantine": (
+        "event_id STRING, event_type STRING, arrival_ts STRING, quarantine_reason STRING"
+    ),
+    # The AUTO CDC target. `__START_AT` and `__END_AT` are columns the PRIMITIVE adds to a
+    # Type 2 target - they are not declared anywhere in this repository, which is exactly why
+    # a statement reading them has to be analysed against a view that has them. The other
+    # three are what `gold_close.silver_events_customers` feeds the flow (`event_ts` becomes
+    # the sequencing column and does not survive into the target).
+    "dim_customer_scd2": (
+        "customer_id STRING, segment STRING, country STRING, __START_AT STRING, __END_AT STRING"
+    ),
     "revenue_by_month": (
         "accounting_month STRING, gross_cents BIGINT, returns_cents BIGINT, net_cents BIGINT, "
         "line_count BIGINT, return_count BIGINT, returns_rejected_count BIGINT"
@@ -283,21 +298,35 @@ LANE_TABLES = {
     ),
 }
 
-# Statements this check cannot reach, each for a stated reason. The list is closed and the
-# test below fails if it grows, because "the analyser could not see it" is the excuse that
-# would put the next missing column back.
-NOT_ANALYSABLE = {
-    # event_log() is a Databricks table-valued function with no OSS equivalent.
-    "databricks/src/publish_evidence.py#0::0",
-    "databricks/src/publish_evidence.py#1::0",
-    "databricks/src/publish_evidence.py#2::0",
-    # is_account_group_member() and current_user_country() are Unity Catalog functions. The
-    # policy statements are parsed; their bodies call routines that do not exist outside a
-    # workspace, and docs/limits.md already says these policies are demonstrated rather than
-    # enforced on Free Edition.
-    "databricks/sql/policies.sql::0",
-    "databricks/sql/policies.sql::1",
-}
+# Statements this check cannot reach, and the reason has to be IN THE STATEMENT.
+#
+# This list used to be five statement ids - `publish_evidence.py#0::0` and so on - and the
+# index in that id is the statement's ORDINAL within its file. Round 13 inserted three
+# statements into publish_evidence.py, every ordinal after the first shifted, and the list
+# went on excluding "#2", which by then was a plain `SELECT ... UNION ALL` over seven tables
+# and perfectly analysable. So one statement stopped being checked without anyone touching
+# the check, which is the failure this whole file exists to catch, one level up.
+#
+# A routine that does not exist outside a workspace is a property of the TEXT, so it is read
+# from the text. An id can then only be wrong loudly: the closed list below names which
+# statements this currently excludes, and it fails when that set changes for any reason.
+DATABRICKS_ONLY_ROUTINES = (
+    # A table-valued function over the pipeline event log; there is no OSS equivalent.
+    "EVENT_LOG(",
+    # Unity Catalog functions. The policy statements are parsed; their bodies call routines
+    # that do not exist outside a workspace, and docs/limits.md already says these policies
+    # are declared rather than enforced on Free Edition.
+    "IS_ACCOUNT_GROUP_MEMBER(",
+    "CURRENT_USER_COUNTRY(",
+)
+
+
+def _calls_a_databricks_routine(statement: str) -> bool:
+    """Comments stripped, for the same reason `_is_databricks_only` strips them."""
+    code = "\n".join(
+        line for line in statement.splitlines() if not line.strip().startswith("--")
+    ).upper()
+    return any(routine in code for routine in DATABRICKS_ONLY_ROUTINES)
 
 
 @pytest.fixture(scope="module")
@@ -318,14 +347,25 @@ def _single_part(statement: str) -> str:
     return statement.replace("samegold.main.", "")
 
 
-ANALYSABLE = [(name, part) for name, part in STATEMENTS if name not in NOT_ANALYSABLE]
+ANALYSABLE = [(n, p) for n, p in STATEMENTS if not _calls_a_databricks_routine(p)]
+NOT_ANALYSABLE = [(n, p) for n, p in STATEMENTS if _calls_a_databricks_routine(p)]
 
 
 def test_almost_every_statement_is_analysable() -> None:
-    """The exclusion list is closed, and every entry names a Databricks-only routine."""
-    excluded = {name for name, _ in STATEMENTS} & NOT_ANALYSABLE
-    assert len(ANALYSABLE) >= 9, [name for name, _ in ANALYSABLE]
-    assert excluded <= NOT_ANALYSABLE
+    """The exclusion list is closed, and every entry names a Databricks-only routine.
+
+    The previous version of this test asserted `excluded <= NOT_ANALYSABLE` where `excluded`
+    had just been intersected WITH `NOT_ANALYSABLE`: a subset check against the set it was
+    filtered by, which is true for every input. It reported the size of the list and nothing
+    about its contents, and that is how an id kept excluding a statement it no longer named.
+    """
+    assert [name for name, _ in NOT_ANALYSABLE] == [
+        "databricks/src/publish_evidence.py#0::0",
+        "databricks/src/publish_evidence.py#1::0",
+        "databricks/sql/policies.sql::0",
+        "databricks/sql/policies.sql::1",
+    ], [name for name, _ in NOT_ANALYSABLE]
+    assert len(ANALYSABLE) >= 12, [name for name, _ in ANALYSABLE]
 
 
 @pytest.mark.spark

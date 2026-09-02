@@ -1,0 +1,14 @@
+# Line endings, and this is not a style preference.
+#
+# These files are executed by a POSIX shell: on a GitHub runner, inside WSL2 against a
+# checkout on /mnt/c, and in a container. Written from Windows they get CRLF, and bash then
+# fails with `$'\r': command not found` on line after line and dies at the first `for ... do`.
+#
+# It failed loudly rather than quietly - a CRLF `scripts/preflight.sh` reports failure, it
+# does not report a green gate that ran nothing. But it failed on exactly the path
+# CONTRIBUTING.md tells a Windows contributor to use, which is the path the gate exists for.
+#
+# tests/fast/test_preflight.py checks the bytes as well, because a .gitattributes only
+# governs checkouts made after it was added.
+*.sh text eol=lf
+Makefile text eol=lf

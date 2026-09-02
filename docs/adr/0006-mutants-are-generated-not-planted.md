@@ -67,3 +67,44 @@ and a result that does not carry its scope is read as if the scope were everythi
 mutation score's scope was the data it ran on; the lint command's scope was two directories;
 the bound rationale's scope was an arithmetic nobody performed. Each read as a statement about
 the whole.
+
+## The fourth, and the reason this ADR is now about the machine as well as the command
+
+Round 13 added a query over the AUTO CDC dimension to `databricks/src/publish_evidence.py`,
+did not add that view to the test that analyses the lane's columns, ran the fast lane, and
+pushed. The `spark` workflow went red. The round that wrote the paragraph above about a
+green tick reporting the scope of a command shipped the same defect one directory away.
+
+The scope this time was not a directory. It was **the machine**. `make ci-local` ran the fast
+workflow and was named as though it ran CI; the Spark lanes need a JVM, and on the machine
+this repository is written on they run only inside WSL2, so the local gate never touched
+them. Nothing lied. `pytest tests/fast -q` was green and said so, and the name of the command
+that ran it said "ci". The distinction between "green here" and "green in the repository" is
+the same distinction round 12 was about - and it survived being written down, because what
+was written down was a document and what needed changing was a command.
+
+Two things came out of it, and only the second is a fix:
+
+- the case: `dim_customer_scd2` and `silver_quarantine` are in `LANE_TABLES` now. The second
+  of those was missing all along and nothing had ever said so, because the only statement
+  that reads it was being skipped - see below.
+- the class: `scripts/preflight.sh` runs both workflows, `make preflight` replaces
+  `make ci-local`, and `tests/fast/test_preflight.py` fails if a check CI runs is missing
+  from that script or if a new workflow is neither covered nor explicitly excluded. The
+  script exits **non-zero for a lane it could not run**, so a machine that cannot execute
+  Spark cannot produce a green gate. "It passed on my machine" now either means what it says
+  or refuses to say it.
+
+The skipped statement is worth its own line, because it is this ADR's general form in
+miniature. The list of statements the column check could not analyse was written as five
+statement ids of the form `publish_evidence.py#2::0`, where the number is the statement's
+ORDINAL in its file. Round 13 inserted statements above it. Every ordinal shifted, the list
+went on excluding "#2", and "#2" was by then an ordinary `SELECT` that the check could have
+analysed perfectly well. A check stopped covering a statement with nobody touching the check,
+and the test guarding the exclusion list asserted `excluded <= NOT_ANALYSABLE` after
+intersecting `excluded` WITH `NOT_ANALYSABLE` - true for every input, in every universe. The
+exclusion is read from the statement's text now (does it call `event_log(`?), and the closed
+list of what that currently excludes is asserted by name, so it can only be wrong loudly.
+
+So the sentence gets a second clause: **a measurement's scope includes the machine it ran on,
+and a gate that cannot run a lane must not be able to report success.**
