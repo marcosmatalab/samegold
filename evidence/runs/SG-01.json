@@ -17,12 +17,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "9d9f521602655999fa05b8ab4bcdf94b",
+  "hash": "6b2a9a4ce3dafa292ce7486bd699d688",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "a8243431b1142e7e5b5dfb66e4649429",
+  "prev": "887fffb828581464c42bcf2ab90e6bcf",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -39,21 +39,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
-      "duration_s": 12.039,
+      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
+      "duration_s": 11.803,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        14031494798453816383,
-        7627334427564918244,
-        6474241077557015736
+        10244191852119550493,
+        761757690275808501,
+        1867131802216767829
       ],
-      "started_at": "2026-09-02T08:51:55+00:00",
+      "started_at": "2026-09-02T10:17:23+00:00",
       "tree_dirty": true,
-      "tree_sha": "faafcd913b05827973d3a7687e5a39fdeab0c97a"
+      "tree_sha": "ad9c0b943847f920fabb13c6b27f8fbfb2b122bd"
     }
   }
 }

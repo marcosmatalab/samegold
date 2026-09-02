@@ -245,11 +245,11 @@ classified AS (
             -- Bounded: qty * unit_price_cents is a BIGINT multiplication and BIGINT
             -- overflows. See domain/contract.py for the numbers and the incident.
             WHEN (event_type IN ('order_placed','return_registered')
-                  AND CAST(qty AS BIGINT) > 10000000)
+                  AND CAST(qty AS BIGINT) > 10000)
                  OR (event_type = 'order_line_amended'
-                     AND CAST(new_qty AS BIGINT) > 10000000)
+                     AND CAST(new_qty AS BIGINT) > 10000)
                  OR (event_type = 'order_placed'
-                     AND CAST(unit_price_cents AS BIGINT) > 10000000000)
+                     AND CAST(unit_price_cents AS BIGINT) > 1000000)
                 THEN 'amount_out_of_range'
             WHEN event_type = 'order_placed' AND currency <> 'EUR'
                 THEN 'unknown_currency'

@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 251,
+    "dimension_rows": 246,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -9,7 +9,7 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 240,
+      "rows_deleted": 236,
       "version_after": 3,
       "version_before": 0
     }
@@ -27,12 +27,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "80787688c6cd0e749cbb704d5de1b99a",
+  "hash": "bf6f27658182ccee8ceb7c999b25251c",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "1ab162c17df66ae5819dc4c713201fc1",
+  "prev": "94dcf789e77a28b6286175b4655ff596",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "c6117c0cdd8de23ba717dedcb7ab5008b92a7e21",
-      "duration_s": 2.766,
+      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
+      "duration_s": 2.644,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        857803971288870102
+        7541231287755713168
       ],
-      "started_at": "2026-09-02T08:57:24+00:00",
+      "started_at": "2026-09-02T10:22:50+00:00",
       "tree_dirty": true,
-      "tree_sha": "eb7a1d2d3e31b53b573c6dd7f43c642bbd4904fa"
+      "tree_sha": "e260bc0fb7752092bc6ef20aab08465583ad8d34"
     }
   }
 }

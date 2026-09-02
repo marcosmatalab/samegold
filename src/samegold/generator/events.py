@@ -112,6 +112,24 @@ class Ledger:
 
     revenue: dict[tuple[str, str], dict[str, int]] = field(default_factory=dict)
     """(accounting_month, as_of_close_iso) -> {gross_cents, returns_cents, net_cents}"""
+    business_revenue: dict[tuple[str, str], dict[str, int]] = field(default_factory=dict)
+    """The same, over the simulated shop ONLY: every boundary fixture excluded.
+
+    Two projections of one arithmetic, not two ledgers. ``revenue`` is the close - every
+    accepted line, fixtures included - and it is what the pipelines are compared against,
+    because a fixture the close drops is a bug and a fixture it miscounts is a bug.
+
+    ``business_revenue`` exists because SG-04 publishes a PERCENTAGE OF A MONTH on the front
+    page of the README, and a boundary case is scaffolding. The point is structural rather
+    than a matter of degree: a case that tests the price bound must sit exactly on it, so it
+    is by construction the largest single line the contract allows, and it lands in whatever
+    month the fixtures use. At the bounds this project shipped for one round - a hundred
+    million euros a unit - that one line was 168 times the whole simulated business of its
+    month, it moved the published restatement figure from 6.48% to 3.38% and it moved which
+    month was worst. Nothing about the pipeline had changed. The bounds are business-sized
+    now (see domain/contract.py), which takes the distortion from 168x to under 2%, and under
+    2% of a headline business number is still the harness measuring itself.
+    """
     dim_customer: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     """customer_id -> ordered SCD2 versions"""
     quarantine: dict[str, int] = field(default_factory=dict)
@@ -123,6 +141,10 @@ class Ledger:
             "revenue": [
                 {"accounting_month": m, "as_of": a, **v}
                 for (m, a), v in sorted(self.revenue.items())
+            ],
+            "business_revenue": [
+                {"accounting_month": m, "as_of": a, **v}
+                for (m, a), v in sorted(self.business_revenue.items())
             ],
             "dim_customer": self.dim_customer,
             "quarantine": self.quarantine,
@@ -165,6 +187,15 @@ def _delay(rng: random.Random, p: Profile) -> dt.timedelta:
         return dt.timedelta(hours=rng.uniform(2.0, p.arrival_delay_tail_hours))
     minutes = rng.expovariate(1.0 / p.arrival_delay_mean_minutes)
     return dt.timedelta(minutes=min(minutes, 240.0))
+
+
+def _scopes(entry: dict[str, Any]) -> tuple[str, ...]:
+    """Which ledger projections a fact or a return belongs to.
+
+    Everything is part of the close. Only the entries a boundary case created carry a
+    ``boundary`` tag, and only those are held out of the business projection.
+    """
+    return ("all",) if "boundary" in entry else ("all", "business")
 
 
 def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationResult:
@@ -562,6 +593,11 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 "unit_price_cents": price,
                 "sale_ts": sale_ts,
                 "arrival_ts": arrival,
+                # Marks this line as SCAFFOLDING. It is part of the close like any other line
+                # and every witness must reproduce it; it is kept out of the business
+                # projection of the ledger, because a fixture chosen to sit on a contract
+                # bound describes the contract and not the shop. See Ledger.business_revenue.
+                "boundary": tag,
             }
         return order_id, sku
 
@@ -658,6 +694,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     "unit_price_cents": price,
                     "sale_ts": sale_ts,
                     "arrival_ts": arrival,
+                    "boundary": tag,
                 }
             )
             return
@@ -666,7 +703,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
             str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY),
         ):
-            rejected_returns.append({"sale_ts": sale_ts, "arrival_ts": arrival, "reason": outcome})
+            rejected_returns.append(
+                {"sale_ts": sale_ts, "arrival_ts": arrival, "reason": outcome, "boundary": tag}
+            )
 
     mid = base_ts + dt.timedelta(days=max(1, profile.days // 3), hours=9)
 
@@ -702,6 +741,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 5000,
             "sale_ts": mid,
             "arrival_ts": r_ts + dt.timedelta(minutes=5),
+            "boundary": "return_at_45d",
         }
     )
     # 4. A return one microsecond past the 45th day: outside, by contract.
@@ -729,6 +769,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "sale_ts": mid,
             "arrival_ts": r_ts + dt.timedelta(minutes=5),
             "reason": str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
+            "boundary": "return_past_45d",
         }
     )
     # 5. A return at the very instant of the sale: inside, by contract (>=, not >).
@@ -757,6 +798,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 7700,
             "sale_ts": mid,
             "arrival_ts": mid + dt.timedelta(minutes=6),
+            "boundary": "return_at_sale_instant",
         }
     )
     # 6. A return of quantity zero: never valid.
@@ -809,6 +851,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 9999,
             "sale_ts": sale_ts,
             "arrival_ts": close0,
+            "boundary": "arrives_at_close_instant",
         }
 
         # 8. A sale that HAPPENED before a close but ARRIVED after it. This is the only
@@ -844,6 +887,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 12345,
             "sale_ts": sale_ts,
             "arrival_ts": close0 + dt.timedelta(hours=1),
+            "boundary": "arrives_after_close",
         }
 
         # 9. An AMENDMENT that arrives after a close and changes a quantity that close had
@@ -902,6 +946,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 20000,
             "sale_ts": sale_ts,
             "arrival_ts": sale_ts + dt.timedelta(minutes=5),
+            "boundary": "amendment_after_close",
             "amendments": [
                 {
                     # The id the EVENT carries, not a suffixed one. The ledger said
@@ -966,6 +1011,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": 30000,
             "sale_ts": sale_ts,
             "arrival_ts": sale_ts + dt.timedelta(minutes=3),
+            "boundary": "amendment_tie",
             "amendments": [
                 {
                     "event_id": f"am-{oid}-{sku}-a",
@@ -990,17 +1036,25 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     #
     #     Not because the witnesses are weak: because no record ever came near a bound. The
     #     bounds joined the contract at version 1.3.0 and no data joined with them, so the
-    #     generator kept emitting what it always had - quantities of one to four against a
-    #     bound of ten million units, prices under 250 euros against a bound of a hundred
-    #     million a unit - plus the single deliberately absurd 2^63-1 in the corrupt block,
-    #     which is so far past both bounds that moving either by one cannot change how it is
-    #     classified. A bound that no record sits on is a bound whose exact position is
-    #     unobservable, and eight mutants said so.
+    #     generator kept emitting what it always had - quantities of one to four, prices under
+    #     250 euros - plus the single deliberately absurd 2^63-1 in the corrupt block, which is
+    #     so far past both bounds that moving either by one cannot change how it is classified.
+    #     A bound that no record sits on is a bound whose exact position is unobservable, and
+    #     eight mutants said so.
     #
     #     The constants are IMPORTED from domain/contract.py, not written out here. If a bound
-    #     ever moves, the data that tests it moves in the same commit; spelling `10000000`
-    #     into the generator would make this block agree with a bound it had copied rather
-    #     than with the bound the two implementations enforce.
+    #     ever moves, the data that tests it moves in the same commit; spelling the number in
+    #     would make this block agree with a bound it had copied rather than with the bound the
+    #     two implementations enforce. That mattered one round later: the bounds moved from ten
+    #     million units and a hundred million euros a unit to ten thousand units and ten
+    #     thousand euros a unit, and these four calls followed without being touched.
+    #
+    #     The size of a bound is the size of the fixture that tests it, and that is not a
+    #     detail of this block: it is why the bounds moved. A line at a hundred million euros
+    #     is a legitimate boundary case and was also a hundred and sixty-eight times the
+    #     simulated business of the month it landed in, which moved a published business
+    #     figure. The fixture below is the largest legal line the contract admits, and it has
+    #     to be, so the contract had to be a number the close can carry.
 
     # A line AT the price bound is legal and must be counted; one cent past it is
     # amount_out_of_range. Without the first, `unit_price_cents <= MAX` and
@@ -1008,9 +1062,11 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # second, `<= MAX` and `<= MAX + 1` do (SQL-047 survives).
     _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS, tag="price_at_bound")
     _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS + 1, tag="price_past_bound")
-    # The same pair for the quantity bound (SQL-059 and SQL-067), priced at one cent so that
-    # ten million units is a hundred thousand euros: the case has to reach the bound, not
-    # dominate the close it is measured in.
+    # The same pair for the quantity bound (SQL-059 and SQL-067), priced at ONE CENT: the case
+    # has to reach the bound, not dominate the close it is measured in. The price bound above
+    # gets no such discount - a line at the price bound costs the price bound, whatever
+    # quantity it carries - which is the whole reason the bound itself had to be a number a
+    # retail close can absorb.
     bound_oid, bound_sku = _boundary_order(mid, qty=MAX_LINE_QUANTITY, price=1, tag="qty_at_bound")
     _boundary_order(mid, qty=MAX_LINE_QUANTITY + 1, price=1, tag="qty_past_bound")
     # A return AT the quantity bound, against the line that sold exactly that many units, so
@@ -1137,6 +1193,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "unit_price_cents": winner[3],
             "sale_ts": mid + dt.timedelta(hours=winner[1]),
             "arrival_ts": pair_arrival,
+            "boundary": tag,
         }
 
     # 13. One line, three returns, and the cumulative window that decides which of them takes
@@ -1237,12 +1294,22 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     )
 
     # ---- the ledger ------------------------------------------------------------------
+    # Two projections, ONE pass and one piece of arithmetic. "all" is the close: every
+    # accepted line and every accepted return, boundary fixtures included, and it is what
+    # SG-01, SG-02, SG-03 and SG-05 compare the implementations against, because a fixture the
+    # pipeline drops or miscounts is a bug like any other. "business" drops the fixtures, and
+    # SG-04 - the one claim that publishes a percentage of a month's revenue as a business
+    # statement - reads that one instead. See Ledger.business_revenue for what it cost to
+    # learn that a fixture belongs in the close and not in a sentence about the shop.
+    #
+    # Accumulated together rather than by running this loop twice over a filtered input: two
+    # passes would be two copies of "the quantity known at this close", and the whole argument
+    # for the ledger is that it records intent once instead of recomputing it.
+    counters = ("gross", "refunds", "line_count", "return_count", "rejected_count")
     for close in closes:
-        gross: dict[str, int] = defaultdict(int)
-        refunds: dict[str, int] = defaultdict(int)
-        line_count: dict[str, int] = defaultdict(int)
-        return_count: dict[str, int] = defaultdict(int)
-        rejected_count: dict[str, int] = defaultdict(int)
+        totals: dict[str, dict[str, dict[str, int]]] = {
+            scope: {name: defaultdict(int) for name in counters} for scope in ("all", "business")
+        }
         for (_oid, _sku), f in facts.items():
             if f["arrival_ts"] > close:
                 continue  # the sale itself is not known yet at this close
@@ -1265,26 +1332,32 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                 else int(f["qty0"])
             )
             month = accounting_month(f["sale_ts"])
-            gross[month] += qty * int(f["unit_price_cents"])
-            line_count[month] += 1
+            for scope in _scopes(f):
+                totals[scope]["gross"][month] += qty * int(f["unit_price_cents"])
+                totals[scope]["line_count"][month] += 1
         for r in returns:
             if r["arrival_ts"] <= close:
                 month = accounting_month(r["sale_ts"])
-                refunds[month] += int(r["qty"]) * int(r["unit_price_cents"])
-                return_count[month] += 1
+                for scope in _scopes(r):
+                    totals[scope]["refunds"][month] += int(r["qty"]) * int(r["unit_price_cents"])
+                    totals[scope]["return_count"][month] += 1
         for r in rejected_returns:
             if r["arrival_ts"] <= close:
-                rejected_count[accounting_month(r["sale_ts"])] += 1
-        for month in sorted(set(gross) | set(refunds)):
-            g, rr = gross[month], refunds[month]
-            ledger.revenue[(month, close.isoformat())] = {
-                "gross_cents": g,
-                "returns_cents": rr,
-                "net_cents": g - rr,
-                "line_count": line_count[month],
-                "return_count": return_count[month],
-                "returns_rejected_count": rejected_count[month],
-            }
+                month = accounting_month(r["sale_ts"])
+                for scope in _scopes(r):
+                    totals[scope]["rejected_count"][month] += 1
+        for scope, target in (("all", ledger.revenue), ("business", ledger.business_revenue)):
+            t = totals[scope]
+            for month in sorted(set(t["gross"]) | set(t["refunds"])):
+                g, rr = t["gross"][month], t["refunds"][month]
+                target[(month, close.isoformat())] = {
+                    "gross_cents": g,
+                    "returns_cents": rr,
+                    "net_cents": g - rr,
+                    "line_count": t["line_count"][month],
+                    "return_count": t["return_count"][month],
+                    "returns_rejected_count": t["rejected_count"][month],
+                }
 
     # ---- write files ------------------------------------------------------------------
     events.sort(key=lambda e: (e[0], json.dumps(e[1], sort_keys=True)))

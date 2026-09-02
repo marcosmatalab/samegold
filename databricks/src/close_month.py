@@ -6,6 +6,13 @@ transformation. It happens on a schedule, it is signed off, and it must be recor
 once per (month, version). Putting it in the pipeline would recompute it on every refresh.
 """
 
+# The two names below are injected by the Databricks runtime, not imported: a notebook task
+# runs with `spark` and `dbutils` already bound. Declaring them here would be a lie about how
+# this file executes there, so the check is switched off for the file and the reason is
+# written where a reader of the file will find it. Same decision, and the same sentence, as
+# the `F821` per-file ignore in pyproject.toml.
+# mypy: disable-error-code="name-defined"
+
 # COMMAND ----------
 import re
 

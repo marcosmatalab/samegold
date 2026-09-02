@@ -7,6 +7,13 @@ notebook publishes are pipeline-level (rows written per table, expectation pass 
 counts, run duration), and they are labelled as such rather than dressed up as cost.
 """
 
+# The two names below are injected by the Databricks runtime, not imported: a notebook task
+# runs with `spark` and `dbutils` already bound. Declaring them here would be a lie about how
+# this file executes there, so the check is switched off for the file and the reason is
+# written where a reader of the file will find it. Same decision, and the same sentence, as
+# the `F821` per-file ignore in pyproject.toml.
+# mypy: disable-error-code="name-defined"
+
 # COMMAND ----------
 import json
 

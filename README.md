@@ -16,9 +16,14 @@ figure by hand breaks a test rather than improving a README.
 > A return may arrive up to 45 days after the sale, and it is imputed to the month of the
 > **sale**. So a month finance has already closed can move. In the published run it moved in
 > <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of the closed months, the worst by
-> <!--sg:SG-04.artifact.worst_move_pct-->3.3824<!--/sg-->% of the figure that had been signed off.
+> <!--sg:SG-04.artifact.worst_move_pct-->5.5925<!--/sg-->% of the figure that had been signed off.
 > A pipeline that cannot restate would keep reporting the first number for ever, and be wrong
 > by exactly that much.
+>
+> That percentage is measured over the simulated shop, with the harness's own boundary
+> fixtures held out — they sit on the contract's bounds by construction, so they are the
+> largest lines it admits. CLAIMS.md says what that is worth and publishes the same figure
+> without the exclusion.
 
 ## Sixty seconds
 
@@ -26,7 +31,7 @@ figure by hand breaks a test rather than improving a README.
 git clone https://github.com/marcosmatalab/samegold && cd samegold
 make demo      # ~10 s, no account, no credentials, no JVM
 make report    # one self-contained HTML page: the close, its versions, what moved
-make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->363<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->135.9<!--/sg--> s
+make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->366<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->138.7<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
 
@@ -34,13 +39,13 @@ make evidence  # regenerates every number except SG-07's (that one needs a JVM: 
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 359/359 (95% CI 98.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-00` what this repository contains, counted | PASS | 362/362 (95% CI 99.0%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 117/117 (95% CI 96.8%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 138/138 (95% CI 97.3%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI |
 | `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
 | `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
@@ -178,12 +183,12 @@ same on any machine:
 - compaction removed **<!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->%**
   of the files;
 - clustering by (month, sku) cut the share of the table a sku predicate has to read by
-  **<!--sg:SG-09.artifact.share_read_reduction_pct-->78.24<!--/sg-->%** — **and by nothing at all**
+  **<!--sg:SG-09.artifact.share_read_reduction_pct-->76.97<!--/sg-->%** — **and by nothing at all**
   at large file sizes, where the two files it produces cover the whole key range. Both are
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
 - deleting one month copied
-  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->11.01<!--/sg--> surviving rows per deleted
+  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->10.93<!--/sg--> surviving rows per deleted
   row**, which is the argument for deletion vectors in one number.
 
 ## Two runtimes, one parity matrix
@@ -221,7 +226,7 @@ of a refutation run: neither is a statement about the data.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->363<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->135.9<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->366<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->138.7<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->60<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

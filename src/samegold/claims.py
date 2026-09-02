@@ -564,27 +564,55 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
     rather than a pass/fail: the value is the share of net revenue that changed between the
     first close of a month and its final state. A pipeline that cannot restate would report
     the first number for ever and be wrong by exactly this much.
+
+    Measured over the SIMULATED SHOP, not over the close: `ledger.business_revenue` rather
+    than `ledger.revenue`. The difference is the boundary fixtures, and holding them out is
+    not tidying, it is the difference between a business number and a number about the
+    harness. A case that tests the contract's price bound has to sit exactly ON the bound, so
+    it is by construction the largest line the contract admits; with the bounds this project
+    shipped for one round it was a single line worth a hundred million euros, 168 times the
+    business of the month it landed in, and it took this figure from 6.48% to 3.38% and moved
+    which month was worst. Nothing about the pipeline had changed. The bounds are
+    business-sized now, which is most of the fix; this is the rest of it, because "most of"
+    is not a property.
+
+    The CHECK below is deliberately the other way round. It compares the ledger's record of
+    every close against the reference's recomputation of it, over the whole close, fixtures
+    included: a fixture the reference drops is exactly the kind of disagreement this claim
+    should fail on, and measuring the check over a subset would be the one place where
+    holding data back costs something.
     """
     started = time.monotonic()
     seeds = seeds_from_commit(1, purpose="restatement")
     root = work / "restatement"
     shutil.rmtree(root, ignore_errors=True)
     result = generate(root, seed=seeds[0], profile=PROFILES[profile_name])
-    by_month: dict[str, list[tuple[str, dict[str, int]]]] = {}
-    for (month, as_of), values in sorted(result.ledger.revenue.items()):
-        # A month's baseline is its OWN close, not the first close in which it happens to
-        # appear. At the close of January, February exists with one day of data in it;
-        # measuring how much February "moved" from that partial figure produces percentages
-        # over 100% that mean nothing. The baseline is the first close after the month ends.
-        # In the accounting timezone, like every other month key in this project: a close
-        # just after midnight in Madrid is still the previous month in UTC, and the string
-        # prefix would drop a real close.
-        if accounting_month_of(as_of) <= month:
-            continue
-        by_month.setdefault(month, []).append((as_of, values))
-    by_month = {m: series for m, series in by_month.items() if len(series) >= 2}
+
+    def _closed_series(
+        revenue: dict[tuple[str, str], dict[str, int]],
+    ) -> dict[str, list[tuple[str, dict[str, int]]]]:
+        """Per month, the closes that can be compared: its own and everything after it.
+
+        A month's baseline is its OWN close, not the first close in which it happens to
+        appear. At the close of January, February exists with one day of data in it;
+        measuring how much February "moved" from that partial figure produces percentages
+        over 100% that mean nothing. The baseline is the first close after the month ends.
+        In the accounting timezone, like every other month key in this project: a close
+        just after midnight in Madrid is still the previous month in UTC, and the string
+        prefix would drop a real close.
+        """
+        series: dict[str, list[tuple[str, dict[str, int]]]] = {}
+        for (month, as_of), values in sorted(revenue.items()):
+            if accounting_month_of(as_of) <= month:
+                continue
+            series.setdefault(month, []).append((as_of, values))
+        return {m: rows for m, rows in series.items() if len(rows) >= 2}
+
+    # The close, for the check; the shop, for the number. See the docstring.
+    by_month = _closed_series(result.ledger.revenue)
+    business_by_month = _closed_series(result.ledger.business_revenue)
     moved: list[dict[str, Any]] = []
-    for month, series in by_month.items():
+    for month, series in business_by_month.items():
         first, last = series[0][1], series[-1][1]
         if first["net_cents"] != last["net_cents"]:
             delta = last["net_cents"] - first["net_cents"]
@@ -600,14 +628,24 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
                     "versions": len({json.dumps(v, sort_keys=True) for _, v in series}),
                 }
             )
-    if not by_month:
+    if not business_by_month:
         raise RuntimeError(
             "no month has been closed twice in this profile, so there is nothing to measure; "
             "use a profile with at least two closes after the first month"
         )
-    rate = Rate(len(moved), len(by_month))
+    rate = Rate(len(moved), len(business_by_month))
     runset = _runset(seeds, profile_name, started, "oss-local", "restatement")
     worst = max((abs(m["delta_pct"] or 0.0) for m in moved), default=0.0)
+    # The same figure over the whole close, fixtures included, so the record can publish the
+    # size of the correction rather than claim it is small. One expression, both inputs.
+    worst_with_fixtures = max(
+        (
+            abs(100.0 * (s[-1][1]["net_cents"] - s[0][1]["net_cents"]) / s[0][1]["net_cents"])
+            for s in by_month.values()
+            if s[0][1]["net_cents"] and s[0][1]["net_cents"] != s[-1][1]["net_cents"]
+        ),
+        default=0.0,
+    )
     # The worst month, flattened and pre-formatted, so docs/postmortem-2026-03-06.md can
     # carry it as rendered anchors instead of hand-typed euros. Every seed is derived from
     # the commit, so these figures move on every commit, and a document that quotes them by
@@ -685,11 +723,22 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
         artifacts={
             "months_that_moved": moved,
             "worst_move_pct": round(worst, 4),
+            "measured_over": "business_revenue",
+            # What holding the fixtures out is worth, published rather than asserted. It is
+            # the same measurement over `ledger.revenue`, so a reader can see the size of the
+            # correction instead of taking "the fixtures are small now" on trust - and so
+            # that if a future boundary case is large enough to matter again, the gap between
+            # these two numbers says so.
+            "worst_move_pct_including_boundary_fixtures": round(worst_with_fixtures, 4),
             **flattened,
         },
         not_claimed=(
             "that these percentages describe real retail: they describe this simulation, "
             "whose return rate is deliberately higher than a real one",
+            "that they describe the close. They describe the simulated shop: the boundary "
+            "fixtures, which sit on the contract's bounds by construction and are therefore "
+            "the largest lines it admits, are held out of this measurement and are included "
+            "in every claim that compares implementations",
         ),
     )
 

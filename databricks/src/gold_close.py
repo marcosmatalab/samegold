@@ -31,7 +31,7 @@ lane, down to the hash function, for the reason given in pipelines/transform.py.
 """
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 spark = SparkSession.getActiveSession()
@@ -52,7 +52,7 @@ dp.create_auto_cdc_flow(
 
 
 @dp.temporary_view(name="silver_events_customers")
-def silver_events_customers():
+def silver_events_customers() -> DataFrame:
     return (
         spark.readStream.table("silver_classified")
         .where(
@@ -67,7 +67,7 @@ def silver_events_customers():
     name="revenue_by_month",
     comment="The close: one row per (accounting_month, close_version), never rewritten.",
 )
-def revenue_by_month():
+def revenue_by_month() -> DataFrame:
     # The SQL is the same derivation as the OSS lane's; keeping it as one statement makes the
     # pipeline's lineage graph show the real dependency rather than a chain of views.
     return spark.sql(

@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
@@ -29,7 +29,7 @@ spark = SparkSession.getActiveSession()
 
 
 @dp.table(name="bronze_events")
-def bronze_events():  # type: ignore[no-untyped-def]
+def bronze_events() -> DataFrame:
     return (
         spark.readStream.format("json")
         .schema(bronze_schema())
@@ -46,14 +46,14 @@ def bronze_events():  # type: ignore[no-untyped-def]
 # stateless dedup on event_id. This is not a workaround, it is where the property belongs -
 # and the size of the effect is measured in milestone M11 rather than assumed away.
 @dp.table(name="silver_events")
-def silver_events():  # type: ignore[no-untyped-def]
+def silver_events() -> DataFrame:
     return classify(spark.readStream.table("bronze_events")).where(
         F.col("quarantine_reason") == "accepted"
     )
 
 
 @dp.table(name="silver_quarantine")
-def silver_quarantine():  # type: ignore[no-untyped-def]
+def silver_quarantine() -> DataFrame:
     return classify(spark.readStream.table("bronze_events")).where(
         F.col("quarantine_reason") != "accepted"
     )

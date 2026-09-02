@@ -46,3 +46,24 @@ the contract, implemented correctly in both lanes, and be untested from the day 
 because nothing in the campaign asks whether the data can tell the new rule from its
 neighbours. The survivors are the only thing that says so, which is why an unexplained
 survivor is a finding and not a number to close out.
+
+The same shape, one level up, and it is logged here because it is the same mistake and not a
+neighbouring one. `ruff check src tests` printed "All checks passed" for ten rounds while
+`databricks/` and `pipelines/` were in neither that command nor mypy's `files`. A whole
+directory was unchecked, the green tick reported the scope of the command rather than the
+state of the repository, and the thing that finally surfaced it was a formatting error
+committed into `databricks/src/silver_expectations.py` by the round that added the note about
+unchecked things rotting. Both directories are in `ruff` and `mypy` now.
+
+And a third, found by pulling the same thread. The contract's money bounds carried a comment
+claiming a close would need "a hundred billion" maximum-value lines before the BIGINT sum
+overflowed. The division gives ninety-two. The bounds were introduced to stop three unbounded
+lines from ending a close and they moved the threshold to ninety-three, while the sentence
+defending them asserted a margin nine orders of magnitude larger than the one they gave. A
+test performs that division now.
+
+The general form of all three is one sentence: **a measurement's scope is part of its result,
+and a result that does not carry its scope is read as if the scope were everything.** The
+mutation score's scope was the data it ran on; the lint command's scope was two directories;
+the bound rationale's scope was an arithmetic nobody performed. Each read as a statement about
+the whole.

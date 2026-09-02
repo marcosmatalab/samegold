@@ -31,9 +31,12 @@ jobs:
       - name: tests
         run: pytest tests/fast -q
       - name: lint and types
+        # Every directory that holds code, not just the two the command used to name. A
+        # formatting error sat in `databricks/` while this step printed "All checks passed":
+        # the scope of a check is part of its result. See docs/adr/0006-mutants-are-generated-not-planted.md.
         run: |
-          ruff check src tests
-          ruff format --check src tests
+          ruff check src tests databricks pipelines
+          ruff format --check src tests databricks pipelines
           mypy
       - name: the evidence chain verifies and the documents match it
         run: samegold check

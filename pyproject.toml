@@ -77,7 +77,13 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src/samegold"]
+# The two directories after the package are the ones nothing checked for ten rounds. They
+# hold the declarative-pipeline and notebook sources, which are loaded by path rather than
+# imported, and a directory a repository does not check is a directory that rots - the thesis
+# of this repository applied to itself. See
+# docs/adr/0006-mutants-are-generated-not-planted.md, which is where the same shape of
+# mistake is logged: a check whose scope is narrower than the thing it appears to report on.
+files = ["src/samegold", "databricks/src", "pipelines/transformations"]
 [[tool.mypy.overrides]]
 module = ["duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*", "pyarrow.*", "arro3.*"]
 ignore_missing_imports = true
@@ -86,7 +92,24 @@ ignore_missing_imports = true
 # declared to return DataFrame" fires on every single transformation. Turning the warning off
 # for the Spark-facing packages is honest; turning strict mode off for the whole project to
 # silence it would not be.
+#
+# `@dp.table` is an untyped decorator for the same reason, and under strict mode an untyped
+# decorator makes the function it wraps untyped, so every declarative table would need the
+# warning suppressed at its own definition. The files outside the package are named by
+# basename here, which is how mypy names a module it loads by path.
 [[tool.mypy.overrides]]
-module = ["samegold.pipelines.*", "samegold.ingest.*", "samegold.faults.*", "samegold.cost.*"]
+module = [
+  "samegold.pipelines.*",
+  "samegold.ingest.*",
+  "samegold.faults.*",
+  "samegold.cost.*",
+  "bronze_autoloader",
+  "bronze_silver",
+  "close_month",
+  "gold_close",
+  "publish_evidence",
+  "silver_expectations",
+]
 warn_return_any = false
 disallow_untyped_calls = false
+disallow_untyped_decorators = false

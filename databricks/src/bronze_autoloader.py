@@ -12,7 +12,7 @@ Free Edition constraints that shape it:
 """
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 spark = SparkSession.getActiveSession()
@@ -24,7 +24,7 @@ LANDING = spark.conf.get("samegold.landing", "/Volumes/samegold/raw/landing")
     comment="Raw events exactly as they landed, plus the file they came from.",
     table_properties={"quality": "bronze", "delta.enableChangeDataFeed": "true"},
 )
-def bronze_events():
+def bronze_events() -> DataFrame:
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
