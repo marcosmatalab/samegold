@@ -35,20 +35,36 @@ make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->366<!--
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 ```
 
+**Where these numbers come from, before you read any of them.** Every figure in this table and
+every anchored number in these documents is rendered from `evidence/history.jsonl`, which is an
+append-only hash chain, and specifically from the **most recent record for each claim**. The
+provenance column names the commit that produced it, and says so when that commit is not what
+ran (an uncommitted tree gets its tree hash too).
+
+That matters because the numbers describe a *population*, and the code that generates the
+population changes. When it does, the rule is: **run the claims again and APPEND a new record;
+never edit or replace the ones already in the chain.** A rewritten history is not a history,
+and the append-only property is the only thing that makes any of this worth checking - so a
+figure that is out of date is fixed by adding a measurement, not by correcting a number. If
+the table's commit is older than `HEAD`, that is what it means, it is not hidden, and
+`make evidence && make readme` is how it moves.
+`docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md` is the full
+policy, including what to do when the record format itself has to change.
+
 <!-- samegold:begin claims -->
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 362/362 (95% CI 99.0%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 148/148 (95% CI 97.5%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI on an uncommitted tree |
+| `SG-00` what this repository contains, counted | PASS | 362/362 (95% CI 99.0%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (77e6e8c33) |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (7112dbf20) |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (63c2fd9e1) |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (511a68c60) |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (72bafaa5b) |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (df1e4ffde) |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 148/148 (95% CI 97.5%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (dcd8155c6) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI, d25e59b40 |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (e50075ee7) |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, 7ec0cca7f on an uncommitted tree (e91bafdd9) |
 
 <!-- samegold:end claims -->
 

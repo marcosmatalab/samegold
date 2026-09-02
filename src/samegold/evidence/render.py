@@ -118,16 +118,29 @@ def _safe(value: str, where: str) -> str:
 def _provenance(record: dict[str, Any]) -> str:
     """How the number was produced, in the words a reader needs to discount it by.
 
-    "dirty tree" is the important one and it is new: it means the run executed code that is
-    in no commit, so the commit the record names anchors its seeds and not its behaviour.
-    Every honest re-measurement after a fix looks like this, and so does retry-until-green.
-    Saying it is the whole defence available.
+    "dirty tree" is the important one: it means the run executed code that is in no commit, so
+    the commit the record names anchors its seeds and not its behaviour. Every honest
+    re-measurement after a fix looks like this, and so does retry-until-green. Saying it is the
+    whole defence available.
+
+    AND THE COMMIT ITSELF, which this used to leave out. The documents quote the head of the
+    chain, and the head moves - so a figure on the front page is a measurement of SOME version
+    of this repository and the reader had no way to tell which. Every round that changes the
+    generator changes the population these numbers describe: a reader who re-ran a claim and
+    got a different answer could not tell whether they had found a defect or a different
+    commit. `docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md` is the
+    policy; this function is the half of it a reader actually sees.
+
+    On a dirty tree the commit is not enough on its own - it names code that is not what ran -
+    so the tree hash goes beside it. Both are short; the full values are in the record.
     """
     runs = record.get("verdict", {}).get("runs", {})
-    dirty = " on an uncommitted tree" if runs.get("tree_dirty") else ""
-    if record.get("ci_run_url"):
-        return f"CI{dirty}"
-    return f"local run, not reproduced in CI{dirty}"
+    commit = str(runs.get("commit_sha") or record.get("ci_commit_sha") or "")[:9] or "no commit"
+    where = "CI" if record.get("ci_run_url") else "local run, not reproduced in CI"
+    if runs.get("tree_dirty"):
+        tree = str(runs.get("tree_sha") or "")[:9] or "unknown"
+        return f"{where}, {commit} on an uncommitted tree ({tree})"
+    return f"{where}, {commit}"
 
 
 def render_claims_block(latest: dict[str, dict[str, Any]]) -> str:

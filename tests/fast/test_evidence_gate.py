@@ -290,3 +290,63 @@ def test_the_evidence_directory_is_committed() -> None:
     assert (
         json.loads((REPO / "evidence" / "runs" / "SG-01.json").read_text())["claim_id"] == "SG-01"
     )
+
+
+def test_the_provenance_names_the_commit_that_produced_the_number() -> None:
+    """A figure on the front page is a measurement of SOME version of this repository.
+
+    The provenance column said "CI" or "local run, not reproduced in CI" and stopped there, so
+    a reader who re-ran a claim and got a different answer could not tell whether they had
+    found a defect, a different seed, or simply a later commit. The documents quote the HEAD of
+    an append-only chain and the head moves - most visibly whenever the generator changes,
+    which changes the population every count describes.
+
+    On a dirty tree the commit is not enough on its own, because it names code that is not what
+    ran; the tree hash goes beside it. ADR 0010 is the policy, this is the half a reader sees.
+    """
+    from samegold.evidence.render import _provenance
+
+    clean = {"verdict": {"runs": {"commit_sha": "a" * 40, "tree_dirty": False}}}
+    assert "aaaaaaaaa" in _provenance(clean)
+    assert "uncommitted" not in _provenance(clean)
+
+    dirty = {
+        "verdict": {"runs": {"commit_sha": "a" * 40, "tree_sha": "b" * 40, "tree_dirty": True}}
+    }
+    rendered = _provenance(dirty)
+    assert "aaaaaaaaa" in rendered and "bbbbbbbbb" in rendered
+    assert "uncommitted tree" in rendered
+
+    in_ci = {
+        "ci_run_url": "https://github.com/x/y/actions/runs/1",
+        "verdict": {"runs": {"commit_sha": "c" * 40}},
+    }
+    assert _provenance(in_ci).startswith("CI, ccccccccc")
+    # A record with no commit at all says so rather than rendering an empty cell, which would
+    # read as "no caveat" instead of "no provenance".
+    assert "no commit" in _provenance({"verdict": {"runs": {}}})
+
+
+def test_the_append_only_policy_is_stated_before_the_numbers() -> None:
+    """The rule has to be readable by someone who has not opened the ADRs.
+
+    The chain describes a population, the code that generates it changes, and the two can be
+    out of step while every hash still verifies - which is the state this repository was in
+    when the policy was written. A reader comparing the front page against their own
+    `make evidence` will find two different numbers, and the document has to say which one is
+    the good one BEFORE they meet either.
+    """
+    from samegold.evidence.render import BEGIN
+
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    policy = readme[: readme.index(BEGIN)]
+    for phrase in ("append-only", "most recent record", "never edit or replace"):
+        assert phrase in policy, (
+            f"README.md does not state {phrase!r} above the claims table; the policy has to "
+            f"come before the numbers it governs"
+        )
+    adr = (
+        REPO / "docs" / "adr" / "0010-the-chain-is-append-only-and-the-documents-quote-its-head.md"
+    )
+    assert adr.exists(), "the policy names an ADR that does not exist"
+    assert adr.name in policy, "README does not point at the ADR that holds the full policy"
