@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 246,
+    "dimension_rows": 253,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -9,7 +9,7 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 236,
+      "rows_deleted": 242,
       "version_after": 3,
       "version_before": 0
     }
@@ -19,20 +19,20 @@
   "claim_id": "SG-08",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "absent",
+    "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "absent",
+    "pyspark": "4.2.0",
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "bf6f27658182ccee8ceb7c999b25251c",
+  "hash": "407382fa0bde12dd14ec8b3ee88f39fe",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "94dcf789e77a28b6286175b4655ff596",
+  "prev": "8625f1bef1c963b7200fc3e4784c078f",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +49,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
-      "duration_s": 2.644,
+      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
+      "duration_s": 5.187,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        7541231287755713168
+        4659578878506757385
       ],
-      "started_at": "2026-09-02T10:22:50+00:00",
+      "started_at": "2026-09-02T12:02:29+00:00",
       "tree_dirty": true,
-      "tree_sha": "e260bc0fb7752092bc6ef20aab08465583ad8d34"
+      "tree_sha": "e50075ee7ba2953de808bc8f3328d0412d5d4831"
     }
   }
 }

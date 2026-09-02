@@ -34,12 +34,31 @@ from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-spark = SparkSession.getActiveSession()
+# `active()`, not `getActiveSession()`. The second returns `SparkSession | None`, and every
+# use below then reads an attribute off a value that may be None - which mypy says plainly once
+# pyspark is installed, and said to nobody for eleven rounds because the fast lane that runs
+# mypy does not install it. `active()` returns a session or raises, which is the behaviour this
+# file wants: there is no sensible way to run a pipeline source with no session.
+spark = SparkSession.active()
 
+# The two calls below are the ones this lane exists for, and both are refused by the
+# open-source API that ships in pyspark 4.2.0. That is not a mistake in this file and it is
+# not something to work around: it is the parity boundary, and it is recorded in PARITY.md
+# with the signatures that prove it. It was found by type-checking, not by running, because
+# no workspace is available to run it in - which is exactly the kind of claim about a cloud
+# lane that is usually left as prose.
+#
+#   * `cluster_by_auto` does not exist on the open-source `create_streaming_table`, which
+#     takes `cluster_by` (explicit columns) only. Automatic liquid clustering is the
+#     Databricks-only half of that objective.
+#   * `stored_as_scd_type` is typed `Literal[1, "1"] | None` in the open-source AUTO CDC API.
+#     SCD Type 2 through AUTO CDC is Databricks-only, which is precisely why
+#     `src/samegold/pipelines/gold_scd2_merge.py` maintains the same dimension by hand and why
+#     comparing the two is on the exam.
 dp.create_streaming_table(
     name="dim_customer_scd2",
     comment="Type 2 customer dimension, maintained by AUTO CDC.",
-    cluster_by_auto=True,
+    cluster_by_auto=True,  # type: ignore[call-arg]
 )
 
 dp.create_auto_cdc_flow(
@@ -47,7 +66,7 @@ dp.create_auto_cdc_flow(
     source="silver_events_customers",
     keys=["customer_id"],
     sequence_by=F.col("event_ts"),
-    stored_as_scd_type=2,
+    stored_as_scd_type=2,  # type: ignore[arg-type]
 )
 
 
