@@ -8,20 +8,20 @@
   "claim_id": "SG-02",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "absent",
+    "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "absent",
+    "pyspark": "4.2.0",
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "9b28c38bb5a8f4ff6882f30313a6a0f4",
+  "hash": "14f4f08d86b73331726a66ec50118d75",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "6b2a9a4ce3dafa292ce7486bd699d688",
+  "prev": "74155b4aaddc44715de2498a559bed60",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
-      "duration_s": 27.737,
+      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
+      "duration_s": 30.461,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        4271109966482310817,
-        3516288145942349452,
-        3115311618658766252
+        17890116796549396899,
+        3694968842509665446,
+        18117454621296590830
       ],
-      "started_at": "2026-09-02T10:17:51+00:00",
+      "started_at": "2026-09-02T11:56:37+00:00",
       "tree_dirty": true,
-      "tree_sha": "c8433de9ad3dec1ae917134556ec60e3cffd1913"
+      "tree_sha": "63c2fd9e1c34832c69b894aa64603f363995041c"
     }
   }
 }

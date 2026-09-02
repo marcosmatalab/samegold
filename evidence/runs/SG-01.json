@@ -9,20 +9,20 @@
   "claim_id": "SG-01",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "absent",
+    "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "absent",
+    "pyspark": "4.2.0",
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "6b2a9a4ce3dafa292ce7486bd699d688",
+  "hash": "74155b4aaddc44715de2498a559bed60",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "887fffb828581464c42bcf2ab90e6bcf",
+  "prev": "e821683bc4cdf5fd102cb1c72a5ad1e7",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -39,21 +39,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
-      "duration_s": 11.803,
+      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
+      "duration_s": 12.315,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        10244191852119550493,
-        761757690275808501,
-        1867131802216767829
+        15553795939481328895,
+        2418666188573388731,
+        1051044386729394833
       ],
-      "started_at": "2026-09-02T10:17:23+00:00",
+      "started_at": "2026-09-02T11:56:06+00:00",
       "tree_dirty": true,
-      "tree_sha": "ad9c0b943847f920fabb13c6b27f8fbfb2b122bd"
+      "tree_sha": "7112dbf20de7ccc20ed0bf377dbfcec43846b2a6"
     }
   }
 }

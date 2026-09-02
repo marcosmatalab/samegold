@@ -25,7 +25,12 @@ from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
 from samegold.pipelines.transform import classify
 
 LANDING = os.environ.get("SAMEGOLD_LANDING", "./_landing/bronze")
-spark = SparkSession.getActiveSession()
+# `active()`, not `getActiveSession()`. The second returns `SparkSession | None`, and every
+# use below then reads an attribute off a value that may be None - which mypy says plainly once
+# pyspark is installed, and said to nobody for eleven rounds because the fast lane that runs
+# mypy does not install it. `active()` returns a session or raises, which is the behaviour this
+# file wants: there is no sensible way to run a pipeline source with no session.
+spark = SparkSession.active()
 
 
 @dp.table(name="bronze_events")

@@ -88,7 +88,7 @@ This is the weakest section of the project and the honest reason is money, not e
 | "Understand delta optimization techniques, such as deletion vectors and liquid clustering" | the cost lab: compaction, Z-ORDER clustering at two file sizes, the copy cost of a delete | SG-09 |
 | "Recognizing optimization techniques for large dataset queries, including data skipping and file pruning" | files-not-skippable computed from the per-file min/max in the Delta log | SG-09 |
 | "Simplify data layout decisions ... liquid clustering over Partitioning and ZOrder" | COST-03 measures **partitioning versus Z-ORDER clustering** against two predicates and reports which one each serves. Liquid clustering itself is Databricks-only and is declared, not measured | SG-09 |
-| "Applying Change Data Feed to address streaming table limitations" | `tests/delta/test_delta_semantics.py` reads the feed; the Databricks lane enables it on the dimension | delta lane |
+| "Applying Change Data Feed to address streaming table limitations" | `tests/delta/test_delta_semantics.py` reads it AS A FEED - the four `_change_type` values, each attributed to the commit that made it - and asserts the two rows the table no longer has are in it; the Databricks lane enables it on the dimension | delta lane, run |
 | "Using query profiles to identify performance bottlenecks" | **gap**: the query profile is a Databricks UI. `docs/limits.md` says what is measured instead | — |
 | "Unity Catalog managed tables reduce operational overhead" | discussed in PARITY.md; not demonstrable without a metastore | — |
 
@@ -123,6 +123,6 @@ This is the weakest section of the project and the honest reason is money, not e
 | objective | where | evidence |
 |---|---|---|
 | "Design Dimensional Models for analytical workloads" | SCD Type 2 by full recomputation and incrementally, plus a bitemporal fact table | SG-01, SG-05 |
-| "Design and implement scalable data models using Delta Lake" | `gold_scd2_merge.py` (clustered, CDF on, deletion vectors on) | delta lane |
-| "Identify the benefits of using liquid Clustering over Partitioning and ZOrder" | Z-ORDER versus partitioning is measured; liquid clustering is declared in the Delta DDL and not measurable outside Databricks | SG-09 |
+| "Design and implement scalable data models using Delta Lake" | `gold_scd2_merge.py` (clustered, CDF on, deletion vectors on), executed against a real Delta table: `DESCRIBE DETAIL` reports the clustering column, and the MERGE's two branches and its delete-by-absence are counted in the transaction log | delta lane, run |
+| "Identify the benefits of using liquid Clustering over Partitioning and ZOrder" | Z-ORDER versus partitioning is measured; `CLUSTER BY (customer_id)` is applied and confirmed in `DESCRIBE DETAIL` on the open-source lane, and only `CLUSTER BY AUTO` needs Databricks - it is a parse error outside it, which PARITY.md records | SG-09, delta lane |
 | bitemporal modelling: system time versus valid time | `domain/bitemporal.py`, `revenue_by_month(accounting_month, close_version, restated_at)` | SG-04 |

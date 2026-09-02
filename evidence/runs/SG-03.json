@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "25792184d0fe634702bcbaf0b4261d97",
-        "digest_reversed": "25792184d0fe634702bcbaf0b4261d97",
+        "digest_forward": "f9885b1f9efb41d0a14df0da5c76507a",
+        "digest_reversed": "f9885b1f9efb41d0a14df0da5c76507a",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -236,20 +236,20 @@
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.3",
-    "delta_spark": "absent",
+    "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
-    "pyspark": "absent",
+    "pyspark": "4.2.0",
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "496f688c7807eb1519b50e0fbbdec5f1",
+  "hash": "d532048ec645fe3a041903aa2cc1d8e4",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "9b28c38bb5a8f4ff6882f30313a6a0f4",
+  "prev": "14f4f08d86b73331726a66ec50118d75",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "253dba9dc014f9553dae166a0396ac5d00831a39",
-      "duration_s": 272.997,
+      "commit_sha": "7ec0cca7f3c0dc04f7c676fdd1324b49692bc6e0",
+      "duration_s": 310.028,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        8185082828783731488
+        10423737049716840721
       ],
-      "started_at": "2026-09-02T10:22:24+00:00",
+      "started_at": "2026-09-02T12:01:47+00:00",
       "tree_dirty": true,
-      "tree_sha": "0feb84efe6552a8a087c9b04f404a533b03d90f2"
+      "tree_sha": "511a68c6051ae9df93faf801c5dc7c3221cf685b"
     }
   }
 }

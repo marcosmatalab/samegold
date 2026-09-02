@@ -41,6 +41,33 @@ transferred.
 | killing the process mid-write | yes | **no** - serverless gives you no process to kill | the whole crash campaign lives in the OSS lane, and that is stated rather than implied |
 | Delta through a second implementation | yes: delta-rs 1.6.3 reads and writes the same tables, and the cost lab and the purge run on it | n/a | multi-engine interoperability is what the format is for, and it is also how the Delta-protocol claims get executed on a machine with no route to Maven |
 
+### The three Databricks-only primitives, checked rather than asserted
+
+The three rows above that say "Databricks-only" were prose for eleven rounds. They are now
+each a signature in the open-source API that the Databricks sources fail against, and mypy
+checks `databricks/src/` since round 11, so the boundary is enforced where it used to be
+described. Against `pyspark 4.2.0`:
+
+| what `databricks/src/` calls | what open-source Spark 4.2.0 offers | how it shows up |
+|---|---|---|
+| `dp.expect_all_or_drop(RULES)` | `pyspark.pipelines.api` has no such attribute | `error: Module has no attribute "expect_all_or_drop"` |
+| `create_streaming_table(cluster_by_auto=True)` | `cluster_by` only, an explicit column list | `error: Unexpected keyword argument "cluster_by_auto"; did you mean "cluster_by"?` |
+| `create_auto_cdc_flow(stored_as_scd_type=2)` | typed `Literal[1, "1"] \| None` | `error: incompatible type "Literal[2]"; expected "Literal[1, '1'] \| None"` |
+
+Each call keeps a narrow `# type: ignore` with the reason written beside it. They are not
+worked around and not simulated: the code is right for the runtime it is deployed to, and the
+open-source lane answers the same three objectives another way - a `CASE` expression for the
+rules, `CLUSTER BY (customer_id)` with named columns, and a hand-written two-pass `MERGE` for
+the Type 2 dimension, which `tests/delta` now executes.
+
+What the open-source Delta lane **does** have, measured on the run described in
+`docs/limits.md` rather than assumed: `CLUSTER BY (customer_id)` really clusters
+(`DESCRIBE DETAIL` reports `clusteringColumns: [customer_id]`), deletion vectors really apply
+(a single-row `DELETE` reports `numDeletionVectorsAdded: 1` and `numCopiedRows: 0`, and writes
+a `deletion_vector_*.bin`), and `OPTIMIZE ... ZORDER BY` really Z-orders
+(`operationParameters.zOrderBy` names the column). Only the **automatic** half of clustering
+needs predictive optimization, and `CLUSTER BY AUTO` is a parse error outside Databricks.
+
 ## Claim by claim
 
 | claim | verified in | not verified in |

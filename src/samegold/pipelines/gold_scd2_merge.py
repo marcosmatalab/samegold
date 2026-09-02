@@ -70,6 +70,27 @@ TBLPROPERTIES (
 
 TARGET_COLUMNS = ("customer_id", "valid_from", "valid_to", "segment", "country", "is_current")
 
+# The schema of the MERGE source, DECLARED rather than inferred, and this is the line that
+# made the module unrunnable for eleven rounds.
+#
+# `createDataFrame` over a list of dicts asks Spark to infer a type per column from the values
+# present. `valid_to` is NULL on the open row of a Type 2 dimension - that is what "open"
+# means - so on the very first batch, whose only row is the open one, every value in the
+# column is None, the inferred type is NullType and Spark raises CANNOT_DETERMINE_TYPE. The
+# first call of `upsert_scd2` against a real Delta table therefore could not succeed on ANY
+# input. Nothing caught it because nothing had ever run it: the only caller is tests/delta,
+# and that lane had skipped since the day it was written for want of the Delta jars.
+#
+# Inference was also wrong for a second reason that would have bitten later and more quietly:
+# it types a column from one batch, so a batch in which every `segment` happens to be NULL
+# would produce a different source schema from the batch before it, against a target whose
+# schema is fixed. A MERGE into a typed table has a known source schema; there is no reason to
+# ask.
+SOURCE_SCHEMA = (
+    "customer_id STRING, valid_from STRING, valid_to STRING, "
+    "segment STRING, country STRING, is_current BOOLEAN"
+)
+
 
 def F_col_in(column: str, values: list[str]) -> Any:
     from pyspark.sql import functions as F
@@ -141,7 +162,8 @@ def upsert_scd2(spark: Any, batch: DataFrame, table: str) -> dict[str, int]:
 
     if changed:
         source = spark.createDataFrame(
-            [{column: row[column] for column in TARGET_COLUMNS} for row in changed]
+            [tuple(row[column] for column in TARGET_COLUMNS) for row in changed],
+            SOURCE_SCHEMA,
         )
         (
             target.alias("t")

@@ -15,7 +15,12 @@ from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-spark = SparkSession.getActiveSession()
+# `active()`, not `getActiveSession()`. The second returns `SparkSession | None`, and every
+# use below then reads an attribute off a value that may be None - which mypy says plainly once
+# pyspark is installed, and said to nobody for eleven rounds because the fast lane that runs
+# mypy does not install it. `active()` returns a session or raises, which is the behaviour this
+# file wants: there is no sensible way to run a pipeline source with no session.
+spark = SparkSession.active()
 
 # The rule names ARE the quarantine reasons from the contract, not names invented here. The
 # first version used its own vocabulary (`positive_quantity`, `known_currency`, ...), so the
@@ -117,7 +122,11 @@ def silver_classified() -> DataFrame:
 
 
 @dp.table(name="silver_events", comment="Validated events. Duplicates are resolved in gold.")
-@dp.expect_all_or_drop(RULES)
+# `expect_all_or_drop` is not defined in the open-source `pyspark.pipelines` at all - the
+# module docstring above says as much in prose, and mypy says it as an error now that the
+# Spark-facing code is type-checked. Expectations are the Databricks-only piece this whole
+# file exists to show; PARITY.md records it with the API check that proves it.
+@dp.expect_all_or_drop(RULES)  # type: ignore[attr-defined]
 def silver_events() -> DataFrame:
     """The same rules as `_REASON`, declared as expectations.
 

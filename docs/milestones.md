@@ -16,7 +16,7 @@ the ones already done carry their measured cost.
 | M8 | cost lab on real Delta tables: compaction, clustering at two file sizes, partitioning, delete cost | done | 10 |
 | M9 | governance: anonymisation, column classification, exposure check, retention purge | done | 8 |
 | M9b | consumption layer and freshness alerting: `samegold report`, `serve/freshness.py`, the post-mortem | done | 4 |
-| M10 | Delta on Spark green: `MERGE`, CDF, `OPTIMIZE`, time travel, the delta CI job | next | 10 |
+| M10 | Delta on Spark green: `MERGE` with both branches and a delete by absence, CDF read as a feed, `OPTIMIZE ... ZORDER BY` measured in the transaction log, time travel, the delta CI job | done | 10 |
 | M11 | Spark Declarative Pipelines running locally and on Databricks | next | 10 |
 | M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | | 18 |
 | M13 | grants and masks deployed, with a drift test comparing deployed to declared | | 8 |
@@ -24,11 +24,13 @@ the ones already done carry their measured cost.
 | M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |
 | M16 | runbook, on-call notes, and the alert for a restatement larger than a declared threshold (the post-mortem itself is written: `docs/postmortem-2026-03-06.md`) | | 5 |
 
-Remaining: about 63 hours.
+Remaining: about 53 hours.
 
 ## Order and why
 
 M10 before M11 because a declarative pipeline that writes Parquet instead of Delta is a
-different program, and finding that out after M11 would waste M11. M12 before M13 because a
+different program, and finding that out after M11 would waste M11. That ordering earned its
+keep: running M10 found a `MERGE` that could not complete its first call on any input, and it
+would have been M11's problem to diagnose through a pipeline instead of through six tests. M12 before M13 because a
 grant cannot drift before it has been deployed once. M14 late because it is the only one whose
 result may be uncomfortable, and it should not be able to delay the rest.

@@ -15,7 +15,12 @@ from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-spark = SparkSession.getActiveSession()
+# `active()`, not `getActiveSession()`. The second returns `SparkSession | None`, and every
+# use below then reads an attribute off a value that may be None - which mypy says plainly once
+# pyspark is installed, and said to nobody for eleven rounds because the fast lane that runs
+# mypy does not install it. `active()` returns a session or raises, which is the behaviour this
+# file wants: there is no sensible way to run a pipeline source with no session.
+spark = SparkSession.active()
 LANDING = spark.conf.get("samegold.landing", "/Volumes/samegold/raw/landing")
 
 

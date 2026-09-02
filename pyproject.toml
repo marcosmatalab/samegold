@@ -84,8 +84,19 @@ strict = true
 # docs/adr/0006-mutants-are-generated-not-planted.md, which is where the same shape of
 # mistake is logged: a check whose scope is narrower than the thing it appears to report on.
 files = ["src/samegold", "databricks/src", "pipelines/transformations"]
+# `typings/` shadows numpy with an empty stub. numpy is nobody's import here - it arrives
+# behind duckdb and pandas - and its 2.x stubs use 3.12 syntax that mypy refuses to parse
+# under the 3.11 this project targets. Without the shadow, `mypy` cannot start once the spark
+# extras are installed, which is the state a contributor working on the Delta lane is in.
+# typings/numpy/__init__.pyi explains the trade.
+mypy_path = "typings"
 [[tool.mypy.overrides]]
-module = ["duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*", "pyarrow.*", "arro3.*"]
+module = [
+  "duckdb.*", "pyspark.*", "delta.*", "deltalake.*", "sqlglot.*", "pyarrow.*", "arro3.*",
+  # numpy submodules, which the shadow stub package in typings/ does not define. See
+  # typings/numpy/__init__.pyi for why numpy is shadowed at all.
+  "numpy.*",
+]
 ignore_missing_imports = true
 
 # PySpark ships no usable stubs, so every DataFrame is Any and "returning Any from a function
@@ -113,3 +124,8 @@ module = [
 warn_return_any = false
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
+# These files type-check DIFFERENTLY depending on whether pyspark is installed: without it
+# `dp` and `spark` are Any and nothing is checked; with it, the real signatures apply and the
+# Databricks-only calls below are errors against the open-source API. The suppressions those
+# need are therefore unused in the first case, so an unused one is not a finding here.
+warn_unused_ignores = false
