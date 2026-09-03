@@ -20,12 +20,21 @@ behind one contract test, and the guarantees that differ are these:
 The claims that depend on ingestion semantics are therefore made **per lane**, never once and
 transferred.
 
-## The three lanes do NOT currently agree, and here is the measurement
+## The three lanes agree, as of 3 September 2026 - and here is what it took
 
 Everything below was written on the assumption that the Databricks lane computes the same
 close as the other two. **On 2 September 2026 that assumption was tested against a real
-workspace for the first time and it is false.** The correction goes at the top rather than in
-a footnote, because the claim it corrects is the headline claim of this repository.
+workspace for the first time and it was false.** The correction stays at the top rather than
+moving to a footnote, because the claim it corrects is the headline claim of this repository and
+because what it cost is the useful part.
+
+**It is true now, and by measurement rather than by repair-and-hope.** On 3 September 2026 the
+lane produced `revenue_by_month` 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross
+199 379 from 3 - to the cent against what the OSS lane computes on the same seed - with 727
+accepted and 28 quarantined across seven reasons out of 755, conservation closed, and a Type 2
+dimension of the same shape as the hand-written MERGE's. The record is in this repository and
+every figure in `docs/databricks-run.md` is rendered from it. The account of the failure below
+is kept in full.
 
 What the run produced: `revenue_by_month` for 2026-01 with a gross of **2.767e19 cents** from
 428 lines. The contract caps a single line at 10 000 x 1 000 000 = 1e10 cents, so that month's
@@ -87,7 +96,7 @@ returns NULL. All three then quarantine it as `missing_required_field`. The gene
 one deliberately (corrupt kind `beyond_bigint`) so that the agreement is exercised on every
 seed rather than argued for here.
 
-## The first thing the two Type 2 dimensions said to each other
+## The first thing the two Type 2 dimensions said to each other, and how it ended
 
 `gold_close.py` has said for rounds that comparing AUTO CDC against the hand-written `MERGE` is
 the point of maintaining both. The lane ran on 3 September 2026 and they disagreed.
@@ -126,17 +135,39 @@ an earlier round was spent making them agree. So this lane was the one that was 
 
 The fix is `track_history_column_list=["segment", "country"]` - the same pair the OSS lane
 compares with `lag()` - which makes a change to `event_ts` or `event_id` alone update the
-current row instead of opening a version. **It has not been run.** The 78/18 above is what the
-workspace produced without it.
+current row instead of opening a version.
 
-And the comparison now EXISTS as a test, which it did not when it mattered:
+**IT RAN, the same day, and the divergence is closed.** From commit `8c9faa7` the workspace
+produced **75 versions, 60 customers, 60 open rows and 15 closed** - the OSS lane's shape
+exactly, in every one of the four numbers. That record is in this repository at
+`evidence/databricks/SG-DBX-01.json`, so this is no longer a claim about a terminal:
+
+| | AUTO CDC, first run | AUTO CDC, with `track_history_column_list` | hand-written MERGE |
+|---|---|---|---|
+| version rows | 78 | **75** | 75 |
+| closed rows | 18 | **15** | 15 |
+| customers | 60 | 60 | 60 |
+| open rows | 60 | 60 | 60 |
+
+The three heartbeat events above are the case that revealed it: they are the whole of the
+difference, they are named, and they are what the fixture in
+`tests/fast/test_databricks_dimension_parity.py` pins so that the explanation cannot drift away
+from the numbers it explains.
+
+And the comparison now EXISTS as a test, which it did not when it mattered.
 `tests/fast/test_databricks_dimension_parity.py` pins the arithmetic (78 upserts, 3 heartbeats,
-75 versions), asserts the property that no two consecutive versions of a customer are
-identical, and compares the two dimensions row by row against a capture from the workspace -
-skipping, with the query named, while that capture does not exist. Half of a cross-runtime
-comparison has to be captured; there is no way to compute AUTO CDC's output without Databricks,
-and inventing an expected shape would be a second implementation of the primitive rather than a
-comparison with it.
+75 versions), asserts the property that no two consecutive versions of a customer are identical,
+and **compares the OSS dimension against the workspace record's, for real, on every run of the
+fast lane**. Falsified: doctored back to 78/18, it fails and prints both shapes.
+
+What it compares is the dimension's SHAPE - four aggregates - and that is weaker than row by
+row, which is worth saying rather than glossing: four matching totals do not prove the same
+sixty customers have the same seventy-five intervals. Two dimensions could agree on every count
+and disagree about which customer changed when. The row-level half is still a skip, because
+half of a cross-runtime comparison has to be CAPTURED - there is no way to compute AUTO CDC's
+output without Databricks, and inventing an expected shape would be a second implementation of
+the primitive rather than a comparison with it. The query that produces the capture is named in
+`docs/databricks-run.md` and in the skip message.
 
 ### One more dialect difference, measured on the way
 

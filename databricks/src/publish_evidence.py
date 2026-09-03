@@ -249,6 +249,67 @@ undecided = _read(
     ),
 )
 
+# THE THREE CHECKS THE RECORD COULD NOT ANSWER.
+#
+# `docs/databricks-run.md` carries a six-item checklist with an expected value beside every
+# query, written before the run. When the first successful record was compared against it,
+# every figure the record CARRIED matched - and three of the six items could not be checked at
+# all, because nothing in the record spoke to them. They had to be read off a terminal by the
+# person who ran it, which is the same standing as prose.
+#
+# A checklist and a record that do not cover the same ground is a gap that gets filled by
+# somebody remembering. These are the three, and they cost one query each.
+
+# 1. The money columns are integers. This is the defect the whole lane was rebuilt around -
+#    Auto Loader inferred every column as STRING, `qty * unit_price_cents` promoted to DOUBLE,
+#    and the close died writing a double into a BIGINT. `typeof()` reads the type off the table
+#    itself, and unlike `DESCRIBE` it is a SELECT the parse tests can analyse.
+column_types = _read(
+    "column_types",
+    lambda: _rows(f"""
+        SELECT typeof(qty)              AS qty,
+               typeof(new_qty)          AS new_qty,
+               typeof(unit_price_cents) AS unit_price_cents
+        FROM {catalog}.main.bronze_events LIMIT 1
+    """),
+)
+
+money_types = _read(
+    "money_types",
+    lambda: _rows(f"""
+        SELECT typeof(gross_cents)   AS gross_cents,
+               typeof(returns_cents) AS returns_cents,
+               typeof(net_cents)     AS net_cents
+        FROM {catalog}.main.revenue_by_month LIMIT 1
+    """),
+)
+
+# 2. The four events the generator emits in order to be rejected, by name. Two carry
+#    Long.MaxValue - a legal BIGINT outside the contract's bound - and two carry 2^63, which
+#    does not fit the column at all and is rescued, leaving it NULL. The per-reason totals can
+#    match while these four are wrong; on the failed run two of them were `accepted` and the
+#    totals looked plausible until `close_month` overflowed.
+bad_events = _read(
+    "bad_events",
+    lambda: _rows(f"""
+        SELECT event_id, qty, unit_price_cents, quarantine_reason, undecided_rules
+        FROM {catalog}.main.silver_classified
+        WHERE event_id IN ('bad-0000007', 'bad-0000008', 'bad-0000016', 'bad-0000017')
+        ORDER BY event_id
+    """),
+)
+
+# 3. How many rows arrived with a value too wide for their column. The reader nulls that one
+#    field and copies the raw line into the rescue column, after which the record is
+#    indistinguishable from one whose producer never sent the field - so the count is the only
+#    trace that a value was LOST rather than absent.
+rescued = _read(
+    "rescued_rows",
+    lambda: _rows(
+        f"SELECT COUNT(*) AS n FROM {catalog}.main.bronze_events WHERE _rescued_data IS NOT NULL"
+    ),
+)
+
 # The bound the contract puts on a single line, checked against what the lane actually booked.
 # A gross that exceeds (rows x max_qty x max_price) cannot be a business number, and saying so
 # in the record costs one query. The deployed run would have failed this by six orders.
@@ -323,6 +384,10 @@ record = {
     "expectations": expectations,
     "quarantine_by_reason": quarantine,
     "undecided_rules": undecided,
+    "column_types": column_types,
+    "money_types": money_types,
+    "bad_events": bad_events,
+    "rescued_rows": rescued,
     "gross_within_contract_bounds": bounds,
     "rows": rows,
     "dim_customer_scd2": dimension,

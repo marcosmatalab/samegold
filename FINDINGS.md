@@ -1,6 +1,6 @@
 # Findings
 
-Nineteen adversarial rounds, and until now what each one found lived in a commit message. A
+Twenty adversarial rounds, and until now what each one found lived in a commit message. A
 commit message is not a document: nobody looking for "how does this repository go wrong" reads
 `git log`, and the findings that matter are the ones that recur.
 
@@ -77,6 +77,40 @@ table says so rather than implying otherwise.
 | **Prevented by** | `pipelines.numUpdateRetryAttempts: "0"` and `pipelines.maxFlowRetryAttempts: "0"` in the pipeline's `configuration:` block, `max_retries: 0` on every job task, and the measurement in `docs/limits.md`. The overrides have not been exercised against a workspace; the default they override is what was measured, and the document says which is which. |
 | **Commits** | this round |
 
+### A constant with the shape of a measurement, in the field that reports the outcome
+
+| | |
+|---|---|
+| **What** | `publish_evidence.py` reported whether the lane worked with `MAX(details:update_progress.state)`. `MAX` on a string is the ALPHABETICAL maximum, and over the states an update passes through - CREATED, WAITING_FOR_RESOURCES, INITIALIZING, SETTING_UP_TABLES, RUNNING, COMPLETED, FAILED, CANCELED - `W` sorts last. The field was a constant. It published `WAITING_FOR_RESOURCES` for update `44a237b3`, which `databricks pipelines get` reports COMPLETED, and it would have published the same word for the update that FAILED that morning. |
+| **How found** | The lane's first correct run. Somebody read the record and compared one field against the workspace. |
+| **Why invisible** | The value is a legal member of the set, so it looks like an answer. `MAX` is well defined on a string, and the query returns one row per update - nothing errors, nothing is empty. The anchor `dbx:update.last_state` would have accepted it, and the gate that keeps documents from getting ahead of their run checks that the document matches the RECORD, not that the record means anything. |
+| **Prevented by** | `max_by(state, timestamp)`, and the class swept: `test_no_statement_takes_a_max_or_min_of_a_non_ordinal_column` refuses `MAX`/`MIN` over any argument in the lane's SQL that is not a timestamp or plainly numeric. `tests/spark/test_databricks_event_log_query.py` runs the lane's own query - extracted from the source, with only `event_log()` substituted for a view - over a synthetic log carrying the real sequence, and requires COMPLETED for an update that completes and FAILED for one that fails. Falsified both ways: with `MAX` restored, both report `WAITING_FOR_RESOURCES`. |
+| **Commits** | `8c9faa7`; confirmed in the workspace by `064a451` |
+
+Two things came out of it that are worth more than the fix. The CTE that chose WHICH update to
+describe took the most recent to leave any event - during a retry loop, one that has not
+finished - and now takes the most recent to reach a terminal state. And `details:path` on a
+STRING column turned out to be Databricks SQL (measured: it raises on pyspark 4.2.0, while
+`get_json_object` works on both), so the lane's SQL was changed to the portable accessor -
+which is what made the query executable outside a workspace at all, and therefore what made
+finding this in a test rather than in a record possible.
+
+### The comparison a file declared as its reason for existing, never executed
+
+| | |
+|---|---|
+| **What** | `gold_close.py` maintains a Type 2 dimension with AUTO CDC and says, in its own comments, that comparing it against the OSS lane's hand-written `MERGE` is the point of having both. The first run compared them for the first time: **78 versions and 18 closed rows against 75 and 15.** |
+| **How found** | The lane ran. Nothing in the repository compared the two dimensions, so there was nowhere else it could have been found. |
+| **Why invisible** | Both sides were individually well-formed - sixty customers, sixty open rows, `open_rows = customers` on both - so every property either lane checked about ITSELF held. The difference only exists between them, and PARITY.md had been asserting for rounds that comparing them was the point while nothing did. |
+| **Root cause, measured** | The population has 78 distinct `customer_upserted` events and exactly three are heartbeats - an upsert repeating the segment and country the customer already had (`cu-C000028-1`, `cu-C000038-1`, `cu-C000043-1`). 75 + 3 = 78 and 15 + 3 = 18. AUTO CDC's default for SCD Type 2 is a new version whenever ANY column changes, and the source view carries `event_ts` and `event_id`, which change on every upsert by construction - so one version per event was guaranteed. |
+| **Which was right** | A contract question, and the contract had already answered it, in `transform.dim_customer_scd2`: "A Type 2 dimension records CHANGES, not heartbeats." Three OSS implementations agree and a round was spent making them agree. This lane was the one that was wrong. |
+| **Prevented by** | `track_history_column_list=["segment", "country"]` - a fourth Databricks-only primitive, pinned by the mypy error the open-source signature produces. The next run returned 75 / 60 / 60 / 15. `tests/fast/test_databricks_dimension_parity.py` pins the arithmetic, asserts that no two consecutive versions of a customer are identical, and compares the OSS dimension against the workspace record's shape on every run of the fast lane. Falsified: doctored back to 78/18 it fails and prints both shapes. |
+| **Commits** | `8c9faa7`; confirmed in the workspace by `064a451` |
+
+The row-level half of that comparison is still a skip. Four matching aggregates do not prove the
+same sixty customers have the same seventy-five intervals, and half of a cross-runtime
+comparison has to be captured from the runtime.
+
 ---
 
 ## The expensive specifics
@@ -111,7 +145,9 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **A fault that erases itself needs a counter, not just a door.** | a value too wide for its column, rescued into a NULL (`d687813`) |
 | **A gate whose result is not what its summary line says.** | a green tick reporting the linter (`1521b5f`); the fast lane exiting 1 while printing `57 passed` (`d687813`) |
 | **"It works on my machine" and "it works in the repository" are different claims.** | the red Delta job (`faaab88`); pyspark in the fast lane (`845bc7a`); the CRLF that only one git could see (`16af667`) |
-| **A message that announces an action is a second implementation of it, and two implementations that are never compared will differ.** | the full-refresh banner that governed nothing (this round); `development: true` predicting a risk it did not prevent (this round) |
+| **A message that announces an action is a second implementation of it, and two implementations that are never compared will differ.** | the full-refresh banner that governed nothing (`e002f29`); `development: true` predicting a risk it did not prevent (`e002f29`) |
+| **An aggregate that is well defined and answers the wrong question.** `MAX` on a state string is the alphabetical maximum, and it looks like an answer. | the field reporting whether the lane worked (`8c9faa7`) |
+| **A comparison a file declares as its reason for existing, and nobody runs.** | the two Type 2 dimensions, 78 against 75 on the first run that compared them (`8c9faa7`) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
 

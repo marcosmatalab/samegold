@@ -386,3 +386,51 @@ def test_no_shell_script_leaks_an_assignment_into_a_later_function(tmp_path: Pat
         "alone, and these lines continue with more commands that will not see it:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_the_fetch_step_does_not_call_its_own_output_an_uncommitted_change(tmp_path: Path) -> None:
+    """`fetch.json` said `tree_dirty: true` on every fetch that ever worked.
+
+    `step_fetch` copies `SG-DBX-01.json` into `evidence/databricks/` and then records whether
+    the tree is dirty with `git status --porcelain`. The record it had just written is in that
+    output, so the field was structurally true and said nothing about the code that was
+    deployed - which is the field a reader uses to decide whether the commit named beside it
+    describes what ran.
+
+    Round 19 found this exact class in `samegold.generator.seeds.current_tree` (the evidence
+    sweep counting its own output) and fixed it in Python. The shell script one directory away
+    kept the bare version for two more rounds.
+
+    The filter is EXTRACTED from the script and run, rather than restated here: the defect was
+    never in what the script meant, and a copy of the awk program in this file would be a
+    second implementation of it.
+    """
+    import re
+    import subprocess
+
+    source = SCRIPT.read_text(encoding="utf-8")
+    match = re.search(r"awk '(\{ p = substr.*?\})'", source, re.S)
+    assert match, "the code_changes filter is no longer where this test looks for it"
+    program = match.group(1)
+
+    porcelain = (
+        " M evidence/databricks/SG-DBX-01.json\n"
+        "?? evidence/databricks/fetch.json\n"
+        " M src/samegold/cli.py\n"
+        "?? notes.txt\n"
+    )
+    out = subprocess.run(
+        ["awk", program],
+        input=porcelain,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.splitlines() == ["src/samegold/cli.py", "notes.txt"], out.stdout
+
+    # And a tree whose ONLY changes are the record it just fetched is clean.
+    only_evidence = " M evidence/databricks/SG-DBX-01.json\n?? evidence/databricks/fetch.json\n"
+    out = subprocess.run(
+        ["awk", program], input=only_evidence, capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "", out.stdout
