@@ -23,8 +23,22 @@ construction. So the default was guaranteed to produce one version per event.
 
 Which is right is a contract question, and the contract answers it in
 `samegold.pipelines.transform.dim_customer_scd2`: "A Type 2 dimension records CHANGES, not
-heartbeats." `track_history_column_list=["segment", "country"]` is now set on the lane, and the
-next run is what tells us whether it took.
+heartbeats." `track_history_column_list=["segment", "country"]` was set on the lane, the lane
+was re-run, and the workspace's own rows are now in this repository at
+`evidence/databricks/dim_customer_scd2.json`.
+
+**They agree on all seventy-five rows.** The same sixty customers, the same intervals, the same
+attributes, the same instants - as multisets and as per-customer histories. Nothing appeared row
+by row that the four aggregates could not see, which is a result rather than a formality: two
+dimensions can match on every total and disagree about which customer changed when.
+
+What DID appear is in the comparison itself. Its first version reduced every timestamp with
+`str(value)[:19]`, which is what made a workspace string and a generator string comparable - by
+cutting the zone off the end of both. Falsified against the committed capture: every timestamp
+moved to `+01:00`, an hour's shift in every instant, and the test passed. It also asked
+`row not in theirs`, which is a set question, so seventy-seven rows containing two repeated
+versions passed too. A comparison written about THREE EXTRA VERSIONS could not see extra
+versions.
 """
 
 from __future__ import annotations
@@ -32,6 +46,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import tempfile
+from collections import Counter
 from itertools import pairwise
 from pathlib import Path
 
@@ -44,8 +59,9 @@ REPO = Path(__file__).resolve().parents[2]
 # What the seed step writes: `samegold generate --profile fast --seed 20260901`.
 SEED, PROFILE = 20260901, FAST
 TRACKED = ("segment", "country")
-# Captured from the workspace. Absent until somebody runs the query in
-# docs/databricks-run.md; the comparison below says so by name rather than passing quietly.
+# Captured from the workspace and COMMITTED, so its absence is a failure rather than a skip:
+# the row-by-row comparison is the one `gold_close.py` names as its reason for existing, and a
+# suite that quietly stops running it is how it came not to exist for nine rounds.
 CAPTURED = REPO / "evidence" / "databricks" / "dim_customer_scd2.json"
 # The record the workspace produced. It carries the dimension's SHAPE - versions, customers,
 # open and closed rows - which is what the divergence showed up in, and not its rows.
@@ -140,49 +156,155 @@ def test_no_two_consecutive_versions_of_a_customer_are_identical(population) -> 
     )
 
 
-def test_the_two_dimensions_agree_row_by_row(population) -> None:  # type: ignore[no-untyped-def]
+def _instant(value: object, where: str) -> dt.datetime | None:
+    """One ISO-8601 timestamp as an INSTANT, refusing anything that does not carry a zone.
+
+    The comparison below used to reduce both sides with `str(value)[:19]`. That is how a
+    workspace's `2026-01-01T00:00:00+00:00` and the generator's `2026-01-01T00:00:00.000000Z`
+    were made comparable: by cutting off the part where they differ. It also cut off the part
+    where a WRONG one would differ. Doctored to `+01:00` - every row an hour out - the old
+    comparison passed.
+
+    A naive timestamp is refused rather than assumed to be UTC, because assuming is the same
+    mistake with a friendlier face: it would let a capture taken in workspace-local time compare
+    equal to a dimension computed in UTC.
+    """
+    if value is None:
+        return None
+    moment = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    assert moment.utcoffset() is not None, (
+        f"{where} is {value!r}, which carries no time zone. Two dimensions cannot be compared "
+        f"as instants unless both sides say which instant they mean."
+    )
+    return moment
+
+
+def _versions(rows: list[dict], start: str, end: str) -> Counter[tuple]:
+    """The dimension as a MULTISET of versions, so a repeated row is a difference.
+
+    A Counter and not a set. `row not in other` was the old question, and it answers "no
+    difference" for a dimension holding the same versions plus three more of them - which is
+    the exact divergence this file was written about.
+    """
+    return Counter(
+        (
+            str(row["customer_id"]),
+            str(row["segment"]),
+            str(row["country"]),
+            _instant(row[start], f"{row['customer_id']}.{start}"),
+            _instant(row[end], f"{row['customer_id']}.{end}"),
+        )
+        for row in rows
+    )
+
+
+def _history(rows: list[dict], start: str, end: str) -> dict[str, list[tuple]]:
+    """Each customer's versions in order: the sequence, not just the collection."""
+    out: dict[str, list[tuple]] = {}
+    for row in rows:
+        out.setdefault(str(row["customer_id"]), []).append(
+            (
+                _instant(row[start], f"{row['customer_id']}.{start}"),
+                _instant(row[end], f"{row['customer_id']}.{end}"),
+                str(row["segment"]),
+                str(row["country"]),
+            )
+        )
+    return {c: sorted(v, key=lambda t: (t[0], t[2], t[3])) for c, v in out.items()}
+
+
+@pytest.fixture(scope="module")
+def captured() -> list[dict]:
+    """The workspace's own rows. Missing is a FAILURE, and the failure carries the query."""
+    assert CAPTURED.exists(), (
+        f"no capture at {CAPTURED.relative_to(REPO)}. It is produced by running, in the "
+        f"workspace after `scripts/databricks_run.sh run-full-refresh`:\n\n"
+        f"  SELECT customer_id, segment, country, __START_AT, __END_AT\n"
+        f"  FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;\n\n"
+        f"saved as a JSON array. It is committed, so this file going missing means somebody "
+        f"deleted the only evidence that the two implementations were ever compared."
+    )
+    rows = json.loads(CAPTURED.read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows, f"{CAPTURED} is not a non-empty JSON array"
+    return rows
+
+
+def test_the_two_dimensions_agree_row_by_row(population, captured) -> None:  # type: ignore[no-untyped-def]
     """The comparison `gold_close.py` declares as its reason for existing.
 
-    One half comes from a workspace, so it has to be CAPTURED - there is no way to compute
-    AUTO CDC's output without Databricks, and inventing an expected shape here would be a
-    second implementation of the primitive rather than a comparison with it.
+    One half comes from a workspace, so it has to be CAPTURED - there is no way to compute AUTO
+    CDC's output without Databricks, and inventing an expected shape here would be a second
+    implementation of the primitive rather than a comparison with it. The other half is
+    computed, here, from the same seed.
 
-    When the capture is absent this skips, and the skip names the file and the query. That is
-    weaker than a failure and it is honest about being weaker: the alternative is a red suite
-    on every clone that has never touched a workspace, which trains people to ignore it.
+    Multisets, so three extra versions are three differences and not none. Instants, so an hour
+    is an hour. Both of those were falsified against this capture before being written.
     """
-    if not CAPTURED.exists():
-        pytest.skip(
-            f"no capture at {CAPTURED.relative_to(REPO)}. It is produced by running, in the "
-            f"workspace after `scripts/databricks_run.sh run-full-refresh`:\n\n"
-            f"  SELECT customer_id, segment, country, __START_AT, __END_AT\n"
-            f"  FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;\n\n"
-            f"saved as a JSON array. docs/databricks-run.md carries the same instruction "
-            f"beside the two anchors this comparison decides."
-        )
     _, dimension = population
-    captured = json.loads(CAPTURED.read_text(encoding="utf-8"))
+    ours = _versions(dimension, "valid_from", "valid_to")
+    theirs = _versions(captured, "__START_AT", "__END_AT")
 
-    def key(row: dict, start: str, end: str) -> tuple:
-        return (
-            str(row["customer_id"]),
-            str(row[start])[:19],
-            "open" if row[end] is None else str(row[end])[:19],
-            row["segment"],
-            row["country"],
-        )
-
-    ours = sorted(key(r, "valid_from", "valid_to") for r in dimension)
-    theirs = sorted(key(r, "__START_AT", "__END_AT") for r in captured)
-    only_ours = [r for r in ours if r not in theirs]
-    only_theirs = [r for r in theirs if r not in ours]
+    assert sum(theirs.values()) == sum(ours.values()), (
+        f"row counts differ: the OSS lane computes {sum(ours.values())} versions, the capture "
+        f"holds {sum(theirs.values())}."
+    )
+    only_ours = sorted((ours - theirs).elements())
+    only_theirs = sorted((theirs - ours).elements())
     assert not only_ours and not only_theirs, (
         f"the hand-written MERGE and AUTO CDC produced different dimensions.\n"
         f"  only in the OSS lane   ({len(only_ours)}): {only_ours[:5]}\n"
         f"  only on Databricks     ({len(only_theirs)}): {only_theirs[:5]}\n"
-        f"If the Databricks side has extra rows whose attributes repeat their predecessor's, "
-        f"`track_history_column_list` did not take effect on that run."
+        f"If the Databricks side has extra versions whose attributes repeat their "
+        f"predecessor's, `track_history_column_list` did not take effect on that run."
     )
+
+
+def test_every_customer_has_the_same_history_in_the_same_order(population, captured) -> None:  # type: ignore[no-untyped-def]
+    """The same versions is not the same as the same history.
+
+    The multiset above would be satisfied by two dimensions holding the same seventy-five rows
+    attached to a different sixty customers, or in a different order where two versions start at
+    the same instant. This asks the stronger question, per customer: the same intervals,
+    carrying the same attributes, in the same sequence.
+    """
+    _, dimension = population
+    ours = _history(dimension, "valid_from", "valid_to")
+    theirs = _history(captured, "__START_AT", "__END_AT")
+
+    assert set(ours) == set(theirs), (
+        f"different customers.\n  only in the OSS lane: {sorted(set(ours) - set(theirs))[:5]}\n"
+        f"  only on Databricks:  {sorted(set(theirs) - set(ours))[:5]}"
+    )
+    differing = {c: (ours[c], theirs[c]) for c in sorted(ours) if ours[c] != theirs[c]}
+    assert not differing, (
+        f"{len(differing)} customers have a different history. First: {list(differing.items())[:2]}"
+    )
+
+
+def test_the_captured_history_is_well_formed_on_its_own_terms(captured) -> None:
+    """What has to be true of the workspace's dimension whatever the OSS lane says.
+
+    A comparison against a second implementation cannot catch a defect both share, and both
+    lanes read the same generated events. These are the Type 2 properties themselves: one open
+    version per customer, each version starting exactly where the previous one ended, and no
+    version repeating its predecessor's tracked attributes - the last being the heartbeat rule
+    this whole file exists because of.
+    """
+    history = _history(captured, "__START_AT", "__END_AT")
+    assert history, "the capture holds no customers"
+
+    faults: list[str] = []
+    for customer, versions in history.items():
+        if sum(1 for _, end, *_ in versions if end is None) != 1:
+            faults.append(f"{customer}: not exactly one open version")
+        if versions[-1][1] is not None:
+            faults.append(f"{customer}: the last version is closed")
+        for previous, nxt in pairwise(versions):
+            if previous[1] != nxt[0]:
+                faults.append(f"{customer}: a gap or overlap at {previous[1]} -> {nxt[0]}")
+            if previous[2:] == nxt[2:]:
+                faults.append(f"{customer}: consecutive versions repeat {previous[2:]}")
+    assert not faults, "\n".join(faults[:10])
 
 
 def test_the_workspace_dimension_has_the_shape_the_oss_lane_computes(population) -> None:  # type: ignore[no-untyped-def]

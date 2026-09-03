@@ -32,8 +32,8 @@ because what it cost is the useful part.
 lane produced `revenue_by_month` 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross
 199 379 from 3 - to the cent against what the OSS lane computes on the same seed - with 727
 accepted and 28 quarantined across seven reasons out of 755, conservation closed, and a Type 2
-dimension of the same shape as the hand-written MERGE's. The record is in this repository and
-every figure in `docs/databricks-run.md` is rendered from it. The account of the failure below
+dimension the hand-written MERGE's equal row by row, not merely in its totals. The record is
+in this repository and every figure in `docs/databricks-run.md` is rendered from it. The account of the failure below
 is kept in full.
 
 What the run produced: `revenue_by_month` for 2026-01 with a gross of **2.767e19 cents** from
@@ -160,14 +160,37 @@ And the comparison now EXISTS as a test, which it did not when it mattered.
 and **compares the OSS dimension against the workspace record's, for real, on every run of the
 fast lane**. Falsified: doctored back to 78/18, it fails and prints both shapes.
 
-What it compares is the dimension's SHAPE - four aggregates - and that is weaker than row by
-row, which is worth saying rather than glossing: four matching totals do not prove the same
-sixty customers have the same seventy-five intervals. Two dimensions could agree on every count
-and disagree about which customer changed when. The row-level half is still a skip, because
-half of a cross-runtime comparison has to be CAPTURED - there is no way to compute AUTO CDC's
-output without Databricks, and inventing an expected shape would be a second implementation of
-the primitive rather than a comparison with it. The query that produces the capture is named in
-`docs/databricks-run.md` and in the skip message.
+### Row by row, which is what four aggregates could not tell you
+
+The capture exists. `evidence/databricks/dim_customer_scd2.json` holds the workspace's own
+seventy-five rows - `customer_id`, `segment`, `country`, `__START_AT`, `__END_AT` - and the
+comparison is no longer a shape comparison and no longer a skip.
+
+**They agree on every row.** The same sixty customers, the same seventy-five intervals, the same
+attributes, the same instants - as multisets and as per-customer histories. Nothing appeared row
+by row that the aggregates could not see: no displaced `__START_AT`, no different order in a
+tie, no gap or overlap on either side. That is a result rather than a formality, because two
+dimensions CAN agree on every total and disagree about which customer changed when, and until
+this ran nobody knew which of those two was true here.
+
+The finding of this round is therefore in the comparison and not in the data. Its first version
+reduced each timestamp with `str(value)[:19]` - which is what made a workspace's
+`2026-01-01T00:00:00+00:00` and the generator's `2026-01-01T00:00:00.000000Z` comparable, by
+cutting off the part where they differ. It cut off the part where a WRONG one would differ too.
+And it asked `row not in theirs`, which is a set question on a list. Both were falsified against
+the committed capture:
+
+| the capture, doctored | the old comparison | now |
+|---|---|---|
+| every timestamp moved to `+01:00` - an hour out, every row | **passed** | fails, in two tests |
+| two versions repeated, 77 rows against 75 | **passed** | fails, in three |
+| one `__END_AT` and the next `__START_AT` moved an hour, totals unchanged | untested | fails, in two |
+| the zone dropped, a capture in local time | untested | refused by name |
+| two versions swapped onto each other's customers | untested | fails, in three |
+
+A comparison written about THREE EXTRA VERSIONS could not see extra versions. It compares
+instants now, parsed and zone-bearing, and multisets rather than sets, and per-customer
+histories in order.
 
 ### One more dialect difference, measured on the way
 

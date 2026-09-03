@@ -53,13 +53,13 @@ things. Four are done and checkable against that record; three have not been sta
 |---|---|---|
 | Unity Catalog (catalog, schemas, volumes, grants) | done | the catalog step creates it with SQL; the record names the tables it read |
 | expectations, per rule, from the event log | done | seven rules, fourteen numbers, in the record - and every one matches what the OSS predicates give on the same population |
-| AUTO CDC Type 2 | done | 75 / 60 / 60 / 15, the OSS lane's shape exactly, compared by a test that runs |
+| AUTO CDC Type 2 | done | 75 / 60 / 60 / 15, and equal to the hand-written MERGE's dimension ROW BY ROW - same customers, same intervals, same instants - against the workspace's own rows, committed |
 | the event log read for the update's state | done | `update.last_state = COMPLETED`, `error_events = 0`, plus ten terminal updates in `update_history` |
 | **bundle deploy from CI** | **not started** | `gh run list --workflow databricks.yml` returns nothing. The workflow exists and can deploy, seed, run and fetch on a `workflow_dispatch`; it has never been dispatched. Every deploy so far was from a laptop |
 | **AI/BI dashboard** | **not started** | there is no dashboard resource in the bundle. `databricks/resources/` holds `grants.yml`, `jobs.yml` and `volumes.yml`, and nothing else |
 | **screenshots as evidence** | **not started** | none exist |
 
-Three more things are DEPLOYED AND UNVERIFIED, which is a different state again and is why the
+Two more things are DEPLOYED AND UNVERIFIED, which is a different state again and is why the
 next run still has work to do:
 
 - `pipelines.numUpdateRetryAttempts: "0"`. It landed after the retry loop it was written for,
@@ -68,9 +68,7 @@ next run still has work to do:
 - the four sections `publish_evidence.py` now captures for the checklist items the record could
   not answer (`column_types`, `money_types`, `bad_events`, `rescued_rows`). Written, parsed,
   analysed against the lane's own tables, never run.
-- the row-level dimension capture. The shape comparison runs; the row-by-row one is a skip, and
-  four matching aggregates do not prove the same sixty customers have the same intervals.
 
 **The hours stay at 18 and that figure is an estimate nobody has measured against.** This
 document has no record of hours spent, so changing the number would be inventing one. What can
-be said with a number is the state above: four of seven, three not started, three unverified.
+be said with a number is the state above: four of seven, three not started, two unverified.
