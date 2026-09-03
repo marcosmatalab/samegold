@@ -1,0 +1,9 @@
+{
+  "fetched_at": "2026-09-03T18:14:47Z",
+  "bundle_target": "free",
+  "catalog": "samegold",
+  "deployed_from_commit": "8c9faa7c37dd980a8fdbdabe52c6ac8ed5d87afe",
+  "tree_dirty": true,
+  "databricks_cli": "Databricks CLI v1.14.1",
+  "note": "Written by scripts/databricks_run.sh on the machine that ran the deploy. Nothing here was measured inside the workspace; SG-DBX-01.json is. Neither file is part of evidence/history.jsonl - see evidence/databricks/README.md."
+}
