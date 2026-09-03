@@ -37,12 +37,25 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-for _widget in ("catalog", "pipeline_id", "out_dir", "job_run_id", "task_run_id"):
+for _widget in (
+    "catalog",
+    "pipeline_id",
+    "out_dir",
+    "job_run_id",
+    "task_run_id",
+    "deploy_commit",
+    "deploy_tree_dirty",
+):
     dbutils.widgets.text(_widget, "")
 
 catalog = dbutils.widgets.get("catalog") or "samegold"
 pipeline_id = dbutils.widgets.get("pipeline_id")
 out_dir = dbutils.widgets.get("out_dir")
+# The commit the bundle was deployed from, carried in by the deploy rather than written
+# afterwards by whoever fetched the files. Everything this notebook publishes could say WHICH
+# tables it read and WHEN, and could not say which code produced them.
+deploy_commit = dbutils.widgets.get("deploy_commit") or "unknown"
+deploy_tree_dirty = dbutils.widgets.get("deploy_tree_dirty") or "unknown"
 
 # Each of the three is interpolated into SQL or into a path, so each is checked against the
 # shape it is allowed to have. A job parameter is input like any other, and an identifier
@@ -58,6 +71,21 @@ if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", pipeline_id):
     )
 if out_dir and not re.fullmatch(r"/Volumes/[A-Za-z0-9_./-]+", out_dir):
     raise ValueError(f"out_dir must be a Unity Catalog volume path, got {out_dir!r}")
+# Checked rather than published as given, because the whole value of this field is that a
+# reader can look the commit up. "unknown" is allowed and is honest - a deploy by hand, without
+# the script - but a truncated sha or a leftover "${var.deploy_commit}" is not: it would look
+# like provenance and resolve to nothing.
+if not re.fullmatch(r"unknown|[0-9a-f]{40}", deploy_commit):
+    raise ValueError(
+        f"deploy_commit must be a full 40-character sha or the word 'unknown', got "
+        f"{deploy_commit!r}. scripts/databricks_run.sh passes it with "
+        f'--var="deploy_commit=$(git rev-parse HEAD)"; a value that is neither means the '
+        f"bundle variable did not resolve."
+    )
+if deploy_tree_dirty not in ("true", "false", "unknown"):
+    raise ValueError(
+        f"deploy_tree_dirty must be 'true', 'false' or 'unknown', got {deploy_tree_dirty!r}"
+    )
 
 # COMMAND ----------
 # `get_json_object(details, '$.path')`, not `details:path`, in every query below.
@@ -339,6 +367,32 @@ dimension = _read(
     """),
 )
 
+# THE DIMENSION ITSELF, row by row, and not only its six aggregates.
+#
+# `tests/fast/test_databricks_dimension_parity.py` compares AUTO CDC's output against the OSS
+# lane's hand-written MERGE on the same seed. Half of that comparison cannot be computed outside
+# a workspace, so it has to be captured here - and it was captured BY HAND for one run, which
+# is a file that cannot say which run it came from. A later run replacing the record would have
+# left it comparing green against rows nothing produced any more.
+#
+# So it is written by the same task, in the same session, from the same tables the aggregates
+# above were read from. That is the point: the header below is not a field copied out of the
+# record afterwards, it is what this run knows about itself.
+#
+# Lower case, and that is not a slip. `_module_namespace` in the parse test evaluates every
+# ALL-CAPS module-level assignment in these lane files so that a SQL fragment built from
+# another one cannot go unparsed, and it refuses to skip anything it cannot evaluate. This
+# string interpolates `catalog`, which is a job widget and exists only in a workspace - so it
+# belongs with the other query strings in this file, which are all built from widgets, and not
+# with the literal constants that test can evaluate. The statement itself is still extracted
+# and still parsed: `_sql_calls` follows the name to its assignment.
+dimension_capture_sql = f"""
+    SELECT customer_id, segment, country, __START_AT, __END_AT
+    FROM {catalog}.main.dim_customer_scd2
+    ORDER BY customer_id, __START_AT
+"""
+dimension_rows = _read("dim_customer_scd2_rows", lambda: _rows(dimension_capture_sql))
+
 close = _read(
     "revenue_closed",
     lambda: _rows(
@@ -365,6 +419,11 @@ record = {
     # wrong - which is worth seeing rather than worth hiding behind a default.
     "job_run_id": dbutils.widgets.get("job_run_id"),
     "task_run_id": dbutils.widgets.get("task_run_id"),
+    # Which code produced all of this. `evidence/databricks/fetch.json` has carried a commit
+    # since the lane first ran, but that one is written by the laptop AFTER the fact: it says
+    # what HEAD was when somebody copied the files down, which is a different fact and can be
+    # re-stamped onto stale files by a later fetch. This one travels with the deploy.
+    "deploy": {"commit": deploy_commit, "tree_dirty": deploy_tree_dirty},
     # Said in the record itself, not only in the document that quotes it. A reader handed this
     # file alone has to be able to see that it is not part of the chain, and why.
     "chain": {
@@ -408,3 +467,46 @@ if out_dir:
     with open(f"{out_dir}/SG-DBX-01.json", "w", encoding="utf-8") as handle:
         handle.write(payload)
     print(f"wrote {out_dir}/SG-DBX-01.json")
+
+# COMMAND ----------
+# The capture, with a header that names the run rather than describing it.
+#
+# `update_id` is the same value the record publishes because it is the same read, in the same
+# session, of the same event log - which is what makes it provenance rather than a copy. The
+# thing it protects against is the file outliving the run: a later update replaces
+# SG-DBX-01.json, this file does not change, and the comparison that reads it goes on passing
+# against rows the workspace no longer holds. Then the two update ids differ and the test says
+# so, by name, with the query.
+#
+# `query` is in the header because a reader who wants to check these rows needs the statement
+# that produced them, and reading it out of this file is one step; finding it in a notebook in
+# a repository is several.
+
+# The WORKSPACE's clock, not the fetching machine's - and guarded, because this cell runs after
+# the record has already been written and a failure here must not be what loses the capture.
+# `_read` answers with a dict describing the error rather than raising, so the shape is checked
+# rather than indexed into: a header whose captured_at is an error object would be a header that
+# looks measured and is not.
+_now = _read("captured_at", lambda: _rows("SELECT current_timestamp() AS now"))
+captured_at = _now[0].get("now") if isinstance(_now, list) and _now else None
+capture_update = update_state[0] if isinstance(update_state, list) and update_state else {}
+capture = {
+    "capture": "dim_customer_scd2",
+    "provenance": {
+        "measured_in_the_workspace": True,
+        "update_id": capture_update.get("update_id") if capture_update else None,
+        "pipeline_id": pipeline_id,
+        "job_run_id": dbutils.widgets.get("job_run_id"),
+        "task_run_id": dbutils.widgets.get("task_run_id"),
+        "commit": deploy_commit,
+        "tree_dirty": deploy_tree_dirty,
+        "captured_at": captured_at,
+        "catalog": catalog,
+    },
+    "query": " ".join(dimension_capture_sql.split()),
+    "rows": dimension_rows,
+}
+if out_dir:
+    with open(f"{out_dir}/dim_customer_scd2.json", "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(capture, indent=2, sort_keys=True, default=str))
+    print(f"wrote {out_dir}/dim_customer_scd2.json")

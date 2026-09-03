@@ -72,6 +72,7 @@ def _sql_calls(source: str) -> list[str]:
     """
     tree = ast.parse(source)
     forwarded = _forwarding_calls(tree)
+    constants = _module_constants(tree)
     out: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or id(node) in forwarded:
@@ -92,12 +93,35 @@ def _sql_calls(source: str) -> list[str]:
             argument = next((kw.value for kw in node.keywords if kw.arg == "sqlQuery"), None)
         if argument is None:
             raise AssertionError(f"spark.sql() with no readable query at line {node.lineno}")
-        out.append(_literal(argument))
+        out.append(_literal(argument, constants))
     return out
 
 
-def _literal(node: ast.expr) -> str:
-    """Reconstruct a string literal, an f-string or a concatenation of them."""
+def _module_constants(tree: ast.Module) -> dict[str, ast.expr]:
+    """Module-level `NAME = <string literal>` bindings, so a named query can be followed.
+
+    A query sometimes has to exist under a name rather than inline: `publish_evidence.py`
+    writes the dimension capture's own statement into the capture's header, and a statement
+    that appears twice is a statement that can differ from itself. The alternative was to
+    inline it and let the header quote something else, which is worse.
+
+    Only the module's own top level, and only string-valued assignments. Anything else still
+    reaches `_literal` as a Name it cannot resolve, and still raises - which is the property
+    that matters: a runtime-built query must not slip past by being given a name.
+    """
+    return {
+        target.id: node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and len(node.targets) == 1
+        for target in node.targets
+        if isinstance(target, ast.Name)
+        and isinstance(node.value, ast.Constant | ast.JoinedStr | ast.BinOp)
+    }
+
+
+def _literal(node: ast.expr, constants: dict[str, ast.expr] | None = None) -> str:
+    """Reconstruct a string literal, an f-string, a concatenation, or a named constant."""
+    constants = constants or {}
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.JoinedStr):
@@ -108,7 +132,9 @@ def _literal(node: ast.expr) -> str:
             for part in node.values
         )
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return _literal(node.left) + _literal(node.right)
+        return _literal(node.left, constants) + _literal(node.right, constants)
+    if isinstance(node, ast.Name) and node.id in constants:
+        return _literal(constants[node.id], constants)
     raise AssertionError(
         f"spark.sql() called with something this test cannot read: {ast.dump(node)}"
     )

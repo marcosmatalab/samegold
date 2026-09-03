@@ -23,6 +23,23 @@ variables:
   catalog:
     description: Unity Catalog catalog. Free Edition gives you one metastore and no external locations.
     default: samegold
+  # The commit this bundle was deployed from, carried INTO the workspace so that what the run
+  # publishes can name it.
+  #
+  # Until now the only place a commit appeared was `evidence/databricks/fetch.json`, written by
+  # the laptop after the fact - so the record measured inside the workspace could not say which
+  # code produced it, and a capture taken from the tables could not either. A value the fetching
+  # machine writes into a workspace-produced file agrees with itself by construction and can be
+  # re-stamped onto stale rows by a later fetch; a value that travels with the deploy cannot.
+  #
+  # `scripts/databricks_run.sh` passes it. Deploying by hand without it leaves "unknown", which
+  # is a fact worth publishing rather than a blank to be filled in later.
+  deploy_commit:
+    description: The git commit scripts/databricks_run.sh deployed from, or "unknown".
+    default: unknown
+  deploy_tree_dirty:
+    description: Whether that tree had uncommitted changes outside evidence/, or "unknown".
+    default: unknown
 
 targets:
   free:

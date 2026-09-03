@@ -64,3 +64,8 @@ resources:
               # reference here becomes visible instead of becoming a plausible-looking blank.
               job_run_id: "{{job.run_id}}"
               task_run_id: "{{task.run_id}}"
+              # Passed through the deploy rather than written afterwards by whoever fetched
+              # the files. This is what lets the record - and the row-level capture the same
+              # task writes - name the code that produced them, from inside the run.
+              deploy_commit: ${var.deploy_commit}
+              deploy_tree_dirty: ${var.deploy_tree_dirty}

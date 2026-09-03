@@ -1,527 +1,543 @@
-[
-  {
-    "customer_id": "C000000",
-    "segment": "vip",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000001",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-13T00:00:00+00:00"
-  },
-  {
-    "customer_id": "C000001",
-    "segment": "vip",
-    "country": "IT",
-    "__START_AT": "2026-01-13T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000002",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-03T09:00:00+00:00"
-  },
-  {
-    "customer_id": "C000002",
-    "segment": "retail",
-    "country": "FR",
-    "__START_AT": "2026-01-03T09:00:00+00:00",
-    "__END_AT": "2026-01-08T04:00:00+00:00"
-  },
-  {
-    "customer_id": "C000002",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-08T04:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000003",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000004",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000005",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000006",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000007",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000008",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000009",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000010",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000011",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000012",
-    "segment": "retail",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000013",
-    "segment": "retail",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000014",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000015",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-09T15:00:00+00:00"
-  },
-  {
-    "customer_id": "C000015",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-09T15:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000016",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-10T13:00:00+00:00"
-  },
-  {
-    "customer_id": "C000016",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-10T13:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000017",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-07T15:00:00+00:00"
-  },
-  {
-    "customer_id": "C000017",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-07T15:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000018",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000019",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000020",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-12T04:00:00+00:00"
-  },
-  {
-    "customer_id": "C000020",
-    "segment": "retail",
-    "country": "PT",
-    "__START_AT": "2026-01-12T04:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000021",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000022",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-06T13:00:00+00:00"
-  },
-  {
-    "customer_id": "C000022",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-06T13:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000023",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000024",
-    "segment": "retail",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000025",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000026",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000027",
-    "segment": "vip",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000028",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000029",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-03T15:00:00+00:00"
-  },
-  {
-    "customer_id": "C000029",
-    "segment": "retail",
-    "country": "PT",
-    "__START_AT": "2026-01-03T15:00:00+00:00",
-    "__END_AT": "2026-01-05T19:00:00+00:00"
-  },
-  {
-    "customer_id": "C000029",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-05T19:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000030",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000031",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000032",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000033",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000034",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000035",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000036",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000037",
-    "segment": "retail",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000038",
-    "segment": "vip",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000039",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000040",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000041",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000042",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000043",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000044",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000045",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-09T18:00:00+00:00"
-  },
-  {
-    "customer_id": "C000045",
-    "segment": "vip",
-    "country": "IT",
-    "__START_AT": "2026-01-09T18:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000046",
-    "segment": "pro",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-12T14:00:00+00:00"
-  },
-  {
-    "customer_id": "C000046",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-12T14:00:00+00:00",
-    "__END_AT": "2026-01-12T23:00:00+00:00"
-  },
-  {
-    "customer_id": "C000046",
-    "segment": "pro",
-    "country": "FR",
-    "__START_AT": "2026-01-12T23:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000047",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000048",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000049",
-    "segment": "vip",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000050",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-12T03:00:00+00:00"
-  },
-  {
-    "customer_id": "C000050",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-12T03:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000051",
-    "segment": "retail",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000052",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000053",
-    "segment": "retail",
-    "country": "FR",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000054",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": "2026-01-14T20:00:00+00:00"
-  },
-  {
-    "customer_id": "C000054",
-    "segment": "vip",
-    "country": "PT",
-    "__START_AT": "2026-01-14T20:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000055",
-    "segment": "retail",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000056",
-    "segment": "retail",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000057",
-    "segment": "pro",
-    "country": "IT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000058",
-    "segment": "vip",
-    "country": "ES",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  },
-  {
-    "customer_id": "C000059",
-    "segment": "pro",
-    "country": "PT",
-    "__START_AT": "2026-01-01T00:00:00+00:00",
-    "__END_AT": null
-  }
-]
+{
+  "capture": "dim_customer_scd2",
+  "provenance": {
+    "captured_at": null,
+    "catalog": "samegold",
+    "commit": "8c9faa7c37dd980a8fdbdabe52c6ac8ed5d87afe",
+    "job_run_id": null,
+    "measured_in_the_workspace": false,
+    "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
+    "task_run_id": null,
+    "tree_dirty": "unknown",
+    "update_id": "58d3de6f-311b-4204-a70d-3ba47ec78c31",
+    "why": "exported by hand from the workspace on 3 September 2026, before publish_evidence.py wrote this file itself. update_id, pipeline_id and commit below are copied from SG-DBX-01.json and fetch.json rather than measured, and the run that produced the rows recorded nothing else about itself. The next fetch replaces this header with a measured one."
+  },
+  "query": "SELECT customer_id, segment, country, __START_AT, __END_AT FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT",
+  "rows": [
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000000",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-13T00:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000001",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-13T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000001",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-03T09:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000002",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-08T04:00:00+00:00",
+      "__START_AT": "2026-01-03T09:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000002",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-08T04:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000002",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000003",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000004",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000005",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000006",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000007",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000008",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000009",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000010",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000011",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000012",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000013",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000014",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-09T15:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000015",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-09T15:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000015",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-10T13:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000016",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-10T13:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000016",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": "2026-01-07T15:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000017",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-07T15:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000017",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000018",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000019",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": "2026-01-12T04:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000020",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-12T04:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000020",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000021",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-06T13:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000022",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-06T13:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000022",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000023",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000024",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000025",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000026",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000027",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000028",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-03T15:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000029",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-05T19:00:00+00:00",
+      "__START_AT": "2026-01-03T15:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000029",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-05T19:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000029",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000030",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000031",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000032",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000033",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000034",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000035",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000036",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000037",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000038",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000039",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000040",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000041",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000042",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000043",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000044",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-09T18:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000045",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-09T18:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000045",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-12T14:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000046",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": "2026-01-12T23:00:00+00:00",
+      "__START_AT": "2026-01-12T14:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000046",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-12T23:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000046",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000047",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000048",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000049",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": "2026-01-12T03:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000050",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-12T03:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000050",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000051",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000052",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "FR",
+      "customer_id": "C000053",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": "2026-01-14T20:00:00+00:00",
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000054",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-14T20:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000054",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000055",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000056",
+      "segment": "retail"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "IT",
+      "customer_id": "C000057",
+      "segment": "pro"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "ES",
+      "customer_id": "C000058",
+      "segment": "vip"
+    },
+    {
+      "__END_AT": null,
+      "__START_AT": "2026-01-01T00:00:00+00:00",
+      "country": "PT",
+      "customer_id": "C000059",
+      "segment": "pro"
+    }
+  ]
+}

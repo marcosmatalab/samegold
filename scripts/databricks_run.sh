@@ -30,7 +30,13 @@ BUNDLE="$REPO/databricks"
 TARGET="${SAMEGOLD_DBX_TARGET:-free}"
 CATALOG="${SAMEGOLD_CATALOG:-samegold}"
 BIN="${SAMEGOLD_BIN:-$REPO/.venv/bin}"
-OUT="$REPO/evidence/databricks"
+# Overridable so that `step_fetch` can be RUN in a test instead of read. Everything this
+# script does to the workspace is stubbed in tests/fast/test_databricks_catalog_step.py by
+# putting a fake `databricks` on PATH; the one thing that was not stubbable was where the
+# files land, because it was this repository's own evidence directory - so a test that
+# executed the step would have overwritten the committed record with a fixture. Reading the
+# source instead is what round twenty-one established does not count.
+OUT="${SAMEGOLD_EVIDENCE_OUT:-$REPO/evidence/databricks}"
 LANDING="dbfs:/Volumes/$CATALOG/raw/landing"
 EVIDENCE_VOLUME="dbfs:/Volumes/$CATALOG/raw/evidence"
 
@@ -284,7 +290,27 @@ else:
 '
 
 step_validate() { say "bundle validate -t $TARGET"; (cd "$BUNDLE" && databricks bundle validate -t "$TARGET"); }
-step_deploy()   { say "bundle deploy -t $TARGET";   (cd "$BUNDLE" && databricks bundle deploy   -t "$TARGET" --var="catalog=$CATALOG"); }
+# The commit, carried INTO the deploy so that what the run publishes can name the code that
+# produced it. Until now the only commit anywhere near this lane was the one `step_fetch` writes
+# into fetch.json afterwards - this machine's HEAD when somebody copied the files down, which is
+# a different fact, and one a later fetch can re-stamp onto files it did not produce.
+#
+# A tree with uncommitted code is deployed as that commit PLUS whatever is not in it, so the
+# commit alone would be a claim the deploy does not honour. `code_changes` is the same filter
+# `step_fetch` uses, and it excludes evidence/ for the same reason.
+deploy_commit() { git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown; }
+
+step_deploy() {
+    say "bundle deploy -t $TARGET"
+    local commit dirty
+    commit="$(deploy_commit)"
+    dirty=$(test -n "$(code_changes)" && echo true || echo false)
+    echo "  deploying $commit (tree_dirty=$dirty)"
+    (cd "$BUNDLE" && databricks bundle deploy -t "$TARGET" \
+        --var="catalog=$CATALOG" \
+        --var="deploy_commit=$commit" \
+        --var="deploy_tree_dirty=$dirty")
+}
 
 step_seed() {
     say "seed $LANDING"
@@ -450,6 +476,27 @@ reaching the end. The run's output is in the workspace under Jobs -> samegold mo
   "note": "Written by scripts/databricks_run.sh on the machine that ran the deploy. Nothing here was measured inside the workspace; SG-DBX-01.json is. Neither file is part of evidence/history.jsonl - see evidence/databricks/README.md."
 }
 JSON
+    # The row-level dimension capture, written by the same task in the same run as the record
+    # above. It used to be exported by hand, which produced a file that could not say which run
+    # it came from - so a later run replacing the record left it comparing green against rows
+    # the workspace no longer held. Not fatal when absent: a run from before publish_evidence.py
+    # wrote it has none, and the record is still the thing this step exists to bring down. Loud,
+    # though, because the comparison that reads it is then reading an older workspace than the
+    # record beside it - and `tests/fast/test_databricks_dimension_parity.py` says so by
+    # comparing the two update ids.
+    if databricks fs cp --overwrite \
+        "$EVIDENCE_VOLUME/dim_customer_scd2.json" "$OUT/dim_customer_scd2.json"; then
+        echo "  evidence/databricks/dim_customer_scd2.json"
+    else
+        echo
+        echo "  WARNING: no dim_customer_scd2.json at $EVIDENCE_VOLUME."
+        echo "  The record came down; the row-level capture did not. If a capture is already in"
+        echo "  the repository it now describes an OLDER run than SG-DBX-01.json beside it, and"
+        echo "  tests/fast/test_databricks_dimension_parity.py will fail on the two update ids"
+        echo "  rather than compare against rows nothing produced. Re-run the job with a"
+        echo "  publish_evidence.py that writes it."
+        echo
+    fi
     echo "  evidence/databricks/SG-DBX-01.json"
     echo "  evidence/databricks/fetch.json"
     # The two per-rule tables, rendered ready to paste into the anchored blocks in

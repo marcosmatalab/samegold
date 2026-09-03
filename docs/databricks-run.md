@@ -639,19 +639,24 @@ dimension with two open rows for one customer is broken whatever the totals say.
 15 are AUTO CDC agreeing with the hand-written `MERGE` the OSS lane uses, which is the only
 reason this lane keeps both.
 
-Then capture the rows themselves, because four matching totals do not prove the same sixty
-customers have the same seventy-five intervals:
+The rows themselves are captured by the run, not by you. `publish_evidence.py` reads the same
+table a second time -
 
 ```sql
 SELECT customer_id, segment, country, __START_AT, __END_AT
 FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;
 ```
 
-Save that as a JSON array at `evidence/databricks/dim_customer_scd2.json` and commit it.
+- and writes them to the evidence volume with a header naming the update that produced them;
+`scripts/databricks_run.sh fetch` brings the file down beside the record. That is a change from
+the first time round, when this document asked you to paste the query in and save the result:
+a capture exported by hand cannot say which run it came from, so a later run replacing the
+record left it comparing green against rows the workspace no longer held.
+
 `tests/fast/test_databricks_dimension_parity.py` compares it against the OSS lane's dimension on
-the same seed - row by row, as instants and as multisets - on every run of the fast lane, and
-FAILS rather than skipping if the file is not there. The capture from 3 September 2026 agrees on
-all seventy-five rows.
+the same seed - row by row, as instants and as multisets - on every run of the fast lane, FAILS
+rather than skipping if the file is not there, and fails NAMING THE QUERY if its update id and
+the record's disagree. The capture from 3 September 2026 agrees on all seventy-five rows.
 
 ### If every one of those holds
 

@@ -214,19 +214,153 @@ def _history(rows: list[dict], start: str, end: str) -> dict[str, list[tuple]]:
 
 
 @pytest.fixture(scope="module")
-def captured() -> list[dict]:
-    """The workspace's own rows. Missing is a FAILURE, and the failure carries the query."""
+def capture() -> dict:
+    """The capture file: a provenance header and the workspace's rows under it.
+
+    Missing is a FAILURE, and the failure carries the query. The file is committed; a clone
+    that does not have it has had it deleted.
+    """
     assert CAPTURED.exists(), (
-        f"no capture at {CAPTURED.relative_to(REPO)}. It is produced by running, in the "
-        f"workspace after `scripts/databricks_run.sh run-full-refresh`:\n\n"
+        f"no capture at {CAPTURED.relative_to(REPO)}. `scripts/databricks_run.sh fetch` brings "
+        f"it down from the evidence volume, where publish_evidence.py writes it with:\n\n"
         f"  SELECT customer_id, segment, country, __START_AT, __END_AT\n"
         f"  FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;\n\n"
-        f"saved as a JSON array. It is committed, so this file going missing means somebody "
-        f"deleted the only evidence that the two implementations were ever compared."
+        f"It is committed, so this file going missing means somebody deleted the only evidence "
+        f"that the two implementations were ever compared."
     )
-    rows = json.loads(CAPTURED.read_text(encoding="utf-8"))
-    assert isinstance(rows, list) and rows, f"{CAPTURED} is not a non-empty JSON array"
-    return rows
+    document = json.loads(CAPTURED.read_text(encoding="utf-8"))
+    assert isinstance(document, dict) and isinstance(document.get("rows"), list), (
+        f"{CAPTURED.name} is not a capture document. It must be an object with a `provenance` "
+        f"header and a `rows` array; a bare array is the shape it had before it could say "
+        f"which run produced it, which is the whole point of the header. A `rows` that is an "
+        f"OBJECT is publish_evidence.py reporting that the query failed - the error is in it, "
+        f"and the record's `incomplete` list names the section."
+    )
+    assert document["rows"], f"{CAPTURED.name} holds no rows"
+    return document
+
+
+@pytest.fixture(scope="module")
+def captured(capture: dict) -> list[dict]:
+    """Just the rows, for the comparisons that do not care where they came from."""
+    return capture["rows"]
+
+
+@pytest.fixture(scope="module")
+def record() -> dict:
+    """The record the same run published."""
+    assert RECORD.exists(), f"no record at {RECORD.relative_to(REPO)}"
+    return json.loads(RECORD.read_text(encoding="utf-8"))
+
+
+def test_the_capture_names_the_run_the_record_names(capture: dict, record: dict) -> None:
+    """The capture and the record beside it must come from the same update.
+
+    Without this the capture is a file that outlives its run in silence. A later run replaces
+    `SG-DBX-01.json`; nothing replaces the capture; the row-by-row comparison goes on passing
+    against rows the workspace no longer holds, and it passes GREEN, which is worse than
+    failing. This is that failure, made loud, with the query that fixes it.
+
+    `update_id` is the tie because it is the one thing both files learn from the same read of
+    the same event log in the same session - the record publishes it, and publish_evidence.py
+    writes it into the capture's header from the same value, in the same task, before either
+    file leaves the workspace.
+    """
+    provenance = capture.get("provenance") or {}
+    update = (record.get("update") or [{}])[0]
+    assert provenance.get("update_id") and update.get("update_id"), (
+        f"one of the two files does not name an update: capture "
+        f"{provenance.get('update_id')!r}, record {update.get('update_id')!r}"
+    )
+    assert provenance["update_id"] == update["update_id"], (
+        f"the capture and the record describe DIFFERENT updates.\n"
+        f"  {CAPTURED.name}: {provenance['update_id']}\n"
+        f"  {RECORD.name}: {update['update_id']}\n"
+        f"The record has been replaced by a later run and the capture has not, so every "
+        f"comparison below is reading rows the workspace no longer holds. Bring it down with "
+        f"`scripts/databricks_run.sh fetch`, or re-run the job if that run predates "
+        f"publish_evidence.py writing the capture:\n\n  {capture.get('query')}"
+    )
+    assert provenance.get("pipeline_id") == record.get("pipeline_id"), (
+        f"different pipelines: capture {provenance.get('pipeline_id')!r}, record "
+        f"{record.get('pipeline_id')!r}"
+    )
+
+
+def test_a_capture_that_claims_the_workspace_measured_it_carries_what_only_a_run_knows(
+    capture: dict,
+) -> None:
+    """The header can be typed by hand, so what cannot be typed convincingly is checked.
+
+    The capture committed on 3 September 2026 was exported by hand and its header says so:
+    `measured_in_the_workspace: false`, with every field copied from the record beside it. That
+    is honest and it is weak - a copied field agrees by construction - and the reason it is
+    written anyway is that it stops agreeing the moment a later run publishes a different
+    update.
+
+    A header that claims to have been measured has to carry the three things only a running job
+    has: the job run, the task run, and the workspace's own clock at capture time. None of them
+    exist in a record a person can copy from.
+    """
+    provenance = capture.get("provenance") or {}
+    assert "measured_in_the_workspace" in provenance, (
+        "the header does not say whether the workspace measured it, which is the difference "
+        "between provenance and a note"
+    )
+    if not provenance["measured_in_the_workspace"]:
+        assert provenance.get("why"), (
+            "a capture that was not measured in the workspace has to say how it came to exist"
+        )
+        return
+    missing = [
+        field
+        for field in ("job_run_id", "task_run_id", "captured_at", "commit")
+        if not provenance.get(field)
+    ]
+    assert not missing, (
+        f"the header claims the workspace measured it and does not carry {missing}. Those come "
+        f"from the job that read the rows; a header written afterwards cannot have them."
+    )
+
+
+def test_the_records_own_aggregates_recompute_from_the_captured_rows(
+    capture: dict, record: dict
+) -> None:
+    """The tie that needs no header at all, and the one that holds today.
+
+    `publish_evidence.py` reads the dimension TWICE in the same run: once as six aggregates for
+    the record, once row by row for the capture. Two queries, two files - so recomputing the
+    six from the rows is not circular, and a capture from a different run than the record beside
+    it will disagree here even if somebody has typed a matching update id into its header.
+
+    `first_start` and `last_start` are the sharp ones: they are MIN and MAX over the workspace's
+    own `__START_AT`, and no two populations agree on them by accident.
+    """
+    rows = capture["rows"]
+    shape = (record.get("dim_customer_scd2") or [{}])[0]
+    assert shape, "the record carries no dim_customer_scd2 section"
+
+    starts = sorted(str(row["__START_AT"]) for row in rows)
+    ours = {
+        "versions": len(rows),
+        "customers": len({row["customer_id"] for row in rows}),
+        "open_rows": sum(1 for row in rows if row["__END_AT"] is None),
+        "closed_rows": sum(1 for row in rows if row["__END_AT"] is not None),
+        "first_start": starts[0],
+        "last_start": starts[-1],
+    }
+    theirs = {key: str(shape[key]) if "start" in key else shape[key] for key in ours}
+    assert ours == theirs, (
+        f"the captured rows do not add up to the aggregates the record published.\n"
+        f"  from the rows   {ours}\n"
+        f"  from the record {theirs}\n"
+        f"The two were read from the same table in the same run, so a disagreement means one "
+        f"of the two files came from a different one."
+    )
+    assert len(rows) == (record.get("rows") or {}).get("dim_customer_scd2"), (
+        f"{len(rows)} captured rows against {(record.get('rows') or {}).get('dim_customer_scd2')} "
+        f"in the record's own row counts"
+    )
 
 
 def test_the_two_dimensions_agree_row_by_row(population, captured) -> None:  # type: ignore[no-untyped-def]
