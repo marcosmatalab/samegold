@@ -18,9 +18,23 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-globalThis.navigator = dom.window.navigator;
+
+// Assignment is not enough. Node 21 added a built-in `globalThis.navigator` defined as a
+// getter with no setter, so `globalThis.navigator = ...` throws `Cannot set property navigator
+// of #<Object> which has only a getter` - on Node 22, which is what the GitHub runner has,
+// while Node 20 in the author's WSL took the assignment happily. The script worked on the
+// machine it was written on and failed on the first push, which is the same class as every
+// other "it works here" in FINDINGS.md; it is fixed by defining rather than assigning.
+const provide = (name, value) => {
+  try {
+    globalThis[name] = value;
+  } catch {
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+};
+provide("window", dom.window);
+provide("document", dom.window.document);
+provide("navigator", dom.window.navigator);
 
 const mermaid = (await import("mermaid")).default;
 

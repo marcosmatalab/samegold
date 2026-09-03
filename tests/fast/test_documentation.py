@@ -133,9 +133,14 @@ def test_the_postmortem_quotes_the_published_evidence() -> None:
 #
 # The REAL check is `scripts/check_mermaid.mjs`, which runs mermaid's own parser and is a step
 # in `.github/workflows/fast.yml`. It was run against these three blocks on 4 September 2026
-# with **mermaid 11.17.2**, and all three parse as `flowchart-v2`; falsified twice against the
-# committed text - `G -->> E`, which is a sequence-diagram arrow, and a `subgraph` with its
-# `end` removed - and it reported the line number of each.
+# with **mermaid 11.17.2**, on Node 20.20.2 and on Node 22.23.2 - the runner's version - and all
+# three parse as `flowchart-v2`; falsified twice against the committed text - `G -->> E`, which
+# is a sequence-diagram arrow, and a `subgraph` with its `end` removed - reporting the line
+# number of each and exiting non-zero.
+#
+# The two node versions are in that sentence because the first push failed on one of them: Node
+# 21 made `globalThis.navigator` a getter with no setter, so the assignment the script used
+# threw on the runner and worked in WSL.
 #
 # What follows is NOT that check and does not pretend to be. Mermaid's grammar is mermaid's,
 # and reimplementing it here would be a lint agreeing with itself about a language neither of
