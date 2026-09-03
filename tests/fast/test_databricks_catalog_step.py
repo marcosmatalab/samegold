@@ -105,6 +105,8 @@ def _run(
     *,
     warehouses: str = RUNNING_WAREHOUSE,
     exists_from_call: int = 0,
+    subcommand: str = "catalog",
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `scripts/databricks_run.sh catalog` against a stub that answers `answers` in order.
 
@@ -136,6 +138,7 @@ def _run(
         "SAMEGOLD_SQL_POLL_SECONDS": "0",
         "SAMEGOLD_SQL_TIMEOUT_SECONDS": "2",
         "SAMEGOLD_CATALOG": "probe_catalog",
+        **(extra_env or {}),
     }
     # PATH is exported INSIDE bash rather than set in the parent environment, and that is not
     # a detail. A Windows parent hands bash a `;`-separated PATH which MSYS then converts and
@@ -175,7 +178,7 @@ def _run(
     launch = (
         f'chmod +x "{stub}" 2>/dev/null || true; '
         f'export PATH="{_bash_path(stub_dir)}:$PATH"; '
-        "exec scripts/databricks_run.sh catalog"
+        f"exec scripts/databricks_run.sh {subcommand}"
     )
     return subprocess.run(
         ["bash", "-c", launch],
@@ -268,3 +271,118 @@ def test_the_catalog_is_never_created_through_the_unity_catalog_api(tmp_path: Pa
     _run(tmp_path, [_state("SUCCEEDED")])
     calls = (tmp_path / "calls").read_text(encoding="utf-8")
     assert "catalogs create" not in calls, calls
+
+
+# --------------------------------------------------------- the flag that never arrived
+#
+# `run-full-refresh` printed a full-refresh banner and then ran WITHOUT `--full-refresh-all`.
+# The dispatch was `SAMEGOLD_FULL_REFRESH=1 require_cli; require_auth; step_run`, and a bash
+# assignment prefixed to a command applies to THAT command: the variable lived for the
+# duration of `require_cli` and was gone by the time `step_run` looked. One Free Edition run
+# spent on a refresh that did not happen, and the update failed on
+# DELTA_MERGE_INCOMPATIBLE_DATATYPE - the exact schema conflict the refresh exists to clear.
+#
+# Reading the `case` block would not have caught it. The text was right; the SEMANTICS were
+# wrong. So these tests run the script and read the argv the CLI was actually called with.
+
+
+def _captured_calls(tmp_path: Path) -> str:
+    return (tmp_path / "calls").read_text(encoding="utf-8")
+
+
+def test_run_full_refresh_actually_passes_the_flag(tmp_path: Path) -> None:
+    """The argv, not the source. This is the whole point of the test."""
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="run-full-refresh")
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "bundle run samegold_close" in calls, calls
+    assert "--full-refresh-all" in calls, (
+        f"`run-full-refresh` did not pass --full-refresh-all to the CLI. The captured "
+        f"invocation was:\n{calls}"
+    )
+    # And the job-shaped spelling of the same intent. `databricks bundle run --help` groups
+    # `--full-refresh-all` under "Pipeline Flags", and the KEY this script passes is a JOB;
+    # `--pipeline-params` is the one the help attaches to "jobs with pipeline tasks". Which of
+    # the two the CLI acts on cannot be observed without a workspace - both parse, and the CLI
+    # goes to authentication before it would say - so both are sent and both are asserted.
+    assert "full_refresh=true" in calls, calls
+    # And it said so, which is the half that used to be true on its own.
+    assert "FULL REFRESH" in result.stdout
+
+
+def test_plain_run_does_not_pass_the_flag(tmp_path: Path) -> None:
+    """The symmetric half: a refresh nobody asked for is a re-read of the whole landing zone.
+
+    On Free Edition that is quota, and quota exhaustion stops all compute for the day.
+    """
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "bundle run samegold_close" in calls, calls
+    assert "--full-refresh-all" not in calls, calls
+    assert "full_refresh=true" not in calls, calls
+    assert "FULL REFRESH" not in result.stdout
+
+
+def test_the_banner_governs_the_command_rather_than_describing_it(tmp_path: Path) -> None:
+    """If the announcement and the invocation disagree, the script dies instead of running.
+
+    The defect this guards was not "the flag was missing" but "the message and the command
+    came from two different places, and only the message was checked". So the check is that
+    they are the same object: with SAMEGOLD_FULL_REFRESH set, the flag has to be in the argv
+    about to be executed, or nothing is executed at all.
+    """
+    # Set from the OUTSIDE, which is how the user worked around the bug - it must still work.
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="run",
+        extra_env={"SAMEGOLD_FULL_REFRESH": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--full-refresh-all" in _captured_calls(tmp_path)
+
+    # And the guard itself is present in the code path, phrased as a refusal rather than a
+    # warning: a script that notices the disagreement and proceeds has not noticed anything.
+    source = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    body = source.split("step_run() {", 1)[1].split("\n}", 1)[0]
+    assert "Refusing to spend a Free Edition run" in body
+
+
+def test_no_shell_script_leaks_an_assignment_into_a_later_function(tmp_path: Path) -> None:
+    """The CLASS, swept, rather than the one line that cost a run.
+
+    `VAR=1 some_function; other_function` is legal bash and reads as "set VAR, then call
+    both". It means "call some_function with VAR set, then call other_function without it".
+    Every reader of `SAMEGOLD_FULL_REFRESH=1 require_cli; require_auth; step_run` saw an
+    assignment doing what it says; what it did was scope the variable to `require_cli` and
+    drop it before `step_run`, and the run that followed spent Free Edition compute on a
+    refresh that did not happen.
+
+    The form is only dangerous when the prefixed command is a FUNCTION IN THE SAME FILE and
+    the statement continues with more commands: prefixing an external command
+    (`SAMEGOLD_BIN=$(BIN) scripts/databricks_run.sh all`, in the Makefile) is the correct and
+    intended use, because the variable is meant for that process and nothing after it.
+    """
+    import re
+
+    scripts = sorted((REPO / "scripts").glob("*.sh"))
+    assert scripts, "no shell scripts found to sweep, so this test is checking nothing"
+    offenders: list[str] = []
+    for script in scripts:
+        text = script.read_text(encoding="utf-8")
+        functions = set(re.findall(r"^([a-z_][a-z0-9_]*)\s*\(\)\s*\{", text, re.MULTILINE))
+        for number, line in enumerate(text.splitlines(), start=1):
+            code = line.split("#", 1)[0]
+            match = re.search(r"\b[A-Z_][A-Z0-9_]*=\S*\s+([a-z_][a-z0-9_]*)\b", code)
+            if not match or match.group(1) not in functions:
+                continue
+            # Harmless when it is the whole statement: the variable is scoped to the one call
+            # and nothing follows that could expect it.
+            if ";" in code[match.end() :] or "&&" in code[match.end() :]:
+                offenders.append(f"{script.name}:{number}: {line.strip()}")
+    assert not offenders, (
+        "an environment assignment prefixed to a shell FUNCTION scopes to that function "
+        "alone, and these lines continue with more commands that will not see it:\n  "
+        + "\n  ".join(offenders)
+    )

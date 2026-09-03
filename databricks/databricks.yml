@@ -58,9 +58,32 @@ targets:
           # honour. tests/fast/test_databricks_bundle.py keeps it out.
           serverless: true
           continuous: false
-          # Not a mode, a pipeline setting: a development pipeline does NOT retry a failed
-          # update. On Free Edition a retry loop is not an inconvenience, it is the daily
-          # compute quota, and going over it stops all compute until the next day.
+          # WHAT THIS DOES, corrected after measuring it. The comment here used to say "a
+          # development pipeline does NOT retry a failed update", and on 2 September 2026 one
+          # `bundle run` produced SIX failed updates between 12:17 and 12:31 UTC - five
+          # automatic retries, fourteen minutes of Free Edition quota - with
+          # `databricks pipelines get` confirming `development: true` on the deployed spec.
+          #
+          # The reference explains it: retry behaviour follows HOW THE UPDATE WAS TRIGGERED,
+          # not this field. An update started from the pipeline UI's Run now is what gets
+          # "disables pipeline retries so you can immediately detect and fix errors"; an
+          # update triggered through Jobs or the API gets "automatic retry and restart
+          # behavior ... in the event of specific errors". This lane is started by
+          # `databricks bundle run samegold_close`, which is a JOB, so it takes the second
+          # path whatever this field says.
+          #
+          # It is kept because what it does do is still wanted - development pipelines do not
+          # keep compute warm for reuse - but it buys nothing about retries.
+          #
+          # AND THERE IS A SETTING THAT DOES, which the first version of this comment said
+          # there was not. `pipelines.numUpdateRetryAttempts` is a pipeline configuration
+          # property, documented as "If a retryable failure occurs during an update, this is
+          # the maximum number of times to retry the update before permanently failing the
+          # update", with a default of "Five for triggered pipelines. Unlimited for continuous
+          # pipelines." Five. The observed run produced six updates from one launch. It is set
+          # to 0 below, in the `configuration:` block, which is where the reference says these
+          # properties live. `max_retries: 0` on the job tasks is a different lever for a
+          # different retry and is kept as well; see resources/jobs.yml.
           development: true
           channel: CURRENT
           catalog: ${var.catalog}
@@ -68,6 +91,26 @@ targets:
           # or neither, is rejected at POST time and passes validate.
           schema: main
           configuration:
+            # NOT read by the sources: these two are read by the pipeline RUNTIME, and they
+            # are the answer to the six-updates-from-one-launch measurement in docs/limits.md.
+            #
+            #   pipelines.numUpdateRetryAttempts - "the maximum number of times to retry the
+            #   update before permanently failing the update", default "Five for triggered
+            #   pipelines". Five is exactly what was observed, and this lane is triggered by a
+            #   job, which is the path the reference gives automatic retry behaviour to.
+            #
+            #   pipelines.maxFlowRetryAttempts - the same idea one level down, for a FLOW
+            #   inside an update, default two retries (three attempts including the first).
+            #   NOT the mechanism that was measured, and set anyway: it is the same hazard
+            #   with the same price, and on an account whose quota is a hard daily stop a
+            #   failure worth retrying is cheaper to re-run by hand than to retry three times
+            #   automatically.
+            #
+            # Both are strings because a pipeline `configuration` block is a map of strings.
+            # Neither has been exercised against a workspace from here; what HAS been measured
+            # is the default they are overriding.
+            pipelines.numUpdateRetryAttempts: "0"
+            pipelines.maxFlowRetryAttempts: "0"
             # Read by the pipeline SOURCES through `spark.conf.get`. This reaches the three
             # files below and nothing else: a `configuration:` entry is pipeline-scoped and
             # is NOT visible to the notebook tasks in resources/jobs.yml, which is why those

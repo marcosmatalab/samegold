@@ -1,0 +1,25 @@
+{
+  "name": "samegold",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  // The venv is at /opt/venv, outside the workspace, so mounting a working copy over
+  // /workspace does not hide it. VENV is the variable the Makefile already reads.
+  "remoteEnv": {
+    "VENV": "/opt/venv",
+    "SPARK_LOCAL_IP": "127.0.0.1",
+    "PYTHONUTF8": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "charliermarsh.ruff"],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python"
+      }
+    }
+  },
+  // Says what this machine can and cannot run, before anything fails with a JVM stack trace.
+  "postCreateCommand": "make doctor"
+}

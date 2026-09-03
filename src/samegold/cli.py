@@ -332,11 +332,80 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     else:
         print("java              absent    (needed only by the Spark lane)")
     print(f"databricks cli    {shutil.which('databricks') or 'absent'}")
+
+    # Per LANE, because "what is installed" is not the question anyone has. The question is
+    # "which of these can I run", and until now the answer was discovered by running one and
+    # reading a JVM stack trace. Each line says what is missing and how to get it.
+    print("\nwhat you can run here:")
+    for lane, ready, missing in _lane_readiness():
+        mark = "yes" if ready else "NO "
+        detail = "" if ready else "- " + "; ".join(missing)
+        print(f"  {mark}  {lane:<12} {detail}")
     print(
-        "\nThe fast lane needs none of the optional entries above: no JVM, no network, no "
-        "credentials. Run `make fast` to confirm; SG-00 publishes how long it took."
+        "\nThe fast lane needs no JVM, no network and no credentials. Run `make fast` to "
+        "confirm; SG-00 publishes how long it took. `make preflight` is the gate before a "
+        "push, and it refuses to report success for a lane this machine cannot run. A "
+        "container with everything pinned is in .devcontainer/."
     )
     return 0
+
+
+def _lane_readiness() -> list[tuple[str, bool, list[str]]]:
+    """Which lanes this machine can actually run, and what each unavailable one needs.
+
+    Nothing here makes a network call: a diagnostic that hangs is worse than one that says
+    "not checked". Where reachability matters and cannot be answered cheaply - Maven Central
+    for the Delta jars - it is named rather than probed.
+    """
+
+    def installed(module: str) -> bool:
+        try:
+            __import__(module)
+        except Exception:
+            return False
+        return True
+
+    fast_missing = [
+        f"no {module} (pip install -e '.[dev]')"
+        for module in ("duckdb", "pyarrow", "sqlglot", "deltalake")
+        if not installed(module)
+    ]
+
+    jvm_missing: list[str] = []
+    if sys.platform.startswith("win"):
+        # Not a missing package. Hadoop's NativeIO wants winutils.exe and every file read
+        # fails with UnsatisfiedLinkError, which cost two afternoons before it was written
+        # down. WSL2 or a container is the answer, not a workaround.
+        jvm_missing.append(
+            "native Windows cannot run Spark at all - use WSL2, Linux or .devcontainer/"
+        )
+    if not shutil.which("java"):
+        jvm_missing.append("no java on PATH (JDK 21, Temurin)")
+    if not installed("pyspark"):
+        jvm_missing.append("no pyspark (make install-spark)")
+
+    delta_missing = list(jvm_missing)
+    if not installed("delta"):
+        delta_missing.append("no delta-spark (make install-spark)")
+    delta_missing.append("and Maven Central has to be reachable, which is not checked here")
+
+    databricks_missing: list[str] = []
+    if not shutil.which("databricks"):
+        databricks_missing.append("no databricks CLI on PATH")
+    if not (os.environ.get("DATABRICKS_HOST") and os.environ.get("DATABRICKS_TOKEN")):
+        databricks_missing.append(
+            "no DATABRICKS_HOST/DATABRICKS_TOKEN in the environment "
+            "(a ~/.databrickscfg profile works too and is not checked here)"
+        )
+
+    return [
+        ("fast", not fast_missing, fast_missing),
+        ("spark", not jvm_missing, jvm_missing),
+        # Delta always carries its network caveat, so "ready" means "everything installable is
+        # installed" rather than "this will succeed".
+        ("delta", len(delta_missing) == 1, delta_missing),
+        ("databricks", not databricks_missing, databricks_missing),
+    ]
 
 
 def build_parser() -> argparse.ArgumentParser:

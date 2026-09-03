@@ -1,0 +1,15 @@
+# The build context. `.git` is deliberately NOT here: every seed in this repository derives
+# from the commit SHA and `samegold` reads it with `git rev-parse`, so an image built without
+# the git directory has no seeds and no evidence anchor.
+.venv
+.venv-*
+spark-warehouse
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.hypothesis
+**/__pycache__
+*.egg-info
+close-report.html
+.gate.txt
+.spark.txt
