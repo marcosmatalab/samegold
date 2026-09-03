@@ -3,25 +3,25 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
   "claim_id": "SG-02",
   "environment": {
     "delta_rs": "1.6.3",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Windows-11-10.0.26200-SP0",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.13.2",
-    "sqlglot": "30.17.0"
+    "python": "3.11.16",
+    "sqlglot": "30.18.0"
   },
-  "hash": "e7d1054c10c004abfe37eaebd1a1f2a9",
+  "hash": "c69f3d50137026ce7cf4d29103e2f7e2",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "cc52169c456193071b1b134994f836e3",
+  "prev": "bead14b7b11227e99d1028c3c48ae0c7",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "5adbbe403e6d17300fb712cf242dd50ad52c94bd",
-      "duration_s": 28.56,
+      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
+      "duration_s": 6.553,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        6183177529820961527,
-        10406960783852378525,
-        9633657572404156986
+        17231547605419164549,
+        15949760983791629419,
+        4774740153470721441
       ],
-      "started_at": "2026-09-02T23:12:04+00:00",
+      "started_at": "2026-09-03T23:00:47+00:00",
       "tree_dirty": false,
-      "tree_sha": "a06f7f66ddfa78c5ddd68345ead865a63a148d0e"
+      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
     }
   }
 }
