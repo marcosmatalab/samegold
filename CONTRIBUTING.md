@@ -39,10 +39,16 @@ Python 3.11 and a Temurin 21 JDK, pinned, with the dependencies already installe
 `.devcontainer/devcontainer.json` points VS Code at the same Dockerfile; nothing here needs
 VS Code.
 
-**It has never been built.** There was no Docker engine on the machine that wrote it. It is
-reviewed and unexecuted, which this repository normally treats as a finding rather than a
-feature - `docs/limits.md` says so, and the first successful build should replace the time
-budget in the Dockerfile with what it actually took.
+**Built and run**, on Windows 11 with Docker Desktop's WSL2 backend and Ubuntu 24.04, over a
+domestic connection: **160.4 s** cold and **2.74 GB**, and `docker run --rm samegold make demo`
+takes **0.4 s** because the venv is already resolved inside the image. The Dockerfile's header
+carries the five-line breakdown and says where each number was taken, which matters more than
+the numbers: the estimate it replaced was 2.6x too pessimistic on time and 37% too optimistic
+on size, and one of its two "measured" figures had been measured on a GitHub runner rather than
+here.
+
+2.74 GB is a real download and it is stated rather than buried: the JDK and the pyspark wheel
+are almost all of it, and both are why the image exists at all.
 
 ## If your machine cannot run the Spark lanes
 

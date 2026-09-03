@@ -43,7 +43,7 @@ install-spark: $(BIN)/python ## add pyspark 4.2.0 + delta-spark 4.4.0 (about 500
 	$(BIN)/pip install -q -e ".[spark,rust,dev]"
 
 .PHONY: demo
-demo: install ## ten seconds, no credentials, one business finding
+demo: install ## 0.4 s in the container / 4.0 s on Windows, once installed; one finding
 	$(BIN)/samegold demo
 
 .PHONY: fast

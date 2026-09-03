@@ -177,12 +177,21 @@ recounted independently by the reference, so the loss is a number somebody can r
 
 ## Written and not executed here
 
-- **`.devcontainer/Dockerfile`.** It pins Python 3.11 and a Temurin 21 JDK so that a clone plus
-  one `docker build` runs every OSS lane, and no Docker engine was available on the machine
-  that wrote it, so it has been reviewed and never built. The one mechanism it depends on -
-  `make demo VENV=<existing venv>` running the demo without reinstalling - was checked. The
-  time budget in its header is composed of two measured numbers (the pyspark wheel build, from
-  `.github/workflows/spark.yml`) and two estimates, and is labelled that way line by line.
+**Nothing, as of 4 September 2026.** `.devcontainer/Dockerfile` was the last entry in this
+section and it has been built and run: 160.4 s cold, 2.74 GB, and 0.4 s for
+`docker run --rm samegold make demo`, on Windows 11 with Docker Desktop's WSL2 backend and
+Ubuntu 24.04. The Dockerfile's header carries the breakdown.
+
+The section stays, empty and dated, because it is the one this repository has been wrong in
+most often: the Delta lane sat here while it was running red in CI, and the Databricks lane sat
+here for six rounds. An empty list is a claim like any other, and the next thing written and
+not run belongs in it.
+
+What the build corrected is worth keeping: the header used to say ~7 min and ~2 GB. The time
+was 2.6x too pessimistic, the size 37% too optimistic, and the line labelled
+"~4 min building the pyspark 4.2.0 wheel. MEASURED" was measured on a GitHub runner in
+`.github/workflows/spark.yml` - the whole venv step took 82.9 s here. **A number measured
+somewhere else is an estimate here.**
 
 ## Things a reader should distrust
 
