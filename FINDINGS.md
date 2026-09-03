@@ -120,6 +120,17 @@ aggregates could not see. What did appear is the next finding.
 | **Why invisible** | The truncation was written to make the two sides comparable at all - a workspace emits `2026-01-01T00:00:00+00:00`, the generator `2026-01-01T00:00:00.000000Z` - and it worked. Cutting nineteen characters is exactly the operation that makes unequal things equal, and it was introduced as plumbing rather than as a decision. The set question had the same shape: `not in` reads as "is missing", and the file's whole finding was about rows being EXTRA. |
 | **Class** | The same class as the `MAX` over a state string in the round before: an operation that is well defined, does what it says, and answers a different question than the one being asked. Both survived because their output looked right. |
 | **Prevented by** | Instants are parsed, and a timestamp without a zone is refused by name rather than assumed to be UTC. Versions are compared as a `Counter`, and the row count is asserted separately. A third test compares each customer's history as an ORDERED sequence, so the same versions on different customers is a failure. Five doctorings of the committed capture - zone, duplicates, a shifted boundary, a naive timestamp, swapped customers - each fail two or three of them. |
+| **Commits** | `9a3c0c0` |
+
+### Evidence that could not name the run that produced it
+
+| | |
+|---|---|
+| **What** | The row-level dimension capture was exported by hand and committed as a bare JSON array. Nothing in it, or anywhere else, tied it to the run whose tables it came from - so a later run replacing `SG-DBX-01.json` would have left the row-by-row comparison passing GREEN against rows the workspace no longer held. |
+| **How found** | Written down as a risk in this repository's own "asked and not done" list at the end of the round that created it, and read back by the person who had asked for the capture. It had not gone wrong yet; there had only been one run. |
+| **Why invisible** | It is the failure mode of a green test. Nothing fails, nothing changes, and the dataset quietly stops describing the system - which is the same shape as the parity matrix that ran on the wrong column types and the Delta job that was red for two days while a document called it "not executed here". |
+| **Class** | A check is only as current as the data it reads, and a comparison against a captured half is a comparison against a snapshot. Provenance is what makes a snapshot expire loudly instead of silently. |
+| **Prevented by** | The capture is written by `publish_evidence.py`, in the same task and the same session as the record, from the same table - so its `provenance.update_id` and the record's are the same read of the same event log. The commit travels with the deploy as a bundle variable rather than being written afterwards by the fetching machine, because a value the fetcher supplies agrees with itself by construction and can be re-stamped onto stale rows. Two ties are checked: the update ids must match, and the record's six dimension aggregates must recompute from the captured rows - the second holds with no header at all, which is what covers the one capture whose header was typed rather than measured. Six doctorings fail it, including a record advanced to a later update. |
 | **Commits** | this round |
 
 ---
@@ -159,6 +170,7 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **A message that announces an action is a second implementation of it, and two implementations that are never compared will differ.** | the full-refresh banner that governed nothing (`e002f29`); `development: true` predicting a risk it did not prevent (`e002f29`) |
 | **An aggregate that is well defined and answers the wrong question.** `MAX` on a state string is the alphabetical maximum, and it looks like an answer. | the field reporting whether the lane worked (`8c9faa7`) |
 | **A comparison a file declares as its reason for existing, and nobody runs.** | the two Type 2 dimensions, 78 against 75 on the first run that compared them (`8c9faa7`) |
+| **A comparison is only as current as the captured half it reads.** Without provenance a snapshot expires in silence, and the test stays green. | the dimension capture that could not name its run (this round) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
 

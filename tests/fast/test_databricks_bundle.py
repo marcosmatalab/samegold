@@ -174,6 +174,51 @@ def test_the_catalog_is_referenced_through_the_variable_everywhere() -> None:
     )
 
 
+def test_every_variable_whose_default_means_nobody_said_is_said_by_the_deploy() -> None:
+    """A default of "unknown" is a hole the deploy has to fill, or the record inherits it.
+
+    `deploy_commit` exists so that what the run publishes can name the code that produced it.
+    Declared and not passed, it resolves to "unknown" on every deploy, the record publishes
+    "unknown", and nothing anywhere goes red - the field is simply always the same and always
+    useless. That is the failure mode of every value with a plausible default, and it is why
+    the catalog was read from `spark.conf` for four rounds.
+
+    So the rule is a property of the DECLARATION: a variable whose default is the word
+    "unknown" is one nobody can supply after the fact, and `scripts/databricks_run.sh` must
+    pass it. A test in test_databricks_catalog_step.py then runs the script and reads the argv;
+    this one is what makes a NEW variable of that shape fail until somebody wires it.
+    """
+    script = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    unsupplied = sorted(
+        name
+        for name, declaration in BUNDLE.get("variables", {}).items()
+        if str(declaration.get("default")) == "unknown"
+        and f'--var="{name}=' not in script
+        and f"--var={name}=" not in script
+    )
+    assert not unsupplied, (
+        f'these bundle variables default to "unknown" and nothing passes them, so every '
+        f"deploy publishes that word: {unsupplied}. Either the deploy supplies it or the "
+        f"default should say what it really is."
+    )
+
+
+def test_the_notebook_validates_the_commit_it_is_handed() -> None:
+    """A widget that is not checked is a widget that publishes whatever it was given.
+
+    `${var.deploy_commit}` surviving into the record as its own text is what a variable that
+    did not resolve looks like, and it would sit in the provenance header of every capture
+    looking like provenance. The notebook already refuses a catalog that is not an identifier
+    and a pipeline id that is not a uuid, for the same reason.
+    """
+    source = (LANE / "src" / "publish_evidence.py").read_text(encoding="utf-8")
+    assert "deploy_commit" in source, "the notebook does not read the commit at all"
+    assert "unknown|[0-9a-f]{40}" in source, (
+        "the notebook does not check the shape of deploy_commit, so a value that is neither a "
+        "sha nor the word 'unknown' would be published as provenance"
+    )
+
+
 @pytest.mark.parametrize(
     "path",
     sorted(

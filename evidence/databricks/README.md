@@ -26,10 +26,37 @@ whose only property is that every link is verifiable. The claim id says so too -
   update, row counts per table, the state of that update, the shape of the AUTO CDC dimension,
   and the rows of the signed-off close. Its `incomplete` list names any section that could not
   be read; a section that failed is a hole, not a zero.
+- `dim_customer_scd2.json` - written by the same notebook, in the same run, from the same
+  table the record's six dimension aggregates were read from. The workspace's Type 2 dimension
+  row by row, under a `provenance` header naming the update that produced it. Half of a
+  cross-runtime comparison has to come FROM the runtime: `tests/fast/test_databricks_dimension_parity.py`
+  compares these rows against the OSS lane's hand-written `MERGE` on the same seed.
 - `fetch.json` - written by `scripts/databricks_run.sh` **on the machine that deployed**: the
   commit it deployed from, whether that tree was dirty, the CLI version and the timestamp.
   Kept in a separate file on purpose. Nothing a laptop asserts about a deploy belongs in the
   file the workspace produced.
 
-Neither file is here yet. `docs/databricks-run.md` is written with the run's numbers left as
-marked blanks, and it stays that way until a run fills them in.
+## Why the capture carries a header
+
+It was exported by hand for one run - a query pasted into the workspace, the result saved -
+which produced a file that could not say which run it came from. That is a comparison waiting
+to go quietly wrong: a later run replaces `SG-DBX-01.json`, nothing replaces the capture, and
+the row-by-row comparison goes on passing against rows the workspace no longer holds. Green,
+against a dataset that no longer describes the system.
+
+So the run writes it, and the header names the update. The tie is checked two ways, and only
+one of them needs the header:
+
+- `provenance.update_id` must equal the record's `update[0].update_id`. Both are the same read
+  of the same event log in the same session, so they agree when the two files come from one run
+  and differ the moment they do not.
+- the record's six dimension aggregates must RECOMPUTE from the captured rows. Those are two
+  different queries over one table in one run, so this is not circular - and it holds without
+  any header at all, which is what protects the one capture whose header was typed rather than
+  measured. `first_start` and `last_start` are the sharp ones: no two populations agree on a
+  MIN and a MAX by accident.
+
+`provenance.measured_in_the_workspace` says which kind of header it is. The capture committed
+on 3 September 2026 says `false`, because it predates the run writing it; the next fetch
+replaces it with one that says `true` and carries the job run, the task run and the workspace's
+own clock - three things a header written afterwards cannot have.

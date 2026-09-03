@@ -192,6 +192,16 @@ A comparison written about THREE EXTRA VERSIONS could not see extra versions. It
 instants now, parsed and zone-bearing, and multisets rather than sets, and per-customer
 histories in order.
 
+And the captured half now says which run it came from. It was exported by hand, which produced
+a file that could not: replace the record with a later run's and the comparison would have gone
+on passing against rows the workspace no longer held - green, against a dataset that had stopped
+describing the system. `publish_evidence.py` writes the capture itself now, in the same task and
+session as the record, with a header naming the update; the commit reaches the workspace as a
+bundle variable at deploy time rather than being written afterwards by whoever fetched the
+files. Two ties are checked on every run of the fast lane: the two update ids, and the record's
+six dimension aggregates recomputed from the captured rows - the second needs no header at all,
+which is what covers the one capture whose header was typed rather than measured.
+
 ### One more dialect difference, measured on the way
 
 `details:update_progress.state` - the `:` JSON-path operator on a STRING column - is Databricks

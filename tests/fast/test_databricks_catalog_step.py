@@ -19,7 +19,9 @@ how "it re-checked before giving up" is checked rather than hoped for.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -59,6 +61,19 @@ case "$1 $2" in
       exit 1 ;;
   "warehouses list") cat "$SG_WAREHOUSES" ; exit 0 ;;
   "warehouses start") exit 0 ;;
+  "fs cp")
+      # `databricks fs cp --overwrite SRC DEST`. A copy that writes nothing is not a copy, and
+      # the step's next action is to READ what it copied - so the stub actually produces the
+      # destination file. $SG_FS_CP_MISSING names a file the volume does not have, which is
+      # how the "the record came down and the capture did not" path gets exercised.
+      SG_SRC="$4" ; SG_DEST="$5"
+      if [ -n "${SG_FS_CP_MISSING:-}" ]; then
+        case "$SG_SRC" in
+          *"$SG_FS_CP_MISSING") exit 1 ;;
+        esac
+      fi
+      cp "$SG_FS_CP_PAYLOAD" "$SG_DEST" 2>/dev/null || echo '{}' > "$SG_DEST"
+      exit 0 ;;
   "api post")
       # The first answer of the script of answers.
       head -n 1 "$SG_ANSWERS" ; exit 0 ;;
@@ -434,3 +449,102 @@ def test_the_fetch_step_does_not_call_its_own_output_an_uncommitted_change(tmp_p
         ["awk", program], input=only_evidence, capture_output=True, text=True, check=True
     )
     assert out.stdout.strip() == "", out.stdout
+
+
+# A record with just enough in it for the fetch step's own summary to read.
+RECORD_FIXTURE = json.dumps(
+    {
+        "claim_id": "SG-DBX-01",
+        "update": [{"update_id": "u-1", "last_state": "COMPLETED"}],
+        "incomplete": [],
+        "expectations": [],
+        "quarantine_by_reason": [],
+    }
+)
+
+
+def _fetch(tmp_path: Path, *, missing: str = "") -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Run the fetch step for real, with the evidence directory pointed at a temp dir."""
+    out = tmp_path / "evidence"
+    out.mkdir()
+    payload = tmp_path / "payload.json"
+    payload.write_text(RECORD_FIXTURE, encoding="utf-8", newline="\n")
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="fetch",
+        extra_env={
+            "SAMEGOLD_EVIDENCE_OUT": out.as_posix(),
+            "SG_FS_CP_PAYLOAD": payload.as_posix(),
+            "SG_FS_CP_MISSING": missing,
+        },
+    )
+    return result, out
+
+
+def test_the_fetch_brings_down_the_row_level_capture(tmp_path: Path) -> None:
+    """The capture is fetched by the same step as the record, or it goes stale by hand.
+
+    It was exported by hand for one run, which produced a file that could not say which run
+    it came from: a later run replaced the record, nothing replaced the capture, and the
+    row-by-row comparison would have gone on passing against rows the workspace no longer
+    held. The query already existed - it was written into docs/databricks-run.md for a person
+    to paste - so the fix is that nobody has to remember.
+
+    Executed against a stub, not read: `run-full-refresh` is the standing example of a case
+    statement that read correctly and did something else.
+    """
+    result, out = _fetch(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (out / "SG-DBX-01.json").exists(), result.stdout
+    assert (out / "dim_customer_scd2.json").exists(), (
+        f"the fetch step did not bring down the row-level capture. What it ran was:\n"
+        f"{_captured_calls(tmp_path)}"
+    )
+    assert (out / "fetch.json").exists()
+    calls = _captured_calls(tmp_path)
+    assert "dim_customer_scd2.json" in calls, calls
+
+
+def test_a_missing_capture_is_reported_and_does_not_take_the_record_down(tmp_path: Path) -> None:
+    """A run from before publish_evidence.py wrote the capture has none.
+
+    That must not fail the fetch - the record is what the step exists to bring down, and it
+    arrived - but it must not pass in silence either, because any capture already in the
+    repository now describes an OLDER run than the record beside it. The loud version of that
+    is the provenance test in tests/fast/test_databricks_dimension_parity.py; this is the
+    warning that tells you before you get there.
+    """
+    result, out = _fetch(tmp_path, missing="dim_customer_scd2.json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (out / "SG-DBX-01.json").exists()
+    assert not (out / "dim_customer_scd2.json").exists()
+    assert "WARNING" in result.stdout and "dim_customer_scd2.json" in result.stdout, result.stdout
+
+
+def test_the_deploy_tells_the_workspace_which_commit_it_is_deploying(tmp_path: Path) -> None:
+    """The commit travels WITH the deploy, so what the run publishes can name it.
+
+    The only commit anywhere near this lane used to be the one `step_fetch` writes into
+    fetch.json afterwards - this machine's HEAD when somebody copied the files down. That is a
+    different fact from "the code that produced these tables", and a later fetch can stamp it
+    onto files it did not produce. A bundle variable cannot: it is read at deploy time and
+    baked into the job the run executes.
+
+    The argv again, not the source.
+    """
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="deploy")
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "bundle deploy" in calls, calls
+
+    head = subprocess.run(
+        ["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert f"--var=deploy_commit={head}" in calls, (
+        f"the deploy did not pass the commit it was deploying. What it ran was:\n{calls}"
+    )
+    assert re.search(r"--var=deploy_tree_dirty=(true|false)\b", calls), (
+        f"a commit alone is a claim the deploy does not honour when the tree has "
+        f"uncommitted code. What it ran was:\n{calls}"
+    )

@@ -68,6 +68,11 @@ next run still has work to do:
 - the four sections `publish_evidence.py` now captures for the checklist items the record could
   not answer (`column_types`, `money_types`, `bad_events`, `rescued_rows`). Written, parsed,
   analysed against the lane's own tables, never run.
+- the run writing the row-level dimension capture itself, with the deploy's commit carried in
+  as a bundle variable. The capture in the repository was exported by hand and its header says
+  so; the next fetch replaces it with one the workspace measured. Until then, what ties it to
+  the record is the aggregates recomputing from its rows, which is a real tie and a weaker one
+  than the header it is standing in for.
 
 **The hours stay at 18 and that figure is an estimate nobody has measured against.** This
 document has no record of hours spent, so changing the number would be inventing one. What can
