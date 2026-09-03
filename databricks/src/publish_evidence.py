@@ -60,6 +60,17 @@ if out_dir and not re.fullmatch(r"/Volumes/[A-Za-z0-9_./-]+", out_dir):
     raise ValueError(f"out_dir must be a Unity Catalog volume path, got {out_dir!r}")
 
 # COMMAND ----------
+# `get_json_object(details, '$.path')`, not `details:path`, in every query below.
+#
+# The `:` operator on a STRING column is Databricks SQL. MEASURED on pyspark 4.2.0: it raises,
+# while `get_json_object` returns the value and `parse_json(details):path` returns a variant.
+# Both engines have `get_json_object`, and that is the whole reason the update-state query can
+# be executed by `tests/spark/test_databricks_event_log_query.py` against a synthetic event log
+# rather than merely parsed - which is what it took to find that `MAX` on a state string
+# publishes WAITING_FOR_RESOURCES for every update that ever ran.
+#
+# `event_log()` itself is still Databricks-only and is substituted for a view in that test.
+# One name substituted is a different thing from a query rewritten.
 incomplete: list[str] = []
 
 
@@ -103,7 +114,8 @@ expectations = _read(
             ORDER BY timestamp DESC LIMIT 1
         ),
         exploded AS (
-            SELECT explode(from_json(details:flow_progress.data_quality.expectations,
+            SELECT explode(from_json(
+                   get_json_object(details, '$.flow_progress.data_quality.expectations'),
                    'array<struct<name:string, dataset:string,
                                  passed_records:bigint, failed_records:bigint>>')) AS e
             FROM event_log('{pipeline_id}')
@@ -121,19 +133,68 @@ update_state = _read(
     "update_state",
     lambda: _rows(f"""
         WITH last_update AS (
+            -- The most recent update that reached a TERMINAL state, not simply the most
+            -- recent update to leave an event. What this record describes is a set of TABLES,
+            -- and an update that has not finished has not produced them. In this job the
+            -- notebook runs after the pipeline task, so the pipeline's update is terminal by
+            -- the time this executes and the two coincide - but they coincide by the shape of
+            -- the job rather than by anything this query asserted, and after a morning in
+            -- which one launch produced six updates, "the latest one that left an event" is
+            -- not a sentence worth relying on.
+            --
+            -- WHAT THIS STILL DOES NOT GUARANTEE, said here rather than left to be assumed:
+            -- that the update it names is the one whose output the close read. Nothing in the
+            -- Jobs API hands a notebook task the update id its upstream pipeline task
+            -- produced, so if a second update is started by hand while the job is running,
+            -- this names that one. The id is published so a reader can check it against
+            -- `databricks pipelines get`.
             SELECT origin.update_id AS update_id
             FROM event_log('{pipeline_id}')
             WHERE origin.update_id IS NOT NULL
+              AND get_json_object(details, '$.update_progress.state')
+                  IN ('COMPLETED', 'FAILED', 'CANCELED')
             ORDER BY timestamp DESC LIMIT 1
         )
         SELECT origin.update_id                                 AS update_id,
-               MAX(details:update_progress.state)               AS last_state,
+               -- max_by(state, timestamp), NEVER MAX(state). `MAX` on a string is the
+               -- alphabetical maximum, and over the states an update passes through -
+               -- CREATED, WAITING_FOR_RESOURCES, INITIALIZING, SETTING_UP_TABLES, RUNNING,
+               -- COMPLETED, FAILED, CANCELED - W sorts last. So this field published
+               -- WAITING_FOR_RESOURCES for update 44a237b3, which `databricks pipelines get`
+               -- reports as COMPLETED, and it would have published the same word for the
+               -- update that FAILED that morning. A constant with the shape of a measurement,
+               -- in the field that says whether the lane worked, and the `dbx:update.
+               -- last_state` anchor would have taken it.
+               max_by(get_json_object(details, '$.update_progress.state'),
+                      timestamp)                  AS last_state,
                MIN(timestamp)                                   AS started_at,
                MAX(timestamp)                                   AS ended_at,
                SUM(CASE WHEN level = 'ERROR' THEN 1 ELSE 0 END) AS error_events
         FROM event_log('{pipeline_id}')
         WHERE origin.update_id = (SELECT update_id FROM last_update)
         GROUP BY 1
+    """),
+)
+
+# Every update that reached a terminal state, most recent first. One `bundle run` produced SIX
+# failed updates in fourteen minutes on 2 September 2026 - five automatic retries - and nothing
+# in the record said so: it described one update and the retry loop was invisible to every
+# reader of it. `pipelines.numUpdateRetryAttempts` is set to 0 now, and this is how a reader
+# checks that rather than trusting it.
+update_history = _read(
+    "update_history",
+    lambda: _rows(f"""
+        SELECT origin.update_id                                AS update_id,
+               max_by(get_json_object(details, '$.update_progress.state'),
+                      timestamp)                  AS final_state,
+               MAX(timestamp)                                   AS ended_at
+        FROM event_log('{pipeline_id}')
+        WHERE origin.update_id IS NOT NULL
+          AND get_json_object(details, '$.update_progress.state')
+              IN ('COMPLETED', 'FAILED', 'CANCELED')
+        GROUP BY 1
+        ORDER BY ended_at DESC
+        LIMIT 10
     """),
 )
 
@@ -256,6 +317,9 @@ record = {
         ),
     },
     "update": update_state,
+    # Ten terminal updates, most recent first. A retry loop is a shape, not a number, and it
+    # is invisible in a record that describes one update.
+    "update_history": update_history,
     "expectations": expectations,
     "quarantine_by_reason": quarantine,
     "undecided_rules": undecided,

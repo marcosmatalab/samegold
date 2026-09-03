@@ -458,6 +458,12 @@ def test_almost_every_statement_is_analysable() -> None:
     assert [name for name, _ in NOT_ANALYSABLE] == [
         "databricks/src/publish_evidence.py#0::0",
         "databricks/src/publish_evidence.py#1::0",
+        # #2 is `update_history`, added after one `bundle run` produced six failed updates and
+        # a record that described one of them. Like the two above it, it reads `event_log()`,
+        # which is a Databricks-only table function with no local analogue - so it is listed
+        # here by id rather than let through by a predicate that would also let through the
+        # next statement nobody looked at.
+        "databricks/src/publish_evidence.py#2::0",
         "databricks/sql/policies.sql::0",
         "databricks/sql/policies.sql::1",
     ], [name for name, _ in NOT_ANALYSABLE]

@@ -61,12 +61,59 @@ dp.create_streaming_table(
     cluster_by_auto=True,  # type: ignore[call-arg]
 )
 
-dp.create_auto_cdc_flow(
+# TRACK HISTORY ON THE ATTRIBUTES, and this is the fix for the first divergence this lane's
+# whole reason for existing has ever produced.
+#
+# The first successful run put 78 versions and 18 closed rows in this table where the OSS
+# lane's hand-written MERGE produces 75 and 15. Sixty customers and sixty open rows on both
+# sides, so `open_rows = customers` held and the difference was exactly three versions.
+#
+# MEASURED, not assumed. The population contains 78 distinct `customer_upserted` event ids and
+# exactly THREE of them are heartbeats - an upsert that repeats the segment and country the
+# customer already had:
+#
+#     C000028  cu-C000028-1  2026-01-14T15:00:00Z  vip / PT
+#     C000038  cu-C000038-1  2026-01-05T19:00:00Z  vip / IT
+#     C000043  cu-C000043-1  2026-01-13T14:00:00Z  pro / FR
+#
+# 75 + 3 = 78 and 15 + 3 = 18. AUTO CDC was producing one version per EVENT; the OSS lane
+# produces one version per CHANGE.
+#
+# WHICH IS RIGHT IS A CONTRACT QUESTION, and the contract already answers it, in
+# `samegold.pipelines.transform.dim_customer_scd2`: "A Type 2 dimension records CHANGES, not
+# heartbeats. An upsert that repeats the attributes the customer already had is not a new
+# version." Three implementations on the OSS side agree on that - the domain rule in
+# `domain/bitemporal.scd2_from_versions`, the full recomputation, and the DuckDB reference -
+# and a round was spent making them agree. So this lane was the one that was wrong.
+#
+# WHY it was wrong is worth keeping, because nothing about it is obvious: AUTO CDC's default
+# for SCD Type 2 is to create a new version when ANY column changes, and the source view below
+# carries `event_ts` and `event_id`, which change on every upsert by construction. The default
+# was therefore guaranteed to produce one version per event on this input, and no amount of
+# care in the rules would have altered it.
+#
+# `track_history_column_list` names the columns a version is ABOUT - stated positively, the
+# same way acceptance is a conjunction of the rules rather than the leftover branch - so a
+# change to `event_ts` or `event_id` alone updates the current row in place instead of opening
+# a new version. It is the same pair of columns the OSS lane compares with `lag()`.
+#
+# It is also a FOURTH Databricks-only primitive, and it is pinned like the other three:
+# open-source `pyspark.pipelines.create_auto_cdc_flow` takes `column_list` and
+# `except_column_list` and has no history-tracking parameter at all. mypy on pyspark 4.2.0:
+#
+#     error: Unexpected keyword argument "track_history_column_list" for
+#     "create_auto_cdc_flow"  [call-arg]
+#
+# NOT YET RUN with this setting. The 78/18 above is what the workspace produced WITHOUT it;
+# whether it produces 75/15 with it is the first thing the next run has to check, and
+# docs/databricks-run.md says so beside the two anchors that are still in dispute.
+dp.create_auto_cdc_flow(  # type: ignore[call-arg]
     target="dim_customer_scd2",
     source="silver_events_customers",
     keys=["customer_id"],
     sequence_by=F.col("event_ts"),
     stored_as_scd_type=2,  # type: ignore[arg-type]
+    track_history_column_list=["segment", "country"],
 )
 
 
