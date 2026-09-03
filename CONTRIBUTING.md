@@ -26,6 +26,24 @@ So:
   evidence chain) or `databricks.yml` (needs an account and a token, and a run can spend a
   Free Edition account's daily quota). Those two are named in the script and in that test.
 
+## The container, if you would rather not provision anything
+
+```sh
+docker build -f .devcontainer/Dockerfile -t samegold .
+docker run --rm samegold                  # make demo
+docker run --rm samegold make preflight   # the gate: fast + spark + delta
+```
+
+Python 3.11 and a Temurin 21 JDK, pinned, with the dependencies already installed into
+`/opt/venv` - which is the `VENV` the Makefile reads, so nothing re-resolves on each run.
+`.devcontainer/devcontainer.json` points VS Code at the same Dockerfile; nothing here needs
+VS Code.
+
+**It has never been built.** There was no Docker engine on the machine that wrote it. It is
+reviewed and unexecuted, which this repository normally treats as a finding rather than a
+feature - `docs/limits.md` says so, and the first successful build should replace the time
+budget in the Dockerfile with what it actually took.
+
 ## If your machine cannot run the Spark lanes
 
 **Native Windows cannot run Spark at all.** Hadoop's `NativeIO` calls `winutils.exe`, and

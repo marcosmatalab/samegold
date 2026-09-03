@@ -229,3 +229,34 @@ first run.
 generator now emits the shape deliberately, the count is written by the generator and
 recounted independently by the reference, and the two are compared. A door is where a record
 leaves. A counter is how you know something left.
+
+## The tenth: the thing that announces an action and the thing that performs it
+
+`scripts/databricks_run.sh run-full-refresh` printed
+
+    ==> FULL REFRESH: the pipeline will re-read the landing zone from scratch
+
+and then ran the pipeline **without** `--full-refresh-all`. The dispatch was
+`SAMEGOLD_FULL_REFRESH=1 require_cli; require_auth; step_run`, and a bash assignment prefixed
+to a command applies to that command only: the variable existed for the duration of
+`require_cli` and was gone before `step_run` looked for it. The banner printed because the
+banner was decided somewhere else.
+
+It cost a whole Free Edition run, and the update failed with
+`DELTA_MERGE_INCOMPATIBLE_DATATYPE: StringType and LongType` on `new_qty` - exactly the
+schema conflict a full refresh exists to clear. The output said the right thing and did the
+wrong thing, and nobody compared them, because there was nothing to compare them WITH: two
+mechanisms, one tested.
+
+Reading the `case` block would not have found it. The text was correct. What was wrong was
+the semantics of the shell, which is why the tests for it now RUN the script against a stub
+CLI and assert on the argv the CLI was actually invoked with - `--full-refresh-all` present
+for `run-full-refresh`, absent for `run`. And the banner is no longer allowed to be
+decorative: the command is built as an array, the announcement is derived from that array,
+and if the two ever disagree the script refuses to run at all.
+
+The general form, which is this ADR's oldest sentence pointed at a new surface: **a message
+that describes what is about to happen is a second implementation of it, and two
+implementations that are never compared will differ.** The repository already knew that about
+the close, where it has three of them and compares them record by record. It did not apply it
+to its own output.

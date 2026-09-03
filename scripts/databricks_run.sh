@@ -332,20 +332,66 @@ step_run() {
     # `cloudFiles.schemaLocation` CACHES the schema Auto Loader inferred the first time. The
     # lane's first deployment inferred every column as STRING, and adding `schemaHints` to
     # bronze_autoloader.py changes NOTHING for an existing checkpoint until the schema is
-    # inferred again. Without this the type fix looks like it did not work, which is the kind
-    # of thing that gets a correct fix reverted.
-    local refresh=""
+    # inferred again. Without this the type fix looks like it did not work - or, as actually
+    # happened, the update dies with DELTA_MERGE_INCOMPATIBLE_DATATYPE (StringType and
+    # LongType on `new_qty`), which is precisely the conflict the refresh exists to avoid.
+    #
+    # The command is built as an ARRAY and then INSPECTED, because the first version of this
+    # printed a full-refresh banner and ran without the flag. `SAMEGOLD_FULL_REFRESH=1
+    # require_cli; ...; step_run` sets the variable for the duration of `require_cli` ONLY -
+    # a bash assignment prefixed to a command applies to that command - so `step_run` never
+    # saw it. The banner appeared because the banner was printed somewhere else. A message
+    # that announces what is about to happen and does not govern what happens is an assertion
+    # nobody verifies, which is this repository's oldest recurring defect.
+    local -a command=(databricks bundle run samegold_close -t "$TARGET" --var="catalog=$CATALOG")
     if [ -n "${SAMEGOLD_FULL_REFRESH:-}" ]; then
-        refresh="--full-refresh-all"
+        # TWO flags for one intent, and the reason is that neither can be checked from here.
+        #
+        # `databricks bundle run --help` (CLI v1.14.1) groups its flags by the kind of
+        # resource they apply to. `--full-refresh-all` ("Perform a full graph reset and
+        # recompute") is under **Pipeline Flags**. The KEY this command passes is
+        # `samegold_close`, which is a JOB - and the flag the same help attaches to jobs is
+        # `--pipeline-params`, "A map from keys to values for jobs with pipeline tasks", whose
+        # `full_refresh` field is what the Jobs API carries on a pipeline task.
+        #
+        # Which of the two the CLI acts on for a job key cannot be determined without a
+        # workspace, and that was MEASURED rather than assumed: an unknown flag is rejected at
+        # parse time (`Error: unknown flag: --not-a-real-flag`), but both of these parse and
+        # the CLI then goes straight to authentication - so the earliest point at which their
+        # semantics could be observed is after credentials, on the one command that spends the
+        # thing being protected.
+        #
+        # So both are sent. Dropping `--full-refresh-all` would assert it is inert; keeping
+        # only it would assert it works. Sending both asserts neither, costs nothing if one is
+        # ignored, and fails at parse time - before any compute - if the combination is ever
+        # rejected. The check that closes this is the first item of the post-run checklist in
+        # docs/databricks-run.md: if `qty` comes back STRING, no refresh happened.
+        command+=(--full-refresh-all --pipeline-params "full_refresh=true")
         say "FULL REFRESH: the pipeline will re-read the landing zone from scratch"
         echo "  needed after a schemaHints change, because the inferred schema is cached"
     fi
-    say "bundle run samegold_close -t $TARGET"
+
+    # The announcement and the invocation are now the same object, and this is the check that
+    # they cannot drift apart again: if a full refresh was asked for, the flag has to be in
+    # the argv about to be executed. Not in the source, not in a variable - in the argv.
+    if [ -n "${SAMEGOLD_FULL_REFRESH:-}" ] &&
+       { ! printf '%s\n' "${command[@]}" | grep -qx -- "--full-refresh-all" ||
+         ! printf '%s\n' "${command[@]}" | grep -qx -- "full_refresh=true"; }; then
+        die \
+"SAMEGOLD_FULL_REFRESH is set and --full-refresh-all is not in the command about to run:
+
+  ${command[*]}
+
+Refusing to spend a Free Edition run pretending to refresh. This is the exact failure that
+cost one: the banner printed, the flag did not arrive, and the update died on the schema
+conflict the refresh was supposed to clear."
+    fi
+
+    say "${command[*]}"
     # Free Edition stops ALL compute for the rest of the day when the quota runs out, so this
     # is the one command in the repository that can cost you the afternoon. It is never
     # triggered by a push: the schedule in resources/jobs.yml is deployed PAUSED.
-    # shellcheck disable=SC2086 - $refresh is either empty or one known flag
-    (cd "$BUNDLE" && databricks bundle run samegold_close -t "$TARGET" --var="catalog=$CATALOG" $refresh)
+    (cd "$BUNDLE" && "${command[@]}")
 }
 
 step_fetch() {
@@ -460,7 +506,14 @@ case "${1:-all}" in
     run)      require_cli; require_auth; step_run ;;
     # The same step with the schema cache thrown away. Spelled as its own word rather than a
     # flag on `all`, so that it is a decision someone made.
-    run-full-refresh) SAMEGOLD_FULL_REFRESH=1 require_cli; require_auth; step_run ;;
+    # The assignment is its OWN statement. `SAMEGOLD_FULL_REFRESH=1 require_cli` sets the
+    # variable for the duration of `require_cli` and nothing else, so `step_run` ran without
+    # it and without the flag - one wasted Free Edition run, and the update failed on the very
+    # schema conflict the refresh was meant to clear.
+    run-full-refresh)
+              SAMEGOLD_FULL_REFRESH=1
+              export SAMEGOLD_FULL_REFRESH
+              require_cli; require_auth; step_run ;;
     fetch)    require_cli; require_auth; step_fetch ;;
     *)        usage ;;
 esac
