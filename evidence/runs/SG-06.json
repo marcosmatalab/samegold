@@ -2,57 +2,57 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "5adbbe403e6d17300fb712cf242dd50ad52c94bd",
-    "records_verified": 171,
+    "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
+    "records_verified": 180,
     "seed_source": "commit"
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
   "claim_id": "SG-06",
   "environment": {
     "delta_rs": "1.6.3",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Windows-11-10.0.26200-SP0",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.13.2",
-    "sqlglot": "30.17.0"
+    "python": "3.11.16",
+    "sqlglot": "30.18.0"
   },
-  "hash": "a89abfba6d4aa525088326ef6062341b",
+  "hash": "d2c0798e3d631d90ff7734ab1d65f0cb",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "498206a2aa3d692720f18c86ac7de21d",
+  "prev": "fb1744e39114bd3a0c12c25a80e01a9b",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "171 records verified against commit 5adbbe403e6d",
+    "note": "180 records verified against commit 4200be34b9af",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 171,
-      "trials": 171,
+      "successes": 180,
+      "trials": 180,
       "wilson95": [
-        0.978029,
+        0.979105,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "5adbbe403e6d17300fb712cf242dd50ad52c94bd",
-      "duration_s": 3.651,
+      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
+      "duration_s": 0.318,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        8805992472236622943
+        16216494133283344190
       ],
-      "started_at": "2026-09-02T23:19:39+00:00",
+      "started_at": "2026-09-03T23:03:11+00:00",
       "tree_dirty": false,
-      "tree_sha": "a06f7f66ddfa78c5ddd68345ead865a63a148d0e"
+      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
     }
   }
 }
