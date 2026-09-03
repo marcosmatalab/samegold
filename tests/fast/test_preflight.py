@@ -203,3 +203,49 @@ def test_every_script_automation_invokes_is_executable_in_the_git_index() -> Non
         f"{wrong}. `git update-index --chmod=+x <path>` fixes it; chmod on the working copy "
         f"does not, and on Windows there is nothing to chmod."
     )
+
+
+def test_the_evidence_job_runs_the_crash_campaign_as_hard_as_the_makefile_does() -> None:
+    """SG-07 publishes an UPPER BOUND, and the bound is a function of how many runs produced it.
+
+    `--repetitions` defaults to 3, `make evidence-full` passes 10, and the workflow that writes
+    the evidence a reader actually sees passed nothing. Measured, on the first dispatch this
+    workflow ever had: 6 injected runs instead of 20, and
+    `divergence_rate_upper95_per_run` **0.499289 against 0.149787**. The provenance column
+    would have improved from "local run, not reproduced in CI" to "CI" while the number it
+    stands beside got three times weaker.
+
+    That is worth a test rather than a comment because it is the general shape: a claim that is
+    cheap to run at low power and expensive at high power, published by a job whose cost nobody
+    is watching. The two invocations are compared rather than the CI one being asserted against
+    a literal, so raising the campaign's power in the Makefile cannot silently leave CI behind.
+    """
+    import re
+
+    makefile = (REPO / "Makefile").read_text(encoding="utf-8")
+    workflow = (WORKFLOWS / "evidence.yml").read_text(encoding="utf-8")
+
+    def repetitions(text: str, where: str) -> set[str]:
+        lines = [
+            line
+            for line in text.splitlines()
+            if "--claims SG-07" in line and not line.strip().startswith("#")
+        ]
+        assert lines, f"{where} does not run SG-07 at all any more"
+        found = set()
+        for line in lines:
+            match = re.search(r"--repetitions\s+(\d+)", line)
+            assert match, (
+                f"{where} runs SG-07 without --repetitions, so it takes the CLI default of 3 "
+                f"and publishes a bound three times weaker than the one it replaces: {line!r}"
+            )
+            found.add(match.group(1))
+        return found
+
+    in_makefile = repetitions(makefile, "the Makefile")
+    in_workflow = repetitions(workflow, ".github/workflows/evidence.yml")
+    assert in_workflow == in_makefile, (
+        f"the crash campaign runs {sorted(in_workflow)} repetitions in CI and "
+        f"{sorted(in_makefile)} in the Makefile. The published bound is a function of that "
+        f"number, so the two have to move together."
+    )

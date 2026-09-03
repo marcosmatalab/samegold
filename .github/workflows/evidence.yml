@@ -37,7 +37,14 @@ jobs:
       - name: claims
         run: samegold evidence --profile ci
       - name: crash campaign and the claims that need a JVM
-        run: samegold evidence --profile ci --claims SG-07
+        # `--repetitions 10`, which is what `make evidence-full` uses, and NOT the CLI default
+        # of 3. SG-07 publishes an upper bound, and the bound is a function of the number of
+        # injected runs: the first dispatch of this workflow took the default, produced 6 runs
+        # instead of 20, and would have replaced a published bound of 15% with one of 50% while
+        # improving the provenance label from "local run" to "CI". A number that gets worse
+        # because the job that produced it was cheaper is not a better number for having a
+        # runner's name on it. tests/fast/test_preflight.py holds the two in step.
+        run: samegold evidence --profile ci --claims SG-07 --repetitions 10
       - name: render the documents
         run: samegold readme && samegold check
       - name: attest the evidence
