@@ -37,6 +37,117 @@ make databricks
 | `run` | `databricks bundle run samegold_close -t free` | the schedule is deployed **paused**; this is how it starts |
 | `fetch` | copies `SG-DBX-01.json` out of the workspace into `evidence/databricks/` | a record that cannot leave the workspace is not evidence anyone can check |
 
+## The re-ingestion, in order, and what each step must print
+
+`make databricks` is `all`: catalog, validate, deploy, seed, run. **It does not full-refresh
+and it does not re-seed**, so it is the wrong command for the run that has to prove the type
+fix. The sequence below is the right one, and it is written down rather than assembled at the
+keyboard because on Free Edition a wrong update costs the whole day's compute quota.
+
+Three decisions are baked into the order, and each one is a question that has a wrong answer.
+
+**Re-seed? Yes, and it is not optional.** The landing volume holds events written by the
+generator as it was before round 18, which emitted eight kinds of corrupt record. It now emits
+nine (`beyond_bigint`, a price of 2^63). Every expected number in the checklist below is for
+the nine-kind population, so a run over the old bytes would disagree with all of them and the
+disagreement would say nothing.
+
+**Delete before seeding? Yes.** `step_seed` uses `databricks fs cp -r --overwrite`, which is a
+COPY and not a sync: it replaces files whose names collide and leaves behind any file the new
+generation no longer produces. Batch directory names come from arrival timestamps, so a stale
+file from the old population can survive and be ingested beside the new one. Emptying the
+landing directory is what makes the population definite. It also makes `SAMEGOLD_RESEED=1`
+redundant - `step_seed` skips only when the volume is non-empty - which is why it is passed
+anyway: it is a guard against a deletion that half-worked, not the mechanism.
+
+**Delete `_schema` too?** `cloudFiles.schemaLocation` is `{landing}/_schema`, an explicit path
+in the landing volume rather than pipeline-managed state, and it CACHES the schema Auto Loader
+inferred on the first run - the all-STRING one. `--full-refresh-all` resets the pipeline's
+tables and its own checkpoints. **Whether it also clears a schema location the source names
+explicitly has not been tested here**, and this document does not get to assume it: the failure
+mode is bronze coming back as STRING, the type fix looking as though it did not work, and a
+correct fix getting reverted. Deleting the directory costs one command and removes the
+question. It must be deleted TOGETHER with the full refresh and never on its own - a
+re-inferred schema under an existing checkpoint is how a streaming table fails on a schema
+change instead of on a type.
+
+**Seed first, then refresh.** The refresh re-reads whatever is in the landing zone at the
+instant it starts. Refreshing before seeding reprocesses the old population, produces a wrong
+close, and spends an update - and the second one is the part that matters here, because two
+updates is what the daily quota does not stretch to.
+
+```sh
+export DATABRICKS_HOST=https://<workspace>.cloud.databricks.com
+export DATABRICKS_TOKEN=dapi...
+CATALOG=samegold                       # SAMEGOLD_CATALOG overrides it everywhere below
+```
+
+**1. Deploy the fixed sources.** `deploy` runs catalog, validate and deploy.
+
+```sh
+scripts/databricks_run.sh deploy
+```
+
+Must print `==> catalog samegold` then `  exists`; `==> bundle validate -t free` ending in
+`Validation OK!`; and `==> bundle deploy -t free` ending in `Deployment complete!`. If validate
+says OK and deploy dies on a 400, that is the round-13 finding repeating and the message names
+the field.
+
+**2. Empty the landing zone, schema cache included.**
+
+```sh
+databricks fs rm -r  "dbfs:/Volumes/$CATALOG/raw/landing"
+databricks fs mkdir  "dbfs:/Volumes/$CATALOG/raw/landing"
+databricks fs ls     "dbfs:/Volumes/$CATALOG/raw/landing"
+```
+
+The third command must print **nothing at all**. If it lists `_schema`, the delete did not
+reach it and the run that follows will be inferring nothing: stop and delete it by name. The
+volume itself is a Unity Catalog object the bundle owns and survives the `rm`; the `mkdir` only
+puts the directory back, and `step_seed` would do it anyway.
+
+**3. Seed the new population.**
+
+```sh
+SAMEGOLD_RESEED=1 scripts/databricks_run.sh seed
+```
+
+Must print `==> seed dbfs:/Volumes/samegold/raw/landing`, then from the generator
+
+```
+755 events in 298 files under /tmp/...
+ledger: /tmp/.../truth/ledger.json
+```
+
+and then `  uploaded 298 files`. **If it prints `the landing volume already has files; not
+seeding again`, step 2 did not empty it** - the run would be over the old bytes. If the counts
+are not 755 and 298, the seed or the profile is not the default pair (`SAMEGOLD_SEED=20260901`,
+`SAMEGOLD_PROFILE=fast`) and every expected value below is for that pair and no other.
+
+**4. The one update.**
+
+```sh
+scripts/databricks_run.sh run-full-refresh
+```
+
+Must print `==> FULL REFRESH: the pipeline will re-read the landing zone from scratch`, then
+`  needed after a schemaHints change, because the inferred schema is cached`, then
+`==> bundle run samegold_close -t free` and the CLI's link to the run. This is the command that
+can cost the afternoon; everything above it is cheap and everything below it is read-only.
+
+**5. Fetch the record.**
+
+```sh
+scripts/databricks_run.sh fetch
+```
+
+Must print the two paths under `evidence/databricks/` and then the two tables ready to paste
+into the anchors in this document. If it prints a `SECTIONS THAT COULD NOT BE READ` line, those
+sections are holes and the anchors take the error message, not a zero.
+
+Then run the checklist below **before** pasting anything. A record that reports numbers is not
+the same as a lane that is right.
+
 ## What is deployed
 
 From `databricks/databricks.yml` and `databricks/resources/`:
@@ -209,6 +320,226 @@ that the two agree is the point of having both.
 Open rows must equal distinct customers: one current version per key is what Type 2 means, and
 a dimension with two open rows for one customer is the defect the hand-written `MERGE` on the
 OSS lane has a delete-by-absence branch for.
+
+## The checklist: what to run afterwards, and what each answer has to be
+
+Six queries. Every expected value on the right was **measured** on the same generator the seed
+step runs, at `--profile fast --seed 20260901`, on commit 0bfcff1 - not remembered, and not
+inferred from the previous run, whose figures are wrong on purpose and kept above as a record
+of being wrong.
+
+They are reproducible without a workspace, which is the point of writing the number down rather
+than the impression:
+
+```sh
+samegold generate --out /tmp/expect --profile fast --seed 20260901   # 755 events, 298 files
+# then read /tmp/expect/truth/ledger.json, and for the close and the dimension run the DuckDB
+# reference over /tmp/expect/bronze - the same functions tests/spark compares this lane against.
+```
+
+**These numbers are a property of that seed, that profile and that commit.** Change any of the
+three and re-measure; a checklist compared against something somebody remembers is not a check,
+and a checklist that has quietly stopped describing the generator is worse.
+
+### 1. The money columns are integers
+
+The defect that started all of this: Auto Loader inferred every column as STRING, `qty *
+unit_price_cents` promoted to DOUBLE, and the close died writing a double into a BIGINT.
+
+```sql
+SELECT table_name, column_name, data_type
+FROM samegold.information_schema.columns
+WHERE table_schema = 'main'
+  AND column_name IN ('qty', 'new_qty', 'unit_price_cents',
+                      'gross_cents', 'returns_cents', 'net_cents')
+ORDER BY table_name, column_name;
+```
+
+| expected | |
+|---|---|
+| every row's `data_type` | `bigint` |
+| any `string` | the schema cache was not cleared - step 2 or step 4 did not take. **Stop here**: every number below is void |
+| any `double` | the same, one stage further on |
+
+### 2. The four deliberately-bad money events
+
+The generator emits these to be REJECTED. Two carry a price of `Long.MaxValue`, which fits a
+BIGINT and breaks the contract's bound; two carry 2^63, which does not fit the column at all and
+is rescued, leaving the column NULL.
+
+```sql
+SELECT event_id, qty, unit_price_cents, quarantine_reason, undecided_rules
+FROM samegold.main.silver_classified
+WHERE event_id IN ('bad-0000007', 'bad-0000008', 'bad-0000016', 'bad-0000017')
+ORDER BY event_id;
+```
+
+| event_id | qty | unit_price_cents | quarantine_reason | undecided_rules |
+|---|---|---|---|---|
+| `bad-0000007` | 1 | 9223372036854775807 | `amount_out_of_range` | *(empty)* |
+| `bad-0000008` | 1 | `NULL` | `missing_required_field` | *(empty)* |
+| `bad-0000016` | 1 | 9223372036854775807 | `amount_out_of_range` | *(empty)* |
+| `bad-0000017` | 1 | `NULL` | `missing_required_field` | *(empty)* |
+
+Four rows, exactly these verdicts. **`accepted` on any of them is the round-17 defect back**,
+and it is worth checking on its own rather than trusting the totals: two of these four were
+`accepted` on the run this document records, and the totals looked plausible right up until
+`close_month` overflowed.
+
+`undecided_rules` must be empty on all four. A rule name there means the classification decided
+by a predicate that could not answer - fail-closed, so not revenue, but a reason nothing
+established.
+
+And they must not be in the validated table:
+
+```sql
+SELECT count(*) AS must_be_zero FROM samegold.main.silver_events
+WHERE event_id IN ('bad-0000007', 'bad-0000008', 'bad-0000016', 'bad-0000017');
+```
+
+Expected `0`. This is the expectations and the classification agreeing about the same four rows,
+which is the whole parity claim of this lane on four records a human can read.
+
+### 3. Quarantine reasons, and the conservation identity
+
+```sql
+SELECT quarantine_reason, count(*) AS n
+FROM samegold.main.silver_classified GROUP BY 1 ORDER BY 1;
+```
+
+| quarantine_reason | expected n |
+|---|---|
+| `accepted` | 727 |
+| `amount_out_of_range` | 6 |
+| `missing_required_field` | 5 |
+| `negative_price` | 3 |
+| `non_positive_quantity` | 6 |
+| `unknown_currency` | 2 |
+| `unknown_event_type` | 3 |
+| `unparseable_json` | 3 |
+| **total** | **755** |
+
+No other reason may appear. The three return-stage reasons (`return_without_order`,
+`return_outside_window`, `return_exceeds_sold_qty`) are decided in gold from questions about the
+SALE, so those events are `accepted` here and are inside the 727 - that is the honest split, not
+a gap.
+
+```sql
+SELECT (SELECT count(*) FROM samegold.main.silver_classified) AS classified,
+       (SELECT count(*) FROM samegold.main.silver_events)     AS accepted,
+       (SELECT count(*) FROM samegold.main.silver_quarantine) AS quarantined,
+       (SELECT count(*) FROM samegold.main.bronze_events)     AS bronze;
+```
+
+Expected `755, 727, 28, 755`, and `classified = accepted + quarantined` on the same row. If
+`bronze` is 752 rather than 755, Auto Loader dropped the three unreadable lines instead of
+rescuing them - which the OSS reader does not do, so it is a divergence to record here and not
+a rounding difference to wave through.
+
+```sql
+SELECT count(*) AS must_be_zero FROM samegold.main.silver_classified
+WHERE undecided_rules IS NOT NULL AND undecided_rules <> '';
+```
+
+Expected `0`, over the whole table. With bronze typed and every bound literal carrying its
+width, no rule can be undecidable; a non-zero here is the type fix not having taken, reported by
+the classification rather than by the close.
+
+```sql
+SELECT count(*) AS rescued FROM samegold.main.bronze_events WHERE _rescued_data IS NOT NULL;
+```
+
+Expected **at least 2** - the two 2^63 prices, whose column is NULL precisely because the value
+was rescued. The OSS reader rescues five rows (those two plus the three unreadable lines); Auto
+Loader's rescue semantics are its own, so the number to insist on is that
+`bad-0000008` and `bad-0000017` are among them. A value that vanished without appearing here is
+the one failure shape this lane has no counter for.
+
+### 4. Expectations, per rule
+
+An expectation is evaluated on every row independently, so these do NOT sum to the table above:
+a row that breaks two rules is failed by both expectations and quarantined under the first.
+
+| rule | expected passed | expected failed |
+|---|---|---|
+| `unparseable_json` | 752 | 3 |
+| `unknown_event_type` | 749 | 6 |
+| `missing_required_field` | 747 | 8 |
+| `non_positive_quantity` | 743 | 12 |
+| `negative_price` | 744 | 11 |
+| `unknown_currency` | 747 | 8 |
+| `amount_out_of_range` | 741 | 14 |
+
+`passed + failed = 755` on every row of that table, which is the check that survives even if the
+runtime's per-rule accounting turns out to differ from evaluating the same predicates in Spark
+(these were produced the second way, over the same bytes). A rule reporting 0 failed is the one
+to distrust: every one of these seven has records planted against it on purpose.
+
+### 5. The close, and its size
+
+```sql
+SELECT accounting_month, gross_cents, returns_cents, net_cents,
+       line_count, return_count, returns_rejected_count
+FROM samegold.main.revenue_by_month ORDER BY accounting_month;
+```
+
+| accounting_month | gross_cents | returns_cents | net_cents | line_count | return_count | returns_rejected_count |
+|---|---|---|---|---|---|---|
+| `2026-01` | 14 198 046 | 1 286 834 | 12 911 212 | 425 | 71 | 22 |
+| `2026-02` | 199 379 | 0 | 199 379 | 3 | 0 | 0 |
+
+Two rows and no others. **January's gross is 14 198 046 cents - €141 980.46 - from 425 lines.**
+The run this document records published 2.767e19 from 428 lines for the same month, which is
+six and a half million times the contract's ceiling for a single line, so the order of magnitude
+is the check even before the digits are: a January that is not in the tens of millions of cents
+is not this population.
+
+```sql
+SELECT accounting_month, gross_cents, line_count,
+       gross_cents > line_count * 10000L * 1000000L AS above_contract_ceiling
+FROM samegold.main.revenue_by_month ORDER BY accounting_month;
+```
+
+`above_contract_ceiling` must be `false` on every row. It is the same query
+`publish_evidence.py` puts in the record, run by hand because a record that reports a `true`
+here is a record nobody should paste into this document.
+
+```sql
+SELECT accounting_month, close_version, gross_cents, net_cents, restatement_reason
+FROM samegold.main.revenue_closed ORDER BY accounting_month, close_version;
+```
+
+Two rows, both `close_version = 0` and `restatement_reason = 'first close'`, with the same
+figures as the table above. `close_month` closes every month STRICTLY EARLIER than the month of
+`as_of`, and `as_of` is the job's start time - so this holds for any run after February 2026 and
+would produce fewer rows for a run inside the data's own months.
+
+### 6. The Type 2 dimension
+
+```sql
+SELECT count(*)                                          AS versions,
+       count(DISTINCT customer_id)                       AS customers,
+       sum(CASE WHEN __END_AT IS NULL THEN 1 ELSE 0 END) AS open_rows,
+       sum(CASE WHEN __END_AT IS NOT NULL THEN 1 ELSE 0 END) AS closed_rows
+FROM samegold.main.dim_customer_scd2;
+```
+
+| expected | |
+|---|---|
+| versions | 75 |
+| customers | 60 |
+| open_rows | 60 |
+| closed_rows | 15 |
+
+`open_rows = customers` is what Type 2 means, and it is the property rather than the count: a
+dimension with two open rows for one customer is broken whatever the totals say. The 75 and the
+15 are AUTO CDC agreeing with the hand-written `MERGE` the OSS lane uses, which is the only
+reason this lane keeps both.
+
+### If every one of those holds
+
+Then paste the record's figures into the anchors above, run `make check`, and the sentence at
+the top of this document changes from "it failed" to what it did. Until then it stands.
 
 ## What Free Edition cannot show, and what was done instead
 
