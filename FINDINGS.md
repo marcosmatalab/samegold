@@ -107,9 +107,20 @@ finding this in a test rather than in a record possible.
 | **Prevented by** | `track_history_column_list=["segment", "country"]` - a fourth Databricks-only primitive, pinned by the mypy error the open-source signature produces. The next run returned 75 / 60 / 60 / 15. `tests/fast/test_databricks_dimension_parity.py` pins the arithmetic, asserts that no two consecutive versions of a customer are identical, and compares the OSS dimension against the workspace record's shape on every run of the fast lane. Falsified: doctored back to 78/18 it fails and prints both shapes. |
 | **Commits** | `8c9faa7`; confirmed in the workspace by `064a451` |
 
-The row-level half of that comparison is still a skip. Four matching aggregates do not prove the
-same sixty customers have the same seventy-five intervals, and half of a cross-runtime
-comparison has to be captured from the runtime.
+The capture arrived and the row-level comparison runs: **the two dimensions agree on all
+seventy-five rows**, as multisets and as per-customer histories. Nothing appeared that the
+aggregates could not see. What did appear is the next finding.
+
+### A comparison that normalised away the difference it existed to catch
+
+| | |
+|---|---|
+| **What** | The row-by-row comparison reduced every timestamp with `str(value)[:19]` and asked `row not in theirs`. Doctored against the real capture, it **passed** with every instant moved an hour (`+01:00`) and **passed** with 77 rows where 75 were expected, two of them repeats. |
+| **How found** | By falsifying it before trusting it. It went green the moment the capture landed, and a comparison that passes the first time it ever runs has told you nothing about itself. |
+| **Why invisible** | The truncation was written to make the two sides comparable at all - a workspace emits `2026-01-01T00:00:00+00:00`, the generator `2026-01-01T00:00:00.000000Z` - and it worked. Cutting nineteen characters is exactly the operation that makes unequal things equal, and it was introduced as plumbing rather than as a decision. The set question had the same shape: `not in` reads as "is missing", and the file's whole finding was about rows being EXTRA. |
+| **Class** | The same class as the `MAX` over a state string in the round before: an operation that is well defined, does what it says, and answers a different question than the one being asked. Both survived because their output looked right. |
+| **Prevented by** | Instants are parsed, and a timestamp without a zone is refused by name rather than assumed to be UTC. Versions are compared as a `Counter`, and the row count is asserted separately. A third test compares each customer's history as an ORDERED sequence, so the same versions on different customers is a failure. Five doctorings of the committed capture - zone, duplicates, a shifted boundary, a naive timestamp, swapped customers - each fail two or three of them. |
+| **Commits** | this round |
 
 ---
 

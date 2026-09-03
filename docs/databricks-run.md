@@ -314,8 +314,10 @@ event log and requires COMPLETED for one that completes and FAILED for one that 
 MERGE's 75 and 15, because its default is a new version whenever ANY column changes and the
 source view carries `event_ts` and `event_id`. With
 `track_history_column_list=["segment", "country"]` the workspace produced **75 / 60 / 60 / 15**
-- the OSS lane's shape exactly. `tests/fast/test_databricks_dimension_parity.py` compares the
-two against this record and fails if they differ.
+- the OSS lane's shape exactly. The workspace's own rows were then captured to
+`evidence/databricks/dim_customer_scd2.json`, and
+`tests/fast/test_databricks_dimension_parity.py` compares the two **row by row** against it:
+they agree on all seventy-five, as multisets and as per-customer histories.
 
 ### What the record now shows that no record showed before
 
@@ -636,6 +638,20 @@ FROM samegold.main.dim_customer_scd2;
 dimension with two open rows for one customer is broken whatever the totals say. The 75 and the
 15 are AUTO CDC agreeing with the hand-written `MERGE` the OSS lane uses, which is the only
 reason this lane keeps both.
+
+Then capture the rows themselves, because four matching totals do not prove the same sixty
+customers have the same seventy-five intervals:
+
+```sql
+SELECT customer_id, segment, country, __START_AT, __END_AT
+FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;
+```
+
+Save that as a JSON array at `evidence/databricks/dim_customer_scd2.json` and commit it.
+`tests/fast/test_databricks_dimension_parity.py` compares it against the OSS lane's dimension on
+the same seed - row by row, as instants and as multisets - on every run of the fast lane, and
+FAILS rather than skipping if the file is not there. The capture from 3 September 2026 agrees on
+all seventy-five rows.
 
 ### If every one of those holds
 
