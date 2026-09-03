@@ -65,7 +65,7 @@ table says so rather than implying otherwise.
 | **How found** | A Free Edition run spent on a refresh that did not happen. The update failed with `DELTA_MERGE_INCOMPATIBLE_DATATYPE: StringType and LongType` on `new_qty` - exactly the schema conflict a full refresh exists to clear - and the output had no banner in it, which nobody checked. |
 | **Why invisible** | Reading the `case` block cannot find it. The text is correct; the semantics of the shell are not. Reproduced in four words: `f() { :; }; g() { echo "${FLAG:-EMPTY}"; }; FLAG=1 f; g` prints `EMPTY`. |
 | **Prevented by** | The command is built as an array, the banner is derived from that array, and the script REFUSES to run if the two disagree. `tests/fast/test_databricks_catalog_step.py` executes the real script against a stub CLI and asserts on the argv the CLI was invoked with - present for `run-full-refresh`, absent for `run` - and a sweep test rejects the same assignment form anywhere in `scripts/*.sh`. |
-| **Commits** | this round |
+| **Commits** | `e002f29` |
 
 ### A comment predicted the risk precisely and the setting did not prevent it
 
@@ -75,7 +75,7 @@ table says so rather than implying otherwise.
 | **How found** | Reading the run history after the failure above. |
 | **Why invisible** | The comment was a prediction about a setting nobody had exercised. The reference ties retry behaviour to how the update was TRIGGERED - the UI's *Run now* "disables pipeline retries", updates through Jobs or the API get "automatic retry and restart behavior" - and this lane is started by a job. The first correction then said no bundle setting controls it, which was **also wrong**: `pipelines.numUpdateRetryAttempts` has a documented default of "Five for triggered pipelines", and five is exactly what was observed. |
 | **Prevented by** | `pipelines.numUpdateRetryAttempts: "0"` and `pipelines.maxFlowRetryAttempts: "0"` in the pipeline's `configuration:` block, `max_retries: 0` on every job task, and the measurement in `docs/limits.md`. The overrides have not been exercised against a workspace; the default they override is what was measured, and the document says which is which. |
-| **Commits** | this round |
+| **Commits** | `e002f29` |
 
 ### A constant with the shape of a measurement, in the field that reports the outcome
 
@@ -131,7 +131,7 @@ aggregates could not see. What did appear is the next finding.
 | **Why invisible** | It is the failure mode of a green test. Nothing fails, nothing changes, and the dataset quietly stops describing the system - which is the same shape as the parity matrix that ran on the wrong column types and the Delta job that was red for two days while a document called it "not executed here". |
 | **Class** | A check is only as current as the data it reads, and a comparison against a captured half is a comparison against a snapshot. Provenance is what makes a snapshot expire loudly instead of silently. |
 | **Prevented by** | The capture is written by `publish_evidence.py`, in the same task and the same session as the record, from the same table - so its `provenance.update_id` and the record's are the same read of the same event log. The commit travels with the deploy as a bundle variable rather than being written afterwards by the fetching machine, because a value the fetcher supplies agrees with itself by construction and can be re-stamped onto stale rows. Two ties are checked: the update ids must match, and the record's six dimension aggregates must recompute from the captured rows - the second holds with no header at all, which is what covers the one capture whose header was typed rather than measured. Six doctorings fail it, including a record advanced to a later update. |
-| **Commits** | this round |
+| **Commits** | `02adf05` |
 
 ---
 

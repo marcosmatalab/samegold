@@ -384,12 +384,36 @@ REQUIRED_ANCHORS = {
     "expectations.table",
     "quarantine.table",
 }
+# Documents that may quote the record. The run document must carry the whole closed list above;
+# any other may carry a SUBSET, and every anchor it does carry has to agree.
+#
+# The README was the reason for this. Its Databricks section held nine figures typed in by hand
+# from a terminal - 14 198 046, 425, 755, 727, 28, 75, 60 - and the renderer's hand-typed-number
+# check never looked at them, because that check fires on lines carrying an `SG-nn` claim id and
+# `SG-DBX-01` is not one. So the most-read page in the repository was the one place a run's
+# figures could go stale silently.
+QUOTING_DOCUMENTS = (RUN_DOC, REPO / "README.md")
 
 
-def _anchors() -> dict[str, str]:
+def _anchors(document: Path = RUN_DOC) -> dict[str, str]:
     return {
-        name: body.strip() for name, body in ANCHOR.findall(RUN_DOC.read_text(encoding="utf-8"))
+        name: body.strip() for name, body in ANCHOR.findall(document.read_text(encoding="utf-8"))
     }
+
+
+def _matches(body: str, value: Any) -> bool:
+    """Whether an anchor body states `value`.
+
+    Digit groups are separated for reading - `14 198 046` - and the record holds `14198046`,
+    so the spaces are removed before comparing. ONLY the spaces, and only when what is left is
+    entirely digits: a normalisation that can turn two different values into the same string is
+    the defect this repository found in its own dimension comparison one round ago, and
+    deleting spaces from a number cannot change which number it is.
+    """
+    stripped = body.replace(" ", "").replace("\u00a0", "").replace("\u202f", "")
+    if stripped.isdigit():
+        return stripped == str(value)
+    return body == str(value)
 
 
 def test_the_run_document_carries_every_anchor_it_is_supposed_to() -> None:
@@ -405,7 +429,15 @@ def test_the_run_document_holds_no_figure_the_run_has_not_produced() -> None:
     """
     if RECORD.exists():
         pytest.skip("the lane has run; test_the_run_document_agrees_with_the_record checks it")
-    wrong = {name: body for name, body in _anchors().items() if body != "NOT RUN"}
+    # Every document that quotes the record, not only the run document. The README acquired
+    # dbx anchors after the lane had already run, so this branch has never executed against it;
+    # a check that covers one of two files is how the second one gets ahead of its run.
+    wrong = {
+        f"{document.name}:{name}": body
+        for document in QUOTING_DOCUMENTS
+        for name, body in _anchors(document).items()
+        if body != "NOT RUN"
+    }
     assert not wrong, (
         f"these anchors hold values while {RECORD.relative_to(REPO)} does not exist, so no run "
         f"produced them: {wrong}"
@@ -428,20 +460,37 @@ def test_the_run_document_agrees_with_the_record() -> None:
     if isinstance(dimension, list) and dimension:
         for field in ("versions", "customers", "open_rows", "closed_rows"):
             scalars[f"dim.{field}"] = dimension[0].get(field)
+    # `2026-01` is not a legal anchor name (`[\w.]+`), so the month is spelled with an
+    # underscore. Derived from the record's own accounting_month rather than positionally: a
+    # run over different months would produce anchors nothing in the documents claims, which
+    # the closed-list check below turns into a failure rather than a silent pass.
+    for row in record.get("gross_within_contract_bounds") or []:
+        if not isinstance(row, dict) or not row.get("accounting_month"):
+            continue
+        month = str(row["accounting_month"]).replace("-", "_")
+        scalars[f"revenue.{month}.gross_cents"] = row.get("gross_cents")
+        scalars[f"revenue.{month}.line_count"] = row.get("line_count")
 
-    anchors = _anchors()
-    for name, value in scalars.items():
-        if value is None:
-            continue  # the record says that section could not be read; `incomplete` names it
-        assert anchors[name] == str(value), (
-            f"{name}: document says {anchors[name]!r}, record says {value!r}"
+    for document in QUOTING_DOCUMENTS:
+        anchors = _anchors(document)
+        unknown = sorted(set(anchors) - set(scalars) - {"expectations.table", "quarantine.table"})
+        assert not unknown, (
+            f"{document.name} carries dbx anchors the record cannot answer: {unknown}. An "
+            f"anchor nothing checks is a hand-typed number with extra punctuation."
         )
+        for name, value in scalars.items():
+            if value is None or name not in anchors:
+                continue  # a hole the record names in `incomplete`, or a figure this document
+                # does not quote - only the run document has to quote them all
+            assert _matches(anchors[name], value), (
+                f"{document.name} {name}: document says {anchors[name]!r}, record says {value!r}"
+            )
 
     # The two tables are pasted rather than anchored per cell, so what is checked is that every
-    # row of the record survived the paste.
+    # row of the record survived the paste. Only the run document carries them.
     expectations = record.get("expectations")
     if isinstance(expectations, list):
-        block = anchors["expectations.table"]
+        block = _anchors()["expectations.table"]
         for row in expectations:
             assert str(row["rule"]) in block, f"rule {row['rule']} is missing from the table"
             assert str(row["passed"]) in block and str(row["failed"]) in block, row

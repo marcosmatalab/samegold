@@ -3,15 +3,46 @@
 **A month-end close that survives late returns, mid-write crashes and reprocessing — and a
 harness whose whole job is to prove that it doesn't.**
 
-A retail lakehouse (orders, amendments, returns) on Delta Lake and Spark, plus `samegold`: a
+On 2 September 2026 this project deployed its Databricks lane to a real workspace and ran it
+for the first time. The pipeline went green; `revenue_by_month` held **2.767e19 cents** of
+January revenue — six and a half million times the ceiling its own contract allows for the
+number of lines involved — and the close task then died writing a DOUBLE into a BIGINT column.
+Three events the generator emits *in order to be rejected* had been booked as revenue, because
+the classification treated "I cannot answer" as "accept".
+
+Nothing in sixteen rounds of adversarial review had found it. Two independent implementations
+agreed with each other and with a by-construction ledger, a mutation campaign killed every
+mutant it had not classified as equivalent, and the lane's own parity test compared exactly the
+right rules — on the wrong types. The defect needed a real workspace to exist in, and the
+repository had never had one.
+
+That is what this project is about. Not a pipeline that works: a pipeline whose claims about
+itself are checkable, and a record of every time one of them turned out to be false.
+
+## What to look at in five minutes
+
+| if you have | read |
+|---|---|
+| two minutes | [`FINDINGS.md`](FINDINGS.md) — every defect this repository found in itself, ordered by what it teaches, with what made each one invisible and which test prevents it now |
+| five | [`CLAIMS.md`](CLAIMS.md) — every claim, the experiment behind it, and what it does **not** show |
+| ten, and a terminal | `make demo` below, then [`docs/databricks-run.md`](docs/databricks-run.md) — the cloud lane's run, every figure rendered from the record it produced |
+
+## Sixty seconds
+
+```bash
+git clone https://github.com/marcosmatalab/samegold && cd samegold
+make demo      # ~10 s, no account, no credentials, no JVM
+make report    # one self-contained HTML page: the close, its versions, what moved
+make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->444<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->134.9<!--/sg--> s
+make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
+make doctor    # which lanes this machine can run, and what is missing
+```
+
+A retail lakehouse — orders, amendments, returns — on Delta Lake and Spark, plus `samegold`: a
 differential harness that generates the data *and* the ledger of what the answer must be,
 computes the close twice in two engines, kills the pipeline at named structural points,
 mutates the reference SQL and the specification itself, measures what file layout costs, and
 publishes what it could **not** catch.
-
-Every number below is rendered from `evidence/history.jsonl`. That file is hash-chained and
-its records are refused unless their seeds derive from the commit they name, so editing a
-figure by hand breaks a test rather than improving a README.
 
 > A return may arrive up to 45 days after the sale, and it is imputed to the month of the
 > **sale**. So a month finance has already closed can move. In the published run it moved in
@@ -25,31 +56,20 @@ figure by hand breaks a test rather than improving a README.
 > largest lines it admits. CLAIMS.md says what that is worth and publishes the same figure
 > without the exclusion.
 
-## Sixty seconds
+## The claims
 
-```bash
-git clone https://github.com/marcosmatalab/samegold && cd samegold
-make demo      # ~10 s, no account, no credentials, no JVM
-make report    # one self-contained HTML page: the close, its versions, what moved
-make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->444<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->134.9<!--/sg--> s
-make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
-```
+Every figure in this table, and every anchored number in these documents, is rendered from
+`evidence/history.jsonl` — an append-only hash chain — and specifically from the
+**most recent record** for each claim. The provenance column names the commit that produced it,
+and says so when that commit is not what ran.
 
-**Where these numbers come from, before you read any of them.** Every figure in this table and
-every anchored number in these documents is rendered from `evidence/history.jsonl`, which is an
-append-only hash chain, and specifically from the **most recent record for each claim**. The
-provenance column names the commit that produced it, and says so when that commit is not what
-ran (an uncommitted tree gets its tree hash too).
-
-That matters because the numbers describe a *population*, and the code that generates the
-population changes. When it does, the rule is: **run the claims again and APPEND a new record;
-never edit or replace the ones already in the chain.** A rewritten history is not a history,
-and the append-only property is the only thing that makes any of this worth checking - so a
-figure that is out of date is fixed by adding a measurement, not by correcting a number. If
-the table's commit is older than `HEAD`, that is what it means, it is not hidden, and
-`make evidence && make readme` is how it moves.
-`docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md` is the full
-policy, including what to do when the record format itself has to change.
+The numbers describe a *population*, and the code that generates the population changes. When
+it does, the rule is: **run the claims again and append a new record; never edit or replace
+the ones already in the chain.** A figure that is out of date is fixed by adding a measurement, not by
+correcting a number. If the table's commit is older than `HEAD`, that is what it means, it is
+not hidden, and `make evidence && make readme` is how it moves.
+[ADR 0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md)
+is the full policy.
 
 <!-- samegold:begin claims -->
 
@@ -68,77 +88,148 @@ policy, including what to do when the record format itself has to change.
 
 <!-- samegold:end claims -->
 
-## What it does
+## How it works
 
-```
-                      generator (seeded from the commit SHA)
-                               │
-                 ┌─────────────┴──────────────┐
-                 │                            │
-        bronze events (JSONL)          ledger of truth
-        duplicates, corrupt records,   what the close must say
-        late arrivals, restatements,   at every close instant
-        fourteen boundary cases        (by construction, not recomputed)
-                 │                            │
-    ┌────────────┴─────────────┐              │
-    │                          │              │
-  SPARK implementation    DUCKDB reference    │
-  bronze → silver →       the same contract,  │
-  SCD2 → bitemporal       a different engine, │
-  close                   no shared code      │
-    │                          │              │
-    └────────┬─────────────────┴──────────────┘
-             │
-     canonical digest over a declared projection
-     (typed, length-prefixed, explicit total order)
-             │
-   ┌─────────┼──────────┬─────────────┬──────────────┬────────────┐
-invariants  mutation  crash campaign  cost lab   privacy      evidence
-no oracle   generated  named points   files and  masking and  hash-chained,
-needed      + spec     + a negative   bytes, not purge that   seed-derived,
-            mutants    control        seconds    really purges red runs kept
+One generator produces both the events and the answer. Two independent implementations compute
+the close from the events. A third lane runs the same contract on Databricks. Nothing is
+compared to itself.
+
+```mermaid
+flowchart TB
+    G["generator<br/>seeded from the commit SHA"]
+    E["bronze events, JSONL<br/>duplicates, corrupt records,<br/>late arrivals, restatements,<br/>fourteen boundary cases"]
+    L["ledger of truth<br/>what the close must say,<br/>by construction, never recomputed"]
+
+    G --> E
+    G --> L
+
+    subgraph OSS["open-source lanes, free, no account"]
+        S["Spark 4.2<br/>bronze to silver to SCD2<br/>to bitemporal close"]
+        D["DuckDB reference<br/>same contract, different engine,<br/>no shared code"]
+    end
+
+    subgraph DBX["Databricks Free Edition"]
+        P["Auto Loader, expectations,<br/>AUTO CDC Type 2,<br/>the same close"]
+    end
+
+    E --> S
+    E --> D
+    E --> P
+
+    S --> C["canonical digest<br/>typed, length-prefixed,<br/>explicit total order"]
+    D --> C
+    P --> C
+    L --> C
+
+    C --> V{"do the three agree,<br/>and do they agree<br/>with the ledger?"}
 ```
 
-Three witnesses, deliberately unequal, and the repository says what each is worth:
+The digest is where the comparison actually happens, and it is deliberately unforgiving: typed
+and length-prefixed, so `"1"` and `1` are different, and with an explicit total order, so a
+shuffle cannot change it. It refuses any column whose value comes from a clock.
+
+### Where the pipeline is measured
+
+```mermaid
+flowchart LR
+    B["bronze<br/>every event as it landed"]
+    Q["silver classified<br/>one quarantine reason per row"]
+    A["silver accepted"]
+    X["quarantine"]
+    R["gold: revenue_by_month"]
+    K["gold: revenue_closed<br/>(accounting_month, close_version)"]
+    M["dim_customer_scd2<br/>Type 2"]
+
+    B --> Q
+    Q --> A
+    Q --> X
+    A --> R
+    A --> M
+    R --> K
+
+    B -.- b1(["ingested = accepted + quarantined<br/>+ rescued + deduplicated"])
+    Q -.- b2(["one door per record:<br/>the reason enum is closed"])
+    R -.- b3(["net = gross − returns,<br/>and every line within contract bounds"])
+    K -.- b4(["a version is never rewritten;<br/>a restatement is a new version"])
+    M -.- b5(["no gaps, no overlaps,<br/>exactly one open row per customer"])
+```
+
+Each dotted note is an invariant that holds **without an oracle** — it can be checked on the
+output alone, so it survives a wrong contract that both implementations share. The repository
+also publishes what that buys: on the mutation campaign the invariants' marginal contribution
+was **zero** kills the ledger had not already made, and that number is printed rather than
+hidden.
+
+## Three witnesses, deliberately unequal
 
 | witness | catches | blind to |
 |---|---|---|
-| invariants | shape: SCD2 gaps and overlaps, conservation, `net = gross − returns` | values. On the published campaign their marginal contribution was **zero** kills the ledger had not already made, and that is printed rather than hidden |
+| invariants | shape: SCD2 gaps and overlaps, conservation, `net = gross − returns` | values |
 | DuckDB reference | mistakes in the Spark implementation: dedup semantics, join direction, null handling, truncation | a misreading of the contract, which lands in both implementations identically |
 | generator ledger | what was actually emitted, so a wrong close is visible in cents | the same blind spot: same author, same understanding |
 
 The experiment that measures that blind spot is the set of **specification mutants**: six
-changes to what the pipeline is *supposed* to do (which month a return belongs to, how long
-the window is, what the dedup key is, whether the close cut is on arrival or event time). They
+changes to what the pipeline is *supposed* to do — which month a return belongs to, how long
+the window is, what the dedup key is, whether the close cut is on arrival or event time. They
 are the only mutants that can falsify the independence claim, and every one of them is killed
 by name.
 
 ## Three bugs the design caught, and one it could not
 
-**One return per run, five thousand cents.** The Spark implementation used
-`unix_timestamp()` to measure the 45-day window. It truncates to whole seconds, so a return
-one microsecond outside the window came back as exactly 45 days and was accepted, while the
-DuckDB reference rejected it. Nothing else in the repository would have found it: the totals
-looked plausible, every invariant passed, and the only reason the case existed at all is that
-a surviving mutant had asked for a boundary at exactly 45 days.
+**One return per run, five thousand cents.** The Spark implementation used `unix_timestamp()`
+to measure the 45-day window. It truncates to whole seconds, so a return one microsecond
+outside the window came back as exactly 45 days and was accepted, while the DuckDB reference
+rejected it. Nothing else in the repository would have found it: the totals looked plausible,
+every invariant passed, and the only reason the case existed at all is that a surviving mutant
+had asked for a boundary at exactly 45 days.
 
 **A window that changes length twice a year.** The reference measured the same window with
 `INTERVAL 45 DAY` over a `TIMESTAMPTZ`, which is calendar arithmetic in the session timezone.
-Under `Europe/Madrid` — the accounting timezone this project declares — the window comes out
-an hour short of, or an hour past, 45 days across a daylight-saving boundary. Both implementations now compare seconds, and a
-test runs the reference under three timezones and asserts the same answer.
+Under `Europe/Madrid` — the accounting timezone this project declares — the window comes out an
+hour short of, or an hour past, 45 days across a daylight-saving boundary. Both implementations
+now compare seconds, and a test runs the reference under three timezones and asserts the same
+answer.
 
-**A refund rule that was not a rule.** Both implementations checked "a return cannot exceed
-the quantity sold" per RETURN EVENT. Three returns of three units each, against one sale of
-three, were all accepted: gross 3 000, refunds 9 000, **net minus 6 000**, and
-`returns_rejected_count` zero. Two implementations do not help here — they agreed — and no
-seed reached it either, because the generator emitted at most one return per line. It was
-found by an adversarial review writing three records by hand, which is the honest answer to
-"what does differential testing not buy you": it buys agreement, and agreement is not
-correctness. The rule is cumulative now, in all three lanes, and the shape is in the
-adversarial matrix. The generator emits it too, since boundary case 13: a line with two
-returns that fit and one that does not is the only data that can tell the cumulative window
-apart from four mutations of itself, and all four survived until it existed.
+**A refund rule that was not a rule.** Both implementations checked "a return cannot exceed the
+quantity sold" per RETURN EVENT. Three returns of three units each, against one sale of three,
+were all accepted: gross 3 000, refunds 9 000, **net minus 6 000**, and `returns_rejected_count`
+zero. Two implementations do not help here — they agreed — and no seed reached it either,
+because the generator emitted at most one return per line. It was found by an adversarial
+review writing three records by hand, which is the honest answer to "what does differential
+testing not buy you": it buys agreement, and agreement is not correctness. The rule is
+cumulative now, in all three lanes, and the generator emits the case since boundary case 13.
+
+**And the one it could not:** the `ELSE 'accepted'` at the top of this file. Three lanes,
+sixteen rounds of review, and a defect that needed the cloud to exist in.
+[`FINDINGS.md`](FINDINGS.md) is the full list, including the six that came out of deploying the
+lane and running it — two from the first run, four from the day it worked.
+
+## The cloud lane, run
+
+Deployed and executed end to end on **3 September 2026**, on Databricks Free Edition, from
+outside the workspace with Declarative Automation Bundles.
+
+| | |
+|---|---|
+| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->14 198 046<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->425<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->** — to the cent against the OSS lane, which computes it without a workspace |
+| the population | **<!--dbx:rows.bronze_events-->755<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->727<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->28<!--/dbx-->** quarantined across seven reasons; conservation closed |
+| the dimension | Type 2, **<!--dbx:dim.versions-->75<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row**, against the workspace's own rows, committed to this repository |
+| what it cost | 0 € |
+
+Those figures are anchored, not typed: they are checked against
+`evidence/databricks/SG-DBX-01.json` on every run of the fast lane, and the test fails if this
+file and the record ever disagree. The 2.767e19 at the top of this page is **not** anchored,
+and that is the same rule seen from the other side — it belongs to a run whose record is not
+in this repository, so it is prose, and `docs/databricks-run.md` says so where it reports it.
+
+The two findings that run produced — a field that reported a constant instead of the update's
+outcome, and two Type 2 implementations that disagreed by three versions — are closed,
+confirmed in the workspace, and written up in `FINDINGS.md`.
+
+**M12 is not closed.** Of the seven things that milestone lists, four are done and verifiable
+against the record; deploy-from-CI, the AI/BI dashboard and screenshots-as-evidence have not
+been started. [`docs/milestones.md`](docs/milestones.md) counts them rather than calling it
+done.
 
 ## What is NOT claimed
 
@@ -164,32 +255,40 @@ Written before the results, because it is the part most portfolio projects leave
 
 ## The evidence gate: what it stops, and what it does not
 
-An adversarial reviewer appended records to `evidence/history.jsonl` by hand claiming 999/999
-agreements and a 100% mutation score, pointed one at a CI run that does not exist, and ran the
-suite. Everything passed. A second review, after the first round of fixes, got through five
-more ways: an "override" run written straight into the history, an edited `runs/*.json`, a
-reordered history, a record naming an invented commit, and a run URL pointing at somebody
-else's repository. Each of those is now a test that fails, and the defences are:
+```mermaid
+flowchart LR
+    CL["claim<br/>SG-00 … SG-09"] --> RN["run<br/>seed derived from<br/>the commit SHA"]
+    RN --> RC["record<br/>counts, digests,<br/>Wilson interval,<br/>commit + tree hash"]
+    RC --> CH["evidence/history.jsonl<br/>append-only hash chain"]
+    CH --> DOC["README, CLAIMS.md,<br/>docs/*<br/>rendered from the head"]
+    DOC --> GT{"gate: does the document<br/>say what the record says?"}
+    GT -->|no| FAIL["a test fails"]
+```
+
+An adversarial reviewer appended records by hand claiming 999/999 agreements and a 100%
+mutation score, pointed one at a CI run that does not exist, and ran the suite. Everything
+passed. A second review, after the first round of fixes, got through five more ways: an
+"override" run written straight into the history, an edited `runs/*.json`, a reordered history,
+a record naming an invented commit, and a run URL pointing at somebody else's repository. Each
+of those is now a test that fails, and the defences are:
 
 1. **A hash chain.** Every record carries the hash of the previous one and its own. Editing,
    inserting, reordering or deleting a line breaks every hash after it.
 2. **Seed derivation.** Seeds come from the commit SHA and the record names the purpose they
-   were drawn for; the store recomputes them and refuses records whose seeds were chosen.
-   Runs made with `SAMEGOLD_SEED_OVERRIDE` are refused outright and go to a separate
-   refutation log.
-3. **Anchors outside the file.** Records must be in time order, each `runs/<claim>.json`
-   must hash to the record it claims to be, and every record must name a commit that exists
-   in this repository. That last check is conditional on purpose: it applies only when at
-   least one recorded commit resolves in the checkout, because otherwise a fork, a shallow
-   clone or a downloaded tarball would be told its evidence was forged. The honest reading
-   is that the commit anchor protects the lineage it was written in, and nothing else.
+   were drawn for; the store recomputes them and refuses records whose seeds were chosen. Runs
+   made with `SAMEGOLD_SEED_OVERRIDE` are refused outright and go to a separate refutation log.
+3. **Anchors outside the file.** Records must be in time order, each `runs/<claim>.json` must
+   hash to the record it claims to be, and every record must name a commit that exists in this
+   repository. That last check is conditional on purpose: it applies only when at least one
+   recorded commit resolves in the checkout, because otherwise a fork, a shallow clone or a
+   downloaded tarball would be told its evidence was forged.
 
 **What it does not stop, stated plainly:** anyone who can run this code can regenerate the
 whole chain, and a chain regenerated from scratch with invented figures verifies. There is no
-key here to sign with, and pretending otherwise would be the same kind of overclaim the rest
-of the repository exists to avoid. What the chain buys is that a *single* number cannot be
-touched without rewriting everything after it, that every record is tied to a real commit, and
-that the rewrite is visible in git history rather than invisible in a JSON file.
+key here to sign with, and pretending otherwise would be the same kind of overclaim the rest of
+the repository exists to avoid. What the chain buys is that a *single* number cannot be touched
+without rewriting everything after it, that every record is tied to a real commit, and that the
+rewrite is visible in git history rather than invisible in a JSON file.
 
 ## What layout costs, measured
 
@@ -231,9 +330,9 @@ make refute SEED=<anything>     # every claim, with a seed the author never saw
 Seeds are derived from the commit SHA, so choosing a favourable one means changing the code,
 which changes the seed. An override run is refused by the evidence store outright and written
 to `evidence/refutations.jsonl` instead, which is committed: a repository that invites
-refutation should show the ones it has already survived. If a claim fails under your seed,
-that is a refutation, and an issue with the seed in it is the most useful thing anyone can
-send this project.
+refutation should show the ones it has already survived. If a claim fails under your seed, that
+is a refutation, and an issue with the seed in it is the most useful thing anyone can send this
+project.
 
 SG-00 (which counts the repository) and SG-06 (which verifies the evidence chain) are not part
 of a refutation run: neither is a statement about the data.
@@ -248,20 +347,19 @@ of a refutation run: neither is a statement about the data.
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |
 | privacy: masking, exposure check, retention purge | done |
 | Delta on Spark (MERGE, CDF, OPTIMIZE ZORDER, time travel) | done, <!--sg:SG-00.artifact.tests_delta-->6<!--/sg--> tests, run for the first time in round 12; two defects fell out, see `docs/limits.md` |
-| Databricks Free Edition lane (bundle, UC, expectations, AUTO CDC, dashboard) | **run end to end on 3 September 2026, and the close is correct**: 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross 199 379 from 3, to the cent against the OSS lane; 727 accepted + 28 quarantined = 755, conservation closed; the Type 2 dimension equal to the hand-written MERGE's ROW BY ROW, against the workspace's own seventy-five rows, committed. The record is committed and every figure in `docs/databricks-run.md` is rendered from it. Both findings that run produced are closed and confirmed in the workspace. **M12 is not**: of the seven things it lists, deploy-from-CI, the AI/BI dashboard and screenshots have not been started. See `docs/databricks-run.md` and `docs/milestones.md` |
+| Databricks Free Edition lane | **run end to end, 3 September 2026, and the close is correct** — see above. M12 open: deploy-from-CI, dashboard and screenshots not started |
 
 ## Documents
 
-- `CLAIMS.md` — every claim, its experiment, and what it does not show
-- `CONTRACT.md` — the data contract, the SLA, the restatement policy and the column classification
-- `PARITY.md` — OSS versus Databricks, claim by claim
-- `EXAM_MAP.md` — the Databricks Data Engineer Professional guide (3 July 2026), objective by objective
-- `CONTRIBUTING.md` — **`make preflight` is the command to pass before a push**, and why it
-  refuses to exit 0 on a machine that cannot run the Spark lanes
-- `docs/adr/` — the decisions, with what was given up
-- `docs/limits.md` — what this repository could not verify, and why
-- `docs/databricks-run.md` — what the Databricks lane deploys, and every figure it has not
-  produced yet
-- `docs/postmortem-2026-03-06.md` — the month that closed twice, written up as an incident
+- [`FINDINGS.md`](FINDINGS.md) — every defect this repository found in itself, by class
+- [`CLAIMS.md`](CLAIMS.md) — every claim, its experiment, and what it does not show
+- [`CONTRACT.md`](CONTRACT.md) — the data contract, the SLA, the restatement policy and the column classification
+- [`PARITY.md`](PARITY.md) — OSS versus Databricks, claim by claim
+- [`EXAM_MAP.md`](EXAM_MAP.md) — the Databricks Data Engineer Professional guide (3 July 2026), objective by objective, including where the answer is "nowhere"
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — **`make preflight` is the command to pass before a push**, and why it refuses to exit 0 on a machine that cannot run the Spark lanes
+- [`docs/adr/`](docs/adr/) — the decisions, with what was given up
+- [`docs/limits.md`](docs/limits.md) — what this repository could not verify, and why
+- [`docs/databricks-run.md`](docs/databricks-run.md) — what the cloud lane deploys, what it ran, and the checklist scored against the record
+- [`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) — the month that closed twice, written up as an incident
 
 Apache-2.0.
