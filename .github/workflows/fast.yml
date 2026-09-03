@@ -40,3 +40,13 @@ jobs:
           mypy
       - name: the evidence chain verifies and the documents match it
         run: samegold check
+      - name: the diagrams are diagrams
+        # mermaid's own parser, not an approximation of it. A flowchart that does not parse
+        # renders on GitHub as a raw code block - something that announces itself as a diagram
+        # and is not one - and no Python test can answer that question without reimplementing
+        # the grammar. Node is preinstalled on the runner; the two packages are the parser and
+        # the DOM it installs a sanitiser hook into. tests/fast/test_documentation.py carries the
+        # checks that do not need them, and says that they are weaker than this step.
+        run: |
+          npm install --no-save --no-audit --no-fund mermaid jsdom
+          node scripts/check_mermaid.mjs README.md
