@@ -16,25 +16,44 @@
 # here needs VS Code, and a container that only works inside one editor is a container that
 # does not work.
 #
-# TIME AND SIZE BUDGET, with the provenance of each number, because a budget nobody can check
-# is a wish:
+# TIME AND SIZE, MEASURED. This paragraph used to be a budget with two estimates in it and a
+# note saying nobody had built the image. It has been built, and every line below is what that
+# build did:
 #
-#   ~4 min   building the pyspark 4.2.0 wheel. MEASURED, and it is why the spark workflow
-#            caches it: pyspark publishes an sdist, not a wheel (see .github/workflows/spark.yml).
-#   ~450 MB  that same wheel. Measured, same place.
-#   ~1 min   base images and the JDK, over a normal connection. NOT measured - an estimate
-#            from the published image sizes.
-#   ~2 min   the remaining dependencies. NOT measured.
+#   160.4 s  `docker build -f .devcontainer/Dockerfile -t samegold .`, cold, of which
+#              5.1 s  pulling python:3.11-slim-bookworm
+#              9.5 s  pulling eclipse-temurin:21-jdk-jammy
+#             16.2 s  apt-get: git, make, procps
+#             82.9 s  venv + `pip install -e ".[spark,rust,dev]"`
+#             57.3 s  export and unpack
+#            The five lines add up to 171.0 s and the build took 160.4: BuildKit pulls the two
+#            base images concurrently, so they overlap rather than sum.
+#     2.74 GB  `docker images samegold`.
+#      0.4 s  `docker run --rm samegold make demo`, which is the `CMD` below.
 #
-# So: roughly seven minutes and about 2 GB for a cold build, of which the four measured
-# minutes dominate. The whole figure has NOT been verified by a build - see the note at the
-# bottom of this file - and the first person to run it should replace this paragraph with what
-# it actually took.
+# WHERE, because that is half of every measurement here: Windows 11, Docker Desktop with the
+# WSL2 backend, Ubuntu 24.04, a domestic connection. A different machine will move the pulls
+# and the export; the 82.9 s is dependency resolution and compilation and will move least.
+#
+# The estimate this replaces said ~7 min and ~2 GB. The time was 2.6x too pessimistic and the
+# size 37% too optimistic, and the interesting error is the third one: "~4 min building the
+# pyspark 4.2.0 wheel. MEASURED" was a real measurement taken on a GitHub runner in
+# .github/workflows/spark.yml, and the whole venv step here took 82.9 s. A number measured
+# somewhere else is an estimate here, however carefully it was measured there.
+#
+# WHY 2.74 GB, since a contributor on a slow line deserves to know what is arriving: the JDK
+# and the pyspark wheel are almost all of it. Both are load-bearing - the Spark and Delta lanes
+# are the point of this image - so the size is reported rather than apologised for. The obvious
+# way to reduce it, NOT taken here: a second stage that copies only `/opt/venv`, `/opt/java` and
+# the workspace out of the build, which would drop the apt lists and pip's build tree. That is a
+# decision to make after measuring what it actually saves, not before.
 
 # The JDK comes from Temurin's own image rather than from apt, which on bookworm would give
-# JDK 17. ADR 0002 pins 21 for the Spark lane. The patch level is deliberately not pinned:
-# pinning a tag that was never built is how you ship a Dockerfile that cannot build at all,
-# and this one has not been built here. Pin it once a build has succeeded.
+# JDK 17. ADR 0002 pins 21 for the Spark lane. The patch level is still a floating tag, and the
+# reason has changed: it used to be that pinning a tag nobody had resolved is how you ship a
+# Dockerfile that cannot build. The build has happened and both floating tags resolved without
+# incident, so a digest pin is now available and is a decision nobody has made - it buys a
+# reproducible image and costs the security updates that come with the moving tag.
 FROM eclipse-temurin:21-jdk-jammy AS jdk
 
 FROM python:3.11-slim-bookworm
@@ -74,8 +93,7 @@ ENV SAMEGOLD_IVY_HOME=/opt/ivy
 
 CMD ["make", "demo"]
 
-# NOT BUILT HERE. There was no Docker engine available on the machine this was written on -
-# Docker Desktop was not running and WSL integration was off - so this file has been reviewed
-# and not executed, which is the exact category this repository spends its rounds finding.
-# `docs/limits.md` says so too. What HAS been checked: that `make demo VENV=<existing venv>`
-# runs the demo without reinstalling, which is the one mechanism the image depends on.
+# BUILT AND RUN. `docker build` and `docker run --rm samegold make demo` both succeeded; the
+# numbers are at the top of this file. The mechanism the image depends on - `make demo` finding
+# `$(VENV)/bin/python` already present and skipping the install - is what the 0.4 s shows:
+# resolving the dependencies again would have taken the 82.9 s the build spent on them.

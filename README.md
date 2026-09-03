@@ -31,12 +31,19 @@ itself are checkable, and a record of every time one of them turned out to be fa
 
 ```bash
 git clone https://github.com/marcosmatalab/samegold && cd samegold
-make demo      # ~10 s, no account, no credentials, no JVM
+make demo      # no account, no credentials, no JVM. 0.4 s once the environment exists
 make report    # one self-contained HTML page: the close, its versions, what moved
 make fast      # the whole fast lane: <!--sg:SG-00.artifact.tests_fast-->444<!--/sg--> tests in <!--sg:SG-00.artifact.fast_lane_seconds-->134.9<!--/sg--> s
 make evidence  # regenerates every number except SG-07's (that one needs a JVM: make faults)
 make doctor    # which lanes this machine can run, and what is missing
 ```
+
+`make demo` used to say "~10 s" here without saying on what, from which state, and that is the
+shape this repository exists to catch. Two numbers, both measured: **0.4 s** with the
+environment already built (`docker run --rm samegold make demo`, in the container), **4.0 s**
+for the same thing on Windows 11 outside it, and the first run on a clean clone also builds the
+virtualenv, which took **82.9 s** in that container's build. The minutes on a fresh machine are
+the dependencies, not the demo. `.devcontainer/Dockerfile` carries the whole breakdown.
 
 A retail lakehouse (orders, amendments, returns) on Delta Lake and Spark, plus `samegold`: a
 differential harness that generates the data *and* the ledger of what the answer must be,
