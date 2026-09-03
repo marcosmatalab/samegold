@@ -13,6 +13,11 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  # `gh pr create` needs this and did not have it. The step that opens the pull request ended
+  # in `|| true`, so the job would have finished GREEN having pushed a branch and opened
+  # nothing - an hour of compute reporting success for work it had not done, which is the
+  # shape this repository keeps finding in itself.
+  pull-requests: write
 
 jobs:
   evidence:
@@ -42,9 +47,12 @@ jobs:
         with:
           subject-path: evidence/history.jsonl
       - name: commit
-        # Pushing to a protected branch with the default GITHUB_TOKEN fails, and it fails at
-        # the END of an hour of compute. So the job pushes to its own branch and opens a pull
-        # request instead: the evidence still lands, and a protected main stays protected.
+        # The job pushes to its own branch and opens a pull request rather than pushing to the
+        # default branch. The comment here used to justify that by branch protection; `main` in
+        # this repository is NOT protected (`gh api repos/.../branches/main/protection` answers
+        # 404), so that was a reason this job does not have. The reason it does have is that a
+        # record is evidence: it should arrive where someone looks at it before it becomes the
+        # number on the front page.
         run: |
           set -euo pipefail
           git config user.name "github-actions"
@@ -61,6 +69,19 @@ jobs:
           fi
           git commit -m "evidence: run ${{ github.run_id }}"
           git push --set-upstream origin "$branch"
-          gh pr create --fill --base "${{ github.ref_name }}" || true
+          # NOT `|| true`. Opening the pull request can fail for one reason that is a setting
+          # rather than an error - "Allow GitHub Actions to create and approve pull requests",
+          # off by default on a new repository - and the branch is pushed either way, so the
+          # evidence is never lost. What must not happen is the job reporting success while
+          # nobody is told the branch exists: the failure names the setting and the command.
+          if ! gh pr create --fill --base "${{ github.ref_name }}"; then
+            echo "::error::the evidence is pushed to $branch and the pull request was NOT"
+            echo "::error::opened. If this says 'GitHub Actions is not permitted to create or"
+            echo "::error::approve pull requests', turn on Settings -> Actions -> General ->"
+            echo "::error::Workflow permissions -> 'Allow GitHub Actions to create and approve"
+            echo "::error::pull requests'. Until then, open it by hand:"
+            echo "::error::  gh pr create --base ${{ github.ref_name }} --head $branch --fill"
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

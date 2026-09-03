@@ -1,19 +1,19 @@
 # samegold
 
-**A month-end close that survives late returns, mid-write crashes and reprocessing — and a
-harness whose whole job is to prove that it doesn't.**
+**A month-end close that survives late returns, mid-write crashes and reprocessing, and
+a harness whose whole job is to prove that it doesn't.**
 
 On 2 September 2026 this project deployed its Databricks lane to a real workspace and ran it
 for the first time. The pipeline went green; `revenue_by_month` held **2.767e19 cents** of
-January revenue — six and a half million times the ceiling its own contract allows for the
-number of lines involved — and the close task then died writing a DOUBLE into a BIGINT column.
+January revenue, six and a half million times the ceiling its own contract allows for the
+number of lines involved, and the close task then died writing a DOUBLE into a BIGINT column.
 Three events the generator emits *in order to be rejected* had been booked as revenue, because
 the classification treated "I cannot answer" as "accept".
 
 Nothing in sixteen rounds of adversarial review had found it. Two independent implementations
 agreed with each other and with a by-construction ledger, a mutation campaign killed every
 mutant it had not classified as equivalent, and the lane's own parity test compared exactly the
-right rules — on the wrong types. The defect needed a real workspace to exist in, and the
+right rules, on the wrong types. The defect needed a real workspace to exist in, and the
 repository had never had one.
 
 That is what this project is about. Not a pipeline that works: a pipeline whose claims about
@@ -23,9 +23,9 @@ itself are checkable, and a record of every time one of them turned out to be fa
 
 | if you have | read |
 |---|---|
-| two minutes | [`FINDINGS.md`](FINDINGS.md) — every defect this repository found in itself, ordered by what it teaches, with what made each one invisible and which test prevents it now |
-| five | [`CLAIMS.md`](CLAIMS.md) — every claim, the experiment behind it, and what it does **not** show |
-| ten, and a terminal | `make demo` below, then [`docs/databricks-run.md`](docs/databricks-run.md) — the cloud lane's run, every figure rendered from the record it produced |
+| two minutes | [`FINDINGS.md`](FINDINGS.md): every defect this repository found in itself, ordered by what it teaches, with what made each one invisible and which test prevents it now |
+| five | [`CLAIMS.md`](CLAIMS.md): every claim, the experiment behind it, and what it does **not** show |
+| ten, and a terminal | `make demo` below, then [`docs/databricks-run.md`](docs/databricks-run.md): the cloud lane's run, every figure rendered from the record it produced |
 
 ## Sixty seconds
 
@@ -38,7 +38,7 @@ make evidence  # regenerates every number except SG-07's (that one needs a JVM: 
 make doctor    # which lanes this machine can run, and what is missing
 ```
 
-A retail lakehouse — orders, amendments, returns — on Delta Lake and Spark, plus `samegold`: a
+A retail lakehouse (orders, amendments, returns) on Delta Lake and Spark, plus `samegold`: a
 differential harness that generates the data *and* the ledger of what the answer must be,
 computes the close twice in two engines, kills the pipeline at named structural points,
 mutates the reference SQL and the specification itself, measures what file layout costs, and
@@ -52,14 +52,14 @@ publishes what it could **not** catch.
 > by exactly that much.
 >
 > That percentage is measured over the simulated shop, with the harness's own boundary
-> fixtures held out — they sit on the contract's bounds by construction, so they are the
+> fixtures held out: they sit on the contract's bounds by construction, so they are the
 > largest lines it admits. CLAIMS.md says what that is worth and publishes the same figure
 > without the exclusion.
 
 ## The claims
 
 Every figure in this table, and every anchored number in these documents, is rendered from
-`evidence/history.jsonl` — an append-only hash chain — and specifically from the
+`evidence/history.jsonl`, an append-only hash chain, and specifically from the
 **most recent record** for each claim. The provenance column names the commit that produced it,
 and says so when that commit is not what ran.
 
@@ -154,7 +154,7 @@ flowchart LR
     M -.- b5(["no gaps, no overlaps,<br/>exactly one open row per customer"])
 ```
 
-Each dotted note is an invariant that holds **without an oracle** — it can be checked on the
+Each dotted note is an invariant that holds **without an oracle**: it can be checked on the
 output alone, so it survives a wrong contract that both implementations share. The repository
 also publishes what that buys: on the mutation campaign the invariants' marginal contribution
 was **zero** kills the ledger had not already made, and that number is printed rather than
@@ -169,7 +169,7 @@ hidden.
 | generator ledger | what was actually emitted, so a wrong close is visible in cents | the same blind spot: same author, same understanding |
 
 The experiment that measures that blind spot is the set of **specification mutants**: six
-changes to what the pipeline is *supposed* to do — which month a return belongs to, how long
+changes to what the pipeline is *supposed* to do: which month a return belongs to, how long
 the window is, what the dedup key is, whether the close cut is on arrival or event time. They
 are the only mutants that can falsify the independence claim, and every one of them is killed
 by name.
@@ -185,7 +185,7 @@ had asked for a boundary at exactly 45 days.
 
 **A window that changes length twice a year.** The reference measured the same window with
 `INTERVAL 45 DAY` over a `TIMESTAMPTZ`, which is calendar arithmetic in the session timezone.
-Under `Europe/Madrid` — the accounting timezone this project declares — the window comes out an
+Under `Europe/Madrid`, the accounting timezone this project declares, the window comes out an
 hour short of, or an hour past, 45 days across a daylight-saving boundary. Both implementations
 now compare seconds, and a test runs the reference under three timezones and asserts the same
 answer.
@@ -193,7 +193,7 @@ answer.
 **A refund rule that was not a rule.** Both implementations checked "a return cannot exceed the
 quantity sold" per RETURN EVENT. Three returns of three units each, against one sale of three,
 were all accepted: gross 3 000, refunds 9 000, **net minus 6 000**, and `returns_rejected_count`
-zero. Two implementations do not help here — they agreed — and no seed reached it either,
+zero. Two implementations do not help here (they agreed), and no seed reached it either,
 because the generator emitted at most one return per line. It was found by an adversarial
 review writing three records by hand, which is the honest answer to "what does differential
 testing not buy you": it buys agreement, and agreement is not correctness. The rule is
@@ -202,7 +202,7 @@ cumulative now, in all three lanes, and the generator emits the case since bound
 **And the one it could not:** the `ELSE 'accepted'` at the top of this file. Three lanes,
 sixteen rounds of review, and a defect that needed the cloud to exist in.
 [`FINDINGS.md`](FINDINGS.md) is the full list, including the six that came out of deploying the
-lane and running it — two from the first run, four from the day it worked.
+lane and running it: two from the first run, four from the day it worked.
 
 ## The cloud lane, run
 
@@ -211,7 +211,7 @@ outside the workspace with Declarative Automation Bundles.
 
 | | |
 |---|---|
-| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->14 198 046<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->425<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->** — to the cent against the OSS lane, which computes it without a workspace |
+| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->14 198 046<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->425<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->**, to the cent against the OSS lane, which computes it without a workspace |
 | the population | **<!--dbx:rows.bronze_events-->755<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->727<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->28<!--/dbx-->** quarantined across seven reasons; conservation closed |
 | the dimension | Type 2, **<!--dbx:dim.versions-->75<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row**, against the workspace's own rows, committed to this repository |
 | what it cost | 0 € |
@@ -219,12 +219,12 @@ outside the workspace with Declarative Automation Bundles.
 Those figures are anchored, not typed: they are checked against
 `evidence/databricks/SG-DBX-01.json` on every run of the fast lane, and the test fails if this
 file and the record ever disagree. The 2.767e19 at the top of this page is **not** anchored,
-and that is the same rule seen from the other side — it belongs to a run whose record is not
+and that is the same rule seen from the other side: it belongs to a run whose record is not
 in this repository, so it is prose, and `docs/databricks-run.md` says so where it reports it.
 
-The two findings that run produced — a field that reported a constant instead of the update's
-outcome, and two Type 2 implementations that disagreed by three versions — are closed,
-confirmed in the workspace, and written up in `FINDINGS.md`.
+Both findings that run produced are closed, confirmed in the workspace, and written up in
+`FINDINGS.md`: a field that reported a constant instead of the update's outcome, and two
+Type 2 implementations that disagreed by three versions.
 
 **M12 is not closed.** Of the seven things that milestone lists, four are done and verifiable
 against the record; deploy-from-CI, the AI/BI dashboard and screenshots-as-evidence have not
@@ -298,7 +298,7 @@ same on any machine:
 - compaction removed **<!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->%**
   of the files;
 - clustering by (month, sku) cut the share of the table a sku predicate has to read by
-  **<!--sg:SG-09.artifact.share_read_reduction_pct-->76.97<!--/sg-->%** — **and by nothing at all**
+  **<!--sg:SG-09.artifact.share_read_reduction_pct-->76.97<!--/sg-->%**, **and by nothing at all**
   at large file sizes, where the two files it produces cover the whole key range. Both are
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
@@ -314,7 +314,7 @@ same on any machine:
 | pipelines | Spark 4.2.0 + Spark Declarative Pipelines | Lakeflow Spark Declarative Pipelines |
 | storage | Delta Lake 4.4.0 (`io.delta:delta-spark_4.2_2.13:4.4.0`) and delta-rs 1.6.3 | Delta, managed by Unity Catalog |
 | only here | crash injection (there is a process to kill), mutation, the cost lab, the purge | expectations, AUTO CDC **Type 2** (Spark 4.2 has Type 1), `CLUSTER BY AUTO`, UC governance, event log, Jobs, AI/BI |
-| cost | 0 € — GitHub Actions is free and unlimited on public repositories | 0 € — Free Edition has no 14-day limit; it does have quotas |
+| cost | 0 €: GitHub Actions is free and unlimited on public repositories | 0 €: Free Edition has no 14-day limit; it does have quotas |
 
 `PARITY.md` says, claim by claim, which lane verifies what. Auto Loader is proprietary and has
 **no** open-source equivalent: ingestion is an adapter with two implementations, one contract
@@ -347,19 +347,19 @@ of a refutation run: neither is a statement about the data.
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |
 | privacy: masking, exposure check, retention purge | done |
 | Delta on Spark (MERGE, CDF, OPTIMIZE ZORDER, time travel) | done, <!--sg:SG-00.artifact.tests_delta-->6<!--/sg--> tests, run for the first time in round 12; two defects fell out, see `docs/limits.md` |
-| Databricks Free Edition lane | **run end to end, 3 September 2026, and the close is correct** — see above. M12 open: deploy-from-CI, dashboard and screenshots not started |
+| Databricks Free Edition lane | **run end to end, 3 September 2026, and the close is correct**. See above. M12 open: deploy-from-CI, dashboard and screenshots not started |
 
 ## Documents
 
-- [`FINDINGS.md`](FINDINGS.md) — every defect this repository found in itself, by class
-- [`CLAIMS.md`](CLAIMS.md) — every claim, its experiment, and what it does not show
-- [`CONTRACT.md`](CONTRACT.md) — the data contract, the SLA, the restatement policy and the column classification
-- [`PARITY.md`](PARITY.md) — OSS versus Databricks, claim by claim
-- [`EXAM_MAP.md`](EXAM_MAP.md) — the Databricks Data Engineer Professional guide (3 July 2026), objective by objective, including where the answer is "nowhere"
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — **`make preflight` is the command to pass before a push**, and why it refuses to exit 0 on a machine that cannot run the Spark lanes
-- [`docs/adr/`](docs/adr/) — the decisions, with what was given up
-- [`docs/limits.md`](docs/limits.md) — what this repository could not verify, and why
-- [`docs/databricks-run.md`](docs/databricks-run.md) — what the cloud lane deploys, what it ran, and the checklist scored against the record
-- [`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) — the month that closed twice, written up as an incident
+- [`FINDINGS.md`](FINDINGS.md): every defect this repository found in itself, by class
+- [`CLAIMS.md`](CLAIMS.md): every claim, its experiment, and what it does not show
+- [`CONTRACT.md`](CONTRACT.md): the data contract, the SLA, the restatement policy and the column classification
+- [`PARITY.md`](PARITY.md): OSS versus Databricks, claim by claim
+- [`EXAM_MAP.md`](EXAM_MAP.md): the Databricks Data Engineer Professional guide (3 July 2026), objective by objective, including where the answer is "nowhere"
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): **`make preflight` is the command to pass before a push**, and why it refuses to exit 0 on a machine that cannot run the Spark lanes
+- [`docs/adr/`](docs/adr/): the decisions, with what was given up
+- [`docs/limits.md`](docs/limits.md): what this repository could not verify, and why
+- [`docs/databricks-run.md`](docs/databricks-run.md): what the cloud lane deploys, what it ran, and the checklist scored against the record
+- [`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md): the month that closed twice, written up as an incident
 
 Apache-2.0.

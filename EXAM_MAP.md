@@ -1,4 +1,4 @@
-# Exam map — Databricks Certified Data Engineer Professional
+# Exam map: Databricks Certified Data Engineer Professional
 
 Against the official exam guide dated **3 July 2026**
 ([PDF](https://www.databricks.com/sites/default/files/2026-07/databricks-certified-data-engineer-professional-exam-guide-july-3-2026.pdf)),
@@ -9,7 +9,7 @@ caught rounding someone else's blog post into a fact.
 
 Exam shape, from the guide: **59 scored multiple-choice questions, 120 minutes**.
 
-For each objective: where the work is, and — where the answer is "nowhere" — why. A map that
+For each objective: where the work is, and, where the answer is "nowhere", why. A map that
 lists only hits is not a map.
 
 | # | section | weight | state |
@@ -33,7 +33,7 @@ lists only hits is not a map.
 |---|---|---|
 | "Design and implement a scalable Python project structure optimized for Declarative Automation Bundles" | `src/samegold/` with an enforced layering test, `databricks/` as the bundle root | `tests/fast/test_architecture.py` |
 | "Manage and troubleshoot external third-party library installations and dependencies" | `src/samegold/pipelines/session.py` and ADR 0002: the exact Maven coordinate, the sdist trap, the Ivy cache path | SG-00 |
-| "Develop User-Defined Functions (UDFs) using Pandas/Python UDF" | **gap.** The pipeline deliberately has none: every transformation is expressible in the SQL/DataFrame API, which is faster and analysable. A UDF example with its cost measured is milestone M15 | — |
+| "Develop User-Defined Functions (UDFs) using Pandas/Python UDF" | **gap.** The pipeline deliberately has none: every transformation is expressible in the SQL/DataFrame API, which is faster and analysable. A UDF example with its cost measured is milestone M15 | none |
 | "Build and manage reliable, production-ready data pipelines for batch and streaming data" | `src/samegold/pipelines/transform.py`, `faults/worker.py` (streaming with `foreachBatch` + `availableNow`) | SG-01, SG-07 |
 | "Create and Automate ETL workloads using Jobs via UI/APIs/CLI" | `databricks/resources/jobs.yml`, deployed by the CLI from CI; the schedule is deployed PAUSED because a Free Edition quota overrun stops all compute for the day | needs a workspace |
 | "Explain the advantages and disadvantages of streaming tables compared to materialized views" | `pipelines/transformations/bronze_silver.py` and `databricks/src/gold_close.py`: streaming tables for append-only silver, a materialized view for the close | PARITY.md |
@@ -89,8 +89,8 @@ This is the weakest section of the project and the honest reason is money, not e
 | "Recognizing optimization techniques for large dataset queries, including data skipping and file pruning" | files-not-skippable computed from the per-file min/max in the Delta log | SG-09 |
 | "Simplify data layout decisions ... liquid clustering over Partitioning and ZOrder" | COST-03 measures **partitioning versus Z-ORDER clustering** against two predicates and reports which one each serves. Liquid clustering itself is Databricks-only and is declared, not measured | SG-09 |
 | "Applying Change Data Feed to address streaming table limitations" | `tests/delta/test_delta_semantics.py` reads it AS A FEED - the four `_change_type` values, each attributed to the commit that made it - and asserts the two rows the table no longer has are in it; the Databricks lane enables it on the dimension | delta lane, run |
-| "Using query profiles to identify performance bottlenecks" | **gap**: the query profile is a Databricks UI. `docs/limits.md` says what is measured instead | — |
-| "Unity Catalog managed tables reduce operational overhead" | discussed in PARITY.md; not demonstrable without a metastore | — |
+| "Using query profiles to identify performance bottlenecks" | **gap**: the query profile is a Databricks UI. `docs/limits.md` says what is measured instead | none |
+| "Unity Catalog managed tables reduce operational overhead" | discussed in PARITY.md; not demonstrable without a metastore | none |
 
 ## 7. Data security and compliance (10%)
 

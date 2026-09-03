@@ -15,3 +15,8 @@ derby.log
 # evidence/refutations.jsonl is written by `make refute` and IS committed: a repository that
 # invites refutation should show the refutations it has already survived. It never backs a
 # published number either way.
+
+# `npm install` in the mermaid step of .github/workflows/fast.yml writes it here. Nothing
+# in this repository is a node package; the directory is a tool's scratch space, and an
+# untracked one is enough to make `git status --porcelain` call the tree dirty.
+node_modules/

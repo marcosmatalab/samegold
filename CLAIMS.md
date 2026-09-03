@@ -1,6 +1,6 @@
 # Claims
 
-One section per claim: what was measured, how, and — the part that matters — what the result
+One section per claim: what was measured, how, and (the part that matters) what the result
 does **not** show. Numbers are rendered from `evidence/history.jsonl`, whose records are
 hash-chained and seed-derived; a hand-edited figure fails a test.
 
@@ -23,7 +23,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 ---
 
-## SG-00 — what this repository contains, counted
+## SG-00: what this repository contains, counted
 
 **Experiment.** Collect the tests per lane, run the fast lane, count modules and lines.
 Every count printed in a document renders through an evidence anchor, so "127 tests" cannot
@@ -32,7 +32,7 @@ survive the day it stops being true. It stopped being true within a week of bein
 **Does not show** anything about quality. Lines of code are a fact about a repository, not a
 virtue.
 
-## SG-01 — two implementations agree on the versioned close
+## SG-01: two implementations agree on the versioned close
 
 **Experiment.** For each commit-derived seed, the generator writes a dataset and its ledger.
 At every close, `gold.revenue_by_month` is computed by the DuckDB reference and compared with
@@ -50,7 +50,7 @@ lands in both. Knight and Leveson measured that effect in 1986 with 27 independe
 versions and found failure coincidence far above chance; two versions by one author are not
 more independent than that. The number that prices this blind spot is SG-03, not this one.
 
-## SG-02 — re-delivery under a new path is a no-op
+## SG-02: re-delivery under a new path is a no-op
 
 **Experiment.** Compute the close, copy every bronze file to a second path, recompute, compare
 canonical digests. Result: <!--sg:SG-02.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg-->.
@@ -61,7 +61,7 @@ arriving after a streaming watermark has expired the state that would recognise 
 append-only and may hold duplicates, uniqueness is enforced at the gold boundary, and the size
 of the effect is a milestone (M14), not a claim.
 
-## SG-03 — mutation campaign
+## SG-03: mutation campaign
 
 **Experiment.** Mutants generated mechanically from the SQL AST (comparison swaps, join kind
 swaps, numeric literal bumps, aggregate swaps, coalesce removal, order flips) and run past
@@ -92,7 +92,7 @@ unfalsified rather than quietly kept.
 
 **Does not show** correctness. A mutation score is a lower bound on what a suite can see.
 
-## SG-04 — a closed month moves after it is closed
+## SG-04: a closed month moves after it is closed
 
 **Experiment.** For every month closed at least twice, compare the net revenue at its own
 close (day 5 of the following month) with its final value.
@@ -119,18 +119,18 @@ has no business quoting it.
 
 **Does not show** anything about real retail: the rates are set high so the rare paths appear.
 
-## SG-05 — invariants hold with no oracle involved
+## SG-05: invariants hold with no oracle involved
 
 **Experiment.** SCD2 intervals disjoint, contiguous and with exactly one open row per
 customer; `net = gross − returns`; close versions dense and `restated_at` monotonic; no month
 refunding more than it sold; conservation of every ingested row.
 Result: <!--sg:SG-05.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg-->.
 
-**Does not show** that the values are right — an invariant sees shape. And on the published
+**Does not show** that the values are right: an invariant sees shape. And on the published
 campaign the invariants killed **zero** mutants the ledger had not already killed. They are
 kept because in production there is no ledger and shape is all there is.
 
-## SG-06 — the evidence chain verifies and every seed derives from its commit
+## SG-06: the evidence chain verifies and every seed derives from its commit
 
 **Experiment.** Recompute the hash chain over `evidence/history.jsonl` and re-derive the seeds
 of every record from the commit it names. The count is the records present **at the moment
@@ -146,7 +146,7 @@ a JSON file. This version verifies the artefact rather than the function.
 that a run URL exists; the gate checks the shape and the commit, and the renderer prints
 anything without one as a local run.
 
-## SG-07 — the silver writer survives a crash at each of its structural points
+## SG-07: the silver writer survives a crash at each of its structural points
 
 **Experiment.** For each structural point of the SILVER writer, kill the process with
 `os._exit` inside `foreachBatch`, restart from the checkpoint, and compare two digests of
@@ -158,7 +158,7 @@ carries `reachable_points_not_covered` so the gap is in the evidence rather than
 assumption. The claim used to say "each structural point", which was false by half.
 
 **The negative control is what makes the claim falsifiable.** The same campaign runs against a writer that appends
-instead of overwriting — the hopeful version most pipelines ship. The content digest does
+instead of overwriting, the hopeful version most pipelines ship. The content digest does
 **not** move (it deduplicates, so it is blind to a double write) and the multiset digest does.
 If the control is ever undetected, the claim fails: a crash test that cannot fail is a
 screenshot. That blindness was found by an adversarial review copying a batch directory and
@@ -171,7 +171,7 @@ the program under test is not the program that gets deployed. The two gold-stage
 reachable and simply not yet exercised, which is a smaller and more embarrassing gap, and is
 published as one.
 
-## SG-08 — no direct identifier reaches gold, and a purge really purges
+## SG-08: no direct identifier reaches gold, and a purge really purges
 
 **Experiment.** Three controls, executed: the column policy masks every direct identifier on
 the way into gold; the exposure check refuses gold rows carrying one anyway, including one
@@ -186,7 +186,7 @@ that stops at the `DELETE` does not meet a retention policy, and the test fails 
 `is_account_group_member` is a policy nobody is subject to. The controls run in code here, and
 the Databricks lane declares the equivalent in SQL for a workspace that has groups.
 
-## SG-09 — what layout costs, in files and bytes
+## SG-09: what layout costs, in files and bytes
 
 **Experiment.** Four experiments on real Delta tables through delta-rs, measured from the
 per-file statistics in the Delta log rather than from a query plan or a clock:
