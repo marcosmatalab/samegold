@@ -248,7 +248,7 @@ of a refutation run: neither is a statement about the data.
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |
 | privacy: masking, exposure check, retention purge | done |
 | Delta on Spark (MERGE, CDF, OPTIMIZE ZORDER, time travel) | done, <!--sg:SG-00.artifact.tests_delta-->6<!--/sg--> tests, run for the first time in round 12; two defects fell out, see `docs/limits.md` |
-| Databricks Free Edition lane (bundle, UC, expectations, AUTO CDC, dashboard) | **deployed and run once, 2 September 2026, and it was wrong**: three rejected events were booked as 2.7e19 of revenue because bronze was inferred as STRING and the classification's `ELSE` was `accepted`. Both causes fixed; a review of the fix found three more (the bound literals had no width, acceptance was still the `ELSE`, and the two lanes ordered the same rules differently) and those are fixed too. **Nothing re-run.** See `PARITY.md` and `docs/databricks-run.md` |
+| Databricks Free Edition lane (bundle, UC, expectations, AUTO CDC, dashboard) | **run end to end on 3 September 2026, and the close is correct**: 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross 199 379 from 3, to the cent against the OSS lane; 727 accepted + 28 quarantined = 755, conservation closed. The first run, on 2 September, booked 2.7e19 as revenue from three rejected events; that defect is dead and verified in the workspace. Two findings from this run are OPEN: the record could not report an update's outcome (`MAX` over a state string), and the two Type 2 dimensions disagree by three versions. See `docs/databricks-run.md` |
 
 ## Documents
 

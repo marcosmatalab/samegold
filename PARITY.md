@@ -87,6 +87,67 @@ returns NULL. All three then quarantine it as `missing_required_field`. The gene
 one deliberately (corrupt kind `beyond_bigint`) so that the agreement is exercised on every
 seed rather than argued for here.
 
+## The first thing the two Type 2 dimensions said to each other
+
+`gold_close.py` has said for rounds that comparing AUTO CDC against the hand-written `MERGE` is
+the point of maintaining both. The lane ran on 3 September 2026 and they disagreed.
+
+| | AUTO CDC (Databricks) | hand-written MERGE (OSS) |
+|---|---|---|
+| version rows | **78** | **75** |
+| closed rows | **18** | **15** |
+| distinct customers | 60 | 60 |
+| open rows | 60 | 60 |
+
+`open_rows = customers` held on both, so the Type 2 property itself was intact; the difference
+was exactly three versions, twice.
+
+**The cause, measured rather than suspected.** The population contains 78 distinct
+`customer_upserted` event ids and exactly three of them are HEARTBEATS - an upsert repeating
+the segment and country the customer already had:
+
+| customer | event | event_ts | segment / country |
+|---|---|---|---|
+| `C000028` | `cu-C000028-1` | 2026-01-14T15:00:00Z | vip / PT |
+| `C000038` | `cu-C000038-1` | 2026-01-05T19:00:00Z | vip / IT |
+| `C000043` | `cu-C000043-1` | 2026-01-13T14:00:00Z | pro / FR |
+
+75 + 3 = 78 and 15 + 3 = 18. AUTO CDC produced one version per EVENT; the OSS lane produces one
+per CHANGE. And it could not have done otherwise: AUTO CDC's default for SCD Type 2 is a new
+version whenever ANY column changes, and the source view carries `event_ts` and `event_id`,
+which change on every upsert by construction.
+
+**Which is right is a contract question, and the contract had already answered it** - in
+`samegold.pipelines.transform.dim_customer_scd2`: "A Type 2 dimension records CHANGES, not
+heartbeats. An upsert that repeats the attributes the customer already had is not a new
+version." Three OSS implementations agree on that (the domain rule in
+`domain/bitemporal.scd2_from_versions`, the full recomputation, and the DuckDB reference), and
+an earlier round was spent making them agree. So this lane was the one that was wrong.
+
+The fix is `track_history_column_list=["segment", "country"]` - the same pair the OSS lane
+compares with `lag()` - which makes a change to `event_ts` or `event_id` alone update the
+current row instead of opening a version. **It has not been run.** The 78/18 above is what the
+workspace produced without it.
+
+And the comparison now EXISTS as a test, which it did not when it mattered:
+`tests/fast/test_databricks_dimension_parity.py` pins the arithmetic (78 upserts, 3 heartbeats,
+75 versions), asserts the property that no two consecutive versions of a customer are
+identical, and compares the two dimensions row by row against a capture from the workspace -
+skipping, with the query named, while that capture does not exist. Half of a cross-runtime
+comparison has to be captured; there is no way to compute AUTO CDC's output without Databricks,
+and inventing an expected shape would be a second implementation of the primitive rather than a
+comparison with it.
+
+### One more dialect difference, measured on the way
+
+`details:update_progress.state` - the `:` JSON-path operator on a STRING column - is Databricks
+SQL. On pyspark 4.2.0 it raises; `get_json_object(details, '$.update_progress.state')` returns
+the value on both engines, and `parse_json(details):path` returns a variant. `publish_evidence.py`
+now uses `get_json_object`, and that is not tidying: it is what lets
+`tests/spark/test_databricks_event_log_query.py` EXECUTE the lane's own update-state query
+against a synthetic event log instead of merely parsing it - which is how the `MAX`-over-a-state
+defect was caught in a test rather than in a record.
+
 ## Feature parity table
 
 | capability | OSS lane | Databricks Free Edition | note |
@@ -108,7 +169,7 @@ seed rather than argued for here.
 | killing the process mid-write | yes | **no** - serverless gives you no process to kill | the whole crash campaign lives in the OSS lane, and that is stated rather than implied |
 | Delta through a second implementation | yes: delta-rs 1.6.3 reads and writes the same tables, and the cost lab and the purge run on it | n/a | multi-engine interoperability is what the format is for, and it is also how the Delta-protocol claims get executed on a machine with no route to Maven |
 
-### The three Databricks-only primitives, checked rather than asserted
+### The four Databricks-only primitives, checked rather than asserted
 
 The three rows above that say "Databricks-only" were prose for eleven rounds. They are now
 each a signature in the open-source API that the Databricks sources fail against, and mypy
@@ -120,6 +181,7 @@ described. Against `pyspark 4.2.0`:
 | `dp.expect_all_or_drop(RULES)` | `pyspark.pipelines.api` has no such attribute | `error: Module has no attribute "expect_all_or_drop"` |
 | `create_streaming_table(cluster_by_auto=True)` | `cluster_by` only, an explicit column list | `error: Unexpected keyword argument "cluster_by_auto"; did you mean "cluster_by"?` |
 | `create_auto_cdc_flow(stored_as_scd_type=2)` | typed `Literal[1, "1"] \| None` | `error: incompatible type "Literal[2]"; expected "Literal[1, '1'] \| None"` |
+| `create_auto_cdc_flow(track_history_column_list=...)` | the open-source signature has `column_list` and `except_column_list` and no history-tracking parameter at all | `error: Unexpected keyword argument "track_history_column_list" for "create_auto_cdc_flow"  [call-arg]` |
 
 Each call keeps a narrow `# type: ignore` with the reason written beside it. They are not
 worked around and not simulated: the code is right for the runtime it is deployed to, and the

@@ -75,7 +75,7 @@ This is the weakest section of the project and the honest reason is money, not e
 |---|---|---|
 | "Use Lakeflow Spark Declarative Pipelines Event Logs to monitor pipelines" | `databricks/src/publish_evidence.py` reads the event log and exports expectation counts | needs a workspace |
 | "Use the Databricks REST APIs/Databricks CLI for monitoring jobs and pipelines" | `.github/workflows/databricks.yml` | needs a workspace |
-| "Use SQL Alerts to monitor data quality" | the rule is in `src/samegold/serve/freshness.py`: ingestion lag and an overdue close are separate alerts because they have different causes and different responders. Wiring it into a Databricks SQL Alert is milestone M12 | fast lane |
+| "Use SQL Alerts to monitor data quality" | the rule is in `src/samegold/serve/freshness.py`: ingestion lag and an overdue close are separate alerts because they have different causes and different responders. Wiring it into a Databricks SQL Alert is milestone M12, whose lane has now run (3 September 2026) | fast lane |
 | run-level metrics without a platform | every evidence record carries duration, counts, digests and provenance | all claims |
 | a consumption layer someone actually reads | `samegold report`: one self-contained HTML page with every version of the close and what moved after signature | `tests/fast/test_serve.py` |
 | an incident written up like an incident | `docs/postmortem-2026-03-06.md`, with the numbers taken from SG-04 | SG-04 |

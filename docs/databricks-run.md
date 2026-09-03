@@ -253,6 +253,79 @@ as the one at the top of this section and is why it is repeated rather than assu
 below, and the next run has to be a `run-full-refresh` for the type hints to take effect at
 all.
 
+## The run that worked, 3 September 2026 - and why the anchors below still say NOT RUN
+
+The sequence above was followed and the lane ran end to end. **The close is correct**, checked
+against the values in the checklist rather than against an impression:
+
+| checked | expected | workspace | |
+|---|---|---|---|
+| `revenue_by_month` 2026-01 | 14 198 046 cents, 425 lines | 14 198 046, 425 | to the cent |
+| `revenue_by_month` 2026-02 | 199 379 cents, 3 lines | 199 379, 3 | to the cent |
+| accepted / quarantined / total | 727 / 28 / 755 | 727 / 28 / 755 | conservation closed |
+| quarantine reasons | seven, none other | seven | |
+| `bad-0000007`, `bad-0000016` (Long.MaxValue) | `amount_out_of_range` | as expected | |
+| `bad-0000008`, `bad-0000017` (2^63) | `missing_required_field`, column NULL | as expected | |
+
+**The defect that opened this document is dead and verified in the workspace**, which is a
+different sentence from "fixed in the repository" and is the one that was missing.
+
+**So why do the anchors below still read NOT RUN?** Because
+`evidence/databricks/SG-DBX-01.json` is not in this repository. Every figure in an anchor comes
+from that file, and `tests/fast/test_databricks_bundle.py::
+test_the_run_document_holds_no_figure_the_run_has_not_produced` fails if any anchor holds a
+value while the record is absent. The figures above are typed from a terminal; the anchors are
+for figures a reader can check. Those are not the same thing, and the round-12 finding is
+precisely that a document must not be able to get ahead of its run by hand. `scripts/
+databricks_run.sh fetch` copies the record down; committing it is what fills the anchors, and
+`fetch` prints the two tables ready to paste.
+
+Two of them will be in dispute even then, and are flagged here rather than pasted:
+
+### Finding 1: the record cannot report the outcome of an update
+
+`dbx:update.last_state` would have taken `WAITING_FOR_RESOURCES` for an update that COMPLETED.
+The query was `MAX(details:update_progress.state)`, and `MAX` on a string is the alphabetical
+maximum: over CREATED, WAITING_FOR_RESOURCES, INITIALIZING, SETTING_UP_TABLES, RUNNING,
+COMPLETED, FAILED and CANCELED, `W` sorts last, always. Measured: the record published
+`WAITING_FOR_RESOURCES` for update `44a237b3`, which `databricks pipelines get` reports as
+COMPLETED - and it would have published the same word for the update that FAILED that morning.
+A constant with the shape of a measurement, in the field that decides whether the lane worked.
+
+Fixed with `max_by(state, timestamp)`, and the CTE that chooses which update to describe now
+takes the most recent to reach a TERMINAL state rather than the most recent to leave any event.
+`tests/spark/test_databricks_event_log_query.py` runs the lane's own query against a synthetic
+event log carrying the real sequence and requires COMPLETED for one that completes and FAILED
+for one that fails; with the old query both fail, which is the point of them.
+
+**The record already in the workspace was written by the old query.** Its `last_state` is not
+evidence of anything and the anchor stays NOT RUN until a run with the fixed notebook fills it.
+
+### Finding 2: the two Type 2 dimensions disagree by three versions
+
+AUTO CDC produced 78 versions and 18 closed rows; the hand-written MERGE produces 75 and 15.
+Sixty customers and sixty open rows on both. `PARITY.md` has the measurement, the three named
+heartbeat events that account for it exactly, and the ruling: the contract says a Type 2
+dimension records changes and not heartbeats, so this lane was the one that was wrong.
+`track_history_column_list=["segment", "country"]` is now set and has not been run.
+
+`dbx:dim.versions` and `dbx:dim.closed_rows` are the two anchors this decides. Do not paste 78
+and 18 into them: they are what the lane produced with the wrong setting.
+
+**The capture the comparison needs.** There is no way to compute AUTO CDC's output without
+Databricks, so half of that comparison has to come from the workspace. After the next run:
+
+```sql
+SELECT customer_id, segment, country, __START_AT, __END_AT
+FROM samegold.main.dim_customer_scd2
+ORDER BY customer_id, __START_AT;
+```
+
+saved as a JSON array at `evidence/databricks/dim_customer_scd2.json`.
+`tests/fast/test_databricks_dimension_parity.py::test_the_two_dimensions_agree_row_by_row`
+compares it row by row against the OSS dimension and skips, naming this query, while it is
+absent.
+
 ## What the run returned
 
 ### The pipeline update
