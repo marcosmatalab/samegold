@@ -47,6 +47,10 @@ jobs:
         # the grammar. Node is preinstalled on the runner; the two packages are the parser and
         # the DOM it installs a sanitiser hook into. tests/fast/test_documentation.py carries the
         # checks that do not need them, and says that they are weaker than this step.
+        #
+        # No file argument: the script walks every .md in the repository and fails if it finds
+        # no diagrams at all. Naming README.md here made the scope of the check a fact about
+        # which file happened to have a diagram in it that week.
         run: |
           npm install --no-save --no-audit --no-fund mermaid jsdom
-          node scripts/check_mermaid.mjs README.md
+          node scripts/check_mermaid.mjs
