@@ -394,6 +394,23 @@ conflict the refresh was supposed to clear."
     (cd "$BUNDLE" && "${command[@]}")
 }
 
+# The working tree's changes, EXCLUDING this repository's own evidence output.
+#
+# The same rule as `samegold.generator.seeds._code_changes`, and here for the same reason: the
+# `tree_dirty` field written below was computed with a bare `git status --porcelain`, and this
+# function runs immediately after copying `SG-DBX-01.json` into `evidence/databricks/`. It was
+# therefore structurally TRUE on every fetch that ever succeeded - the record said the deploy
+# came from a dirty tree because the fetch had just written the record.
+#
+# Round 19 found and fixed exactly this in Python (`evidence/` is output, not input) and did
+# not look one file further. `substr($0, 4)` is the porcelain layout - two status characters
+# and a space - and unlike the Python side there is no upstream `.strip()` to eat the first
+# line's leading space.
+code_changes() {
+    git -C "$REPO" status --porcelain 2>/dev/null \
+        | awk '{ p = substr($0, 4); if (p !~ /^"?evidence\//) print p }'
+}
+
 step_fetch() {
     say "fetch the evidence"
     mkdir -p "$OUT"
@@ -428,7 +445,7 @@ reaching the end. The run's output is in the workspace under Jobs -> samegold mo
   "bundle_target": "$TARGET",
   "catalog": "$CATALOG",
   "deployed_from_commit": "$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)",
-  "tree_dirty": $(test -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" && echo true || echo false),
+  "tree_dirty": $(test -n "$(code_changes)" && echo true || echo false),
   "databricks_cli": "$(databricks version 2>/dev/null | head -1)",
   "note": "Written by scripts/databricks_run.sh on the machine that ran the deploy. Nothing here was measured inside the workspace; SG-DBX-01.json is. Neither file is part of evidence/history.jsonl - see evidence/databricks/README.md."
 }

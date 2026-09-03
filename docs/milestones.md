@@ -18,7 +18,7 @@ the ones already done carry their measured cost.
 | M9b | consumption layer and freshness alerting: `samegold report`, `serve/freshness.py`, the post-mortem | done | 4 |
 | M10 | Delta on Spark green: `MERGE` with both branches and a delete by absence, CDF read as a feed, `OPTIMIZE ... ZORDER BY` measured in the transaction log, time travel, the delta CI job | done | 10 |
 | M11 | Spark Declarative Pipelines running locally and on Databricks | next | 10 |
-| M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | **run, 3 September 2026**: correct close, two findings open | 18 |
+| M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | **4 of 7 done**, verified against a committed record; deploy-from-CI, dashboard and screenshots not started | 18 |
 | M13 | grants and masks deployed, with a drift test comparing deployed to declared | | 8 |
 | M14 | the duplicate-escape measurement: stateful streaming dedup versus the stateless dedup at the gold boundary | | 8 |
 | M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |
@@ -38,20 +38,39 @@ result may be uncomfortable, and it should not be able to delay the rest.
 M12 said "runnable, never run" for six rounds, and the distinction was the whole lesson of
 round 12: the bundle deploying in one command is not the milestone, the milestone is a run.
 
-**There has been one.** It ran end to end on 3 September 2026 and produced a correct close: `revenue_by_month` 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross 199 379 from 3, to the cent against the values the OSS lane predicts; 727 accepted and 28 quarantined across seven reasons out of 755, conservation closed; the Long.MaxValue events out through `amount_out_of_range` and the 2^63 ones through `missing_required_field` with the column NULL.
+**There has been one, and it is right.** On 3 September 2026 the lane produced
+`revenue_by_month` 2026-01 gross 14 198 046 from 425 lines and 2026-02 gross 199 379 from 3 -
+to the cent against what the OSS lane computes on the same seed - with 727 accepted and 28
+quarantined across seven reasons out of 755, conservation closed, `undecided_rules` empty, and
+a Type 2 dimension of the same shape as the hand-written MERGE's. The record is committed at
+`evidence/databricks/SG-DBX-01.json` and every figure in `docs/databricks-run.md` is rendered
+from it.
 
-The hours stay at 18, and M12 is not closed, because a run that produces a correct close is not
-the same as a lane that is right. It produced two findings, and both are open:
+**M12 IS NOT CLOSED**, and the reason is not a judgement about quality. Its own row lists seven
+things. Four are done and checkable against that record; three have not been started:
 
-- `publish_evidence.py` could not report the outcome of an update. `MAX` over a state string is
-  the alphabetical maximum, so `last_state` published `WAITING_FOR_RESOURCES` for an update
-  that COMPLETED, and would have published the same word for the one that FAILED that morning.
-  Fixed with `max_by(state, timestamp)`, and now tested against a synthetic event log - but the
-  record in the workspace was written by the old query.
-- the two Type 2 dimensions disagree: 78 versions and 18 closed rows from AUTO CDC against 75
-  and 15 from the hand-written MERGE. The cause is measured (three heartbeat upserts, which the
-  contract says are not versions) and the fix is set
-  (`track_history_column_list=["segment", "country"]`), and neither has been near a workspace.
+| item | state | how that is known |
+|---|---|---|
+| Unity Catalog (catalog, schemas, volumes, grants) | done | the catalog step creates it with SQL; the record names the tables it read |
+| expectations, per rule, from the event log | done | seven rules, fourteen numbers, in the record - and every one matches what the OSS predicates give on the same population |
+| AUTO CDC Type 2 | done | 75 / 60 / 60 / 15, the OSS lane's shape exactly, compared by a test that runs |
+| the event log read for the update's state | done | `update.last_state = COMPLETED`, `error_events = 0`, plus ten terminal updates in `update_history` |
+| **bundle deploy from CI** | **not started** | `gh run list --workflow databricks.yml` returns nothing. The workflow exists and can deploy, seed, run and fetch on a `workflow_dispatch`; it has never been dispatched. Every deploy so far was from a laptop |
+| **AI/BI dashboard** | **not started** | there is no dashboard resource in the bundle. `databricks/resources/` holds `grants.yml`, `jobs.yml` and `volumes.yml`, and nothing else |
+| **screenshots as evidence** | **not started** | none exist |
 
-So the honest state is: deployed, run, correct on the numbers it was built to get right, and
-carrying two defects its first run exposed. The next run is what closes it.
+Three more things are DEPLOYED AND UNVERIFIED, which is a different state again and is why the
+next run still has work to do:
+
+- `pipelines.numUpdateRetryAttempts: "0"`. It landed after the retry loop it was written for,
+  and every update since has succeeded. An update that succeeds does not exercise a retry
+  setting; the next FAILED one tests it.
+- the four sections `publish_evidence.py` now captures for the checklist items the record could
+  not answer (`column_types`, `money_types`, `bad_events`, `rescued_rows`). Written, parsed,
+  analysed against the lane's own tables, never run.
+- the row-level dimension capture. The shape comparison runs; the row-by-row one is a skip, and
+  four matching aggregates do not prove the same sixty customers have the same intervals.
+
+**The hours stay at 18 and that figure is an estimate nobody has measured against.** This
+document has no record of hours spent, so changing the number would be inventing one. What can
+be said with a number is the state above: four of seven, three not started, three unverified.

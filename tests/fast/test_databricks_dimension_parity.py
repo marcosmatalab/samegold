@@ -10,6 +10,11 @@ Nothing compared them until the lane ran. It ran on 3 September 2026 and they di
 and sixty open rows on both, so `open_rows = customers` held and the difference was exactly
 three versions.
 
+It ran again the same day with `track_history_column_list=["segment", "country"]` set, and the
+workspace produced **75 / 60 / 60 / 15** - the OSS lane's shape exactly. That record is in this
+repository (`evidence/databricks/SG-DBX-01.json`), so the comparison below is no longer a
+description of a divergence: it is a check that runs.
+
 The cause is measured below rather than asserted: three of the population's 78
 `customer_upserted` events are HEARTBEATS - an upsert that repeats the segment and country the
 customer already had - and AUTO CDC's default is a new version whenever ANY column changes,
@@ -42,6 +47,9 @@ TRACKED = ("segment", "country")
 # Captured from the workspace. Absent until somebody runs the query in
 # docs/databricks-run.md; the comparison below says so by name rather than passing quietly.
 CAPTURED = REPO / "evidence" / "databricks" / "dim_customer_scd2.json"
+# The record the workspace produced. It carries the dimension's SHAPE - versions, customers,
+# open and closed rows - which is what the divergence showed up in, and not its rows.
+RECORD = REPO / "evidence" / "databricks" / "SG-DBX-01.json"
 
 
 @pytest.fixture(scope="module")
@@ -174,4 +182,42 @@ def test_the_two_dimensions_agree_row_by_row(population) -> None:  # type: ignor
         f"  only on Databricks     ({len(only_theirs)}): {only_theirs[:5]}\n"
         f"If the Databricks side has extra rows whose attributes repeat their predecessor's, "
         f"`track_history_column_list` did not take effect on that run."
+    )
+
+
+def test_the_workspace_dimension_has_the_shape_the_oss_lane_computes(population) -> None:  # type: ignore[no-untyped-def]
+    """The cross-runtime comparison, running for real against a committed record.
+
+    This is the check that did not exist when it mattered. AUTO CDC and the hand-written MERGE
+    disagreed by three versions on the first run and nothing in the repository noticed; the
+    difference showed up in a terminal, in four aggregates, which is exactly what this asserts.
+
+    It is WEAKER than the row-by-row comparison below, and the difference is worth naming: four
+    matching totals do not prove the same sixty customers have the same seventy-five intervals.
+    Two dimensions could agree on every count and disagree on which customer changed when. The
+    row-level capture is what closes that, and until it exists this is the half that can run.
+    """
+    import json
+
+    _, dimension = population
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    shape = (record.get("dim_customer_scd2") or [{}])[0]
+    assert shape, "the record carries no dim_customer_scd2 section"
+
+    open_rows = [r for r in dimension if r["valid_to"] is None]
+    ours = {
+        "versions": len(dimension),
+        "customers": len({r["customer_id"] for r in dimension}),
+        "open_rows": len(open_rows),
+        "closed_rows": len(dimension) - len(open_rows),
+    }
+    theirs = {k: shape[k] for k in ours}
+    assert ours == theirs, (
+        f"the hand-written MERGE and AUTO CDC produced differently shaped dimensions.\n"
+        f"  OSS lane   {ours}\n"
+        f"  Databricks {theirs}\n"
+        f"If Databricks has MORE versions, `track_history_column_list` is not in force on the "
+        f"run that wrote the record: AUTO CDC's default is a new version whenever any column "
+        f"changes, and the source view carries `event_ts` and `event_id`, which change on "
+        f"every upsert."
     )

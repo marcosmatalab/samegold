@@ -253,99 +253,114 @@ as the one at the top of this section and is why it is repeated rather than assu
 below, and the next run has to be a `run-full-refresh` for the type hints to take effect at
 all.
 
-## The run that worked, 3 September 2026 - and why the anchors below still say NOT RUN
+## The run that worked, and the checklist scored against it
 
-The sequence above was followed and the lane ran end to end. **The close is correct**, checked
-against the values in the checklist rather than against an impression:
+The lane ran end to end on 3 September 2026. The first run of the day was correct on the close
+and exposed two defects of its own; both were fixed, the lane was run again from commit
+`8c9faa7`, and **that record is in this repository** at `evidence/databricks/SG-DBX-01.json`.
+Every anchor below is filled from it, mechanically, and
+`tests/fast/test_databricks_bundle.py::test_the_run_document_agrees_with_the_record` fails if
+the document and the record ever disagree.
 
-| checked | expected | workspace | |
-|---|---|---|---|
-| `revenue_by_month` 2026-01 | 14 198 046 cents, 425 lines | 14 198 046, 425 | to the cent |
-| `revenue_by_month` 2026-02 | 199 379 cents, 3 lines | 199 379, 3 | to the cent |
-| accepted / quarantined / total | 727 / 28 / 755 | 727 / 28 / 755 | conservation closed |
-| quarantine reasons | seven, none other | seven | |
-| `bad-0000007`, `bad-0000016` (Long.MaxValue) | `amount_out_of_range` | as expected | |
-| `bad-0000008`, `bad-0000017` (2^63) | `missing_required_field`, column NULL | as expected | |
+`update` 58d3de6f, COMPLETED, 0 ERROR-level events, `incomplete: []` - so no section of the
+record is a hole.
 
-**The defect that opened this document is dead and verified in the workspace**, which is a
-different sentence from "fixed in the repository" and is the one that was missing.
+### The checklist, scored
 
-**So why do the anchors below still read NOT RUN?** Because
-`evidence/databricks/SG-DBX-01.json` is not in this repository. Every figure in an anchor comes
-from that file, and `tests/fast/test_databricks_bundle.py::
-test_the_run_document_holds_no_figure_the_run_has_not_produced` fails if any anchor holds a
-value while the record is absent. The figures above are typed from a terminal; the anchors are
-for figures a reader can check. Those are not the same thing, and the round-12 finding is
-precisely that a document must not be able to get ahead of its run by hand. `scripts/
-databricks_run.sh fetch` copies the record down; committing it is what fills the anchors, and
-`fetch` prints the two tables ready to paste.
+Every expected value in the section below it was written **before** any of this ran, from the
+generator and the OSS reference on the same seed. Here is each one against what the workspace
+produced.
 
-Two of them will be in dispute even then, and are flagged here rather than pasted:
+| # | check | expected | workspace | |
+|---|---|---|---|---|
+| 1 | money columns are `bigint` | `bigint` throughout | **not in the record** | see below |
+| 2 | the four `bad-*` verdicts | `amount_out_of_range` x2, `missing_required_field` x2 | **not in the record** | see below |
+| 3 | quarantine by reason | 727 / 6 / 5 / 3 / 6 / 2 / 3 / 3 = 755 | identical, all eight | ✅ |
+| 3 | conservation | 755 / 727 / 28 / 755 | identical | ✅ |
+| 3 | `undecided_rules` | 0 rows | `[]` | ✅ |
+| 3 | rescued rows | at least 2 | **not in the record** | see below |
+| 4 | expectations, per rule | 752/3, 749/6, 747/8, 743/12, 744/11, 747/8, 741/14 | **all fourteen identical** | ✅ |
+| 5 | `revenue_by_month` 2026-01 | 14 198 046, 425 lines | 14 198 046, 425 | ✅ |
+| 5 | `revenue_by_month` 2026-02 | 199 379, 3 lines | 199 379, 3 | ✅ |
+| 5 | `above_contract_ceiling` | false everywhere | false, both months | ✅ |
+| 5 | `revenue_closed` | 2 rows, version 0, "first close" | exactly that, and the returns figures too | ✅ |
+| 6 | dimension | 75 / 60 / 60 / 15 | 75 / 60 / 60 / 15 | ✅ |
 
-### Finding 1: the record cannot report the outcome of an update
+**Nothing disagreed.** Not one figure. The per-rule expectation counts are worth pausing on:
+those seven pairs were predicted by evaluating the lane's own predicates on local Spark over the
+generated population, and the Databricks event log's own accounting agrees on all fourteen
+numbers - which retires the caveat that stood beside them ("the check that survives even if the
+runtime's per-rule accounting turns out to differ").
 
-`dbx:update.last_state` would have taken `WAITING_FOR_RESOURCES` for an update that COMPLETED.
-The query was `MAX(details:update_progress.state)`, and `MAX` on a string is the alphabetical
-maximum: over CREATED, WAITING_FOR_RESOURCES, INITIALIZING, SETTING_UP_TABLES, RUNNING,
-COMPLETED, FAILED and CANCELED, `W` sorts last, always. Measured: the record published
-`WAITING_FOR_RESOURCES` for update `44a237b3`, which `databricks pipelines get` reports as
-COMPLETED - and it would have published the same word for the update that FAILED that morning.
-A constant with the shape of a measurement, in the field that decides whether the lane worked.
+**And three of the six items could not be checked against the record at all**, because nothing
+in it spoke to them: the column types, the four named `bad-*` rows, and the rescued count. They
+were read off a terminal by the person who ran it, which is the same standing as prose - and a
+checklist and a record that do not cover the same ground is a gap somebody fills by remembering.
+`publish_evidence.py` now captures all three (`column_types`, `money_types`, `bad_events`,
+`rescued_rows`), so the next run closes it. Until then those three rows say "not in the record"
+rather than a tick, which is what they are.
 
-Fixed with `max_by(state, timestamp)`, and the CTE that chooses which update to describe now
-takes the most recent to reach a TERMINAL state rather than the most recent to leave any event.
-`tests/spark/test_databricks_event_log_query.py` runs the lane's own query against a synthetic
-event log carrying the real sequence and requires COMPLETED for one that completes and FAILED
-for one that fails; with the old query both fail, which is the point of them.
+### The two findings from the earlier run, closed
 
-**The record already in the workspace was written by the old query.** Its `last_state` is not
-evidence of anything and the anchor stays NOT RUN until a run with the fixed notebook fills it.
+**The outcome field.** `MAX(details:update_progress.state)` is the alphabetical maximum, so
+`last_state` published `WAITING_FOR_RESOURCES` for update `44a237b3`, which completed. With
+`max_by(state, timestamp)` the record now reads `COMPLETED` for `58d3de6f`, and the CTE picks
+the most recent update to reach a TERMINAL state rather than the most recent to leave any event.
+`tests/spark/test_databricks_event_log_query.py` runs the lane's own query over a synthetic
+event log and requires COMPLETED for one that completes and FAILED for one that fails; with
+`MAX` restored, both report `WAITING_FOR_RESOURCES`.
 
-### Finding 2: the two Type 2 dimensions disagree by three versions
+**The dimension.** AUTO CDC produced 78 versions and 18 closed rows against the hand-written
+MERGE's 75 and 15, because its default is a new version whenever ANY column changes and the
+source view carries `event_ts` and `event_id`. With
+`track_history_column_list=["segment", "country"]` the workspace produced **75 / 60 / 60 / 15**
+- the OSS lane's shape exactly. `tests/fast/test_databricks_dimension_parity.py` compares the
+two against this record and fails if they differ.
 
-AUTO CDC produced 78 versions and 18 closed rows; the hand-written MERGE produces 75 and 15.
-Sixty customers and sixty open rows on both. `PARITY.md` has the measurement, the three named
-heartbeat events that account for it exactly, and the ruling: the contract says a Type 2
-dimension records changes and not heartbeats, so this lane was the one that was wrong.
-`track_history_column_list=["segment", "country"]` is now set and has not been run.
+### What the record now shows that no record showed before
 
-`dbx:dim.versions` and `dbx:dim.closed_rows` are the two anchors this decides. Do not paste 78
-and 18 into them: they are what the lane produced with the wrong setting.
+`update_history` carries the ten most recent terminal updates, and the first one it ever wrote
+makes the retry loop visible:
 
-**The capture the comparison needs.** There is no way to compute AUTO CDC's output without
-Databricks, so half of that comparison has to come from the workspace. After the next run:
+    2026-09-03 18:01:18  COMPLETED  58d3de6f      <- this record
+    2026-09-03 13:24:36  COMPLETED  44a237b3
+    2026-09-03 13:15:22  COMPLETED  b0cf0443
+    2026-09-03 12:54:57  FAILED     79bf353a
+    2026-09-03 12:49:22  FAILED     865c9dcf
+    2026-09-03 12:46:26  FAILED     c0322e9d
+    2026-09-03 12:44:50  FAILED     f3e72640
+    2026-09-03 12:43:53  FAILED     1adb8985
+    2026-09-03 12:43:18  FAILED     d56d5da0
+    2026-09-03 12:31:13  FAILED     78785ff2
 
-```sql
-SELECT customer_id, segment, country, __START_AT, __END_AT
-FROM samegold.main.dim_customer_scd2
-ORDER BY customer_id, __START_AT;
-```
+Seven consecutive failed updates in twenty-four minutes, from launches nobody made seven times.
+That is the shape a record describing one update cannot have.
 
-saved as a JSON array at `evidence/databricks/dim_customer_scd2.json`.
-`tests/fast/test_databricks_dimension_parity.py::test_the_two_dimensions_agree_row_by_row`
-compares it row by row against the OSS dimension and skips, naming this query, while it is
-absent.
+**It does not verify the fix.** `pipelines.numUpdateRetryAttempts: "0"` landed in `e002f29`,
+which was pushed after those failures; every update since has succeeded, and an update that
+succeeds does not exercise a retry setting. The setting is deployed and untested, and the next
+FAILED update is what tests it.
 
-## What the run returned
+## What the run returned## What the run returned
 
 ### The pipeline update
 
 | | |
 |---|---|
-| last state | <!--dbx:update.last_state-->NOT RUN<!--/dbx--> |
-| ERROR-level events | <!--dbx:update.error_events-->NOT RUN<!--/dbx--> |
+| last state | <!--dbx:update.last_state-->COMPLETED<!--/dbx--> |
+| ERROR-level events | <!--dbx:update.error_events-->0<!--/dbx--> |
 
 ### Rows per table
 
 | table | rows |
 |---|---|
-| `bronze_events` | <!--dbx:rows.bronze_events-->NOT RUN<!--/dbx--> |
-| `silver_classified` | <!--dbx:rows.silver_classified-->NOT RUN<!--/dbx--> |
-| `silver_events` | <!--dbx:rows.silver_events-->NOT RUN<!--/dbx--> |
-| `silver_quarantine` | <!--dbx:rows.silver_quarantine-->NOT RUN<!--/dbx--> |
-| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->NOT RUN<!--/dbx--> |
-| `revenue_by_month` | <!--dbx:rows.revenue_by_month-->NOT RUN<!--/dbx--> |
-| `revenue_closed` | <!--dbx:rows.revenue_closed-->NOT RUN<!--/dbx--> |
+| `bronze_events` | <!--dbx:rows.bronze_events-->755<!--/dbx--> |
+| `silver_classified` | <!--dbx:rows.silver_classified-->755<!--/dbx--> |
+| `silver_events` | <!--dbx:rows.silver_events-->727<!--/dbx--> |
+| `silver_quarantine` | <!--dbx:rows.silver_quarantine-->28<!--/dbx--> |
+| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->75<!--/dbx--> |
+| `revenue_by_month` | <!--dbx:rows.revenue_by_month-->2<!--/dbx--> |
+| `revenue_closed` | <!--dbx:rows.revenue_closed-->2<!--/dbx--> |
 
 `silver_events` is the expectation-filtered table and `silver_classified` is every row with a
 reason attached, so `silver_classified = silver_events + silver_quarantine` is the conservation
@@ -362,9 +377,15 @@ drift, and `tests/spark/test_adversarial_records.py` compares these predicates a
 
 `scripts/databricks_run.sh fetch` prints this table ready to paste.
 
-<!--dbx:expectations.table-->
-NOT RUN
-<!--/dbx-->
+<!--dbx:expectations.table-->| rule | dataset | passed | failed |
+|---|---|---|---|
+| amount_out_of_range | samegold.main.silver_events | 741 | 14 |
+| missing_required_field | samegold.main.silver_events | 747 | 8 |
+| negative_price | samegold.main.silver_events | 744 | 11 |
+| non_positive_quantity | samegold.main.silver_events | 743 | 12 |
+| unknown_currency | samegold.main.silver_events | 747 | 8 |
+| unknown_event_type | samegold.main.silver_events | 749 | 6 |
+| unparseable_json | samegold.main.silver_events | 752 | 3 |<!--/dbx-->
 
 ### Quarantine reasons, from the classified table
 
@@ -372,9 +393,16 @@ The same population counted the other way. Every reason here is a member of the 
 closed enum; a reason that appears here and not in the table above is a rule the expectations
 never reached.
 
-<!--dbx:quarantine.table-->
-NOT RUN
-<!--/dbx-->
+<!--dbx:quarantine.table-->| quarantine reason | rows |
+|---|---|
+| accepted | 727 |
+| amount_out_of_range | 6 |
+| missing_required_field | 5 |
+| negative_price | 3 |
+| non_positive_quantity | 6 |
+| unknown_currency | 2 |
+| unknown_event_type | 3 |
+| unparseable_json | 3 |<!--/dbx-->
 
 ### AUTO CDC: the Type 2 dimension
 
@@ -385,10 +413,10 @@ that the two agree is the point of having both.
 
 | | |
 |---|---|
-| version rows | <!--dbx:dim.versions-->NOT RUN<!--/dbx--> |
-| distinct customers | <!--dbx:dim.customers-->NOT RUN<!--/dbx--> |
-| open rows (`__END_AT IS NULL`) | <!--dbx:dim.open_rows-->NOT RUN<!--/dbx--> |
-| closed rows | <!--dbx:dim.closed_rows-->NOT RUN<!--/dbx--> |
+| version rows | <!--dbx:dim.versions-->75<!--/dbx--> |
+| distinct customers | <!--dbx:dim.customers-->60<!--/dbx--> |
+| open rows (`__END_AT IS NULL`) | <!--dbx:dim.open_rows-->60<!--/dbx--> |
+| closed rows | <!--dbx:dim.closed_rows-->15<!--/dbx--> |
 
 Open rows must equal distinct customers: one current version per key is what Type 2 means, and
 a dimension with two open rows for one customer is the defect the hand-written `MERGE` on the
