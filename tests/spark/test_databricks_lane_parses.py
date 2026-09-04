@@ -166,9 +166,9 @@ def _statements() -> list[tuple[str, str]]:
     for path in sorted(LANE.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
         for index, statement in enumerate(_sql_calls(source)):
-            out.append((f"{path.relative_to(REPO)}#{index}", _resolve(statement)))
+            out.append((f"{path.relative_to(REPO).as_posix()}#{index}", _resolve(statement)))
     for path in sorted((LANE / "sql").rglob("*.sql")):
-        out.append((str(path.relative_to(REPO)), _resolve(path.read_text(encoding="utf-8"))))
+        out.append((path.relative_to(REPO).as_posix(), _resolve(path.read_text(encoding="utf-8"))))
     out.extend(_expectations())
     return out
 
@@ -271,7 +271,7 @@ def _expectations() -> list[tuple[str, str]]:
             for name, predicate in rules.items():
                 out.append(
                     (
-                        f"{path.relative_to(REPO)}::expectation:{name}",
+                        f"{path.relative_to(REPO).as_posix()}::expectation:{name}",
                         f"SELECT * FROM t WHERE {predicate}",
                     )
                 )
@@ -280,7 +280,7 @@ def _expectations() -> list[tuple[str, str]]:
             if isinstance(expression, str):
                 out.append(
                     (
-                        f"{path.relative_to(REPO)}::derived:{name}",
+                        f"{path.relative_to(REPO).as_posix()}::derived:{name}",
                         f"SELECT {expression} AS value FROM t",
                     )
                 )
@@ -428,6 +428,12 @@ LANE_TABLES = {
 # went on excluding "#2", which by then was a plain `SELECT ... UNION ALL` over seven tables
 # and perfectly analysable. So one statement stopped being checked without anyone touching
 # the check, which is the failure this whole file exists to catch, one level up.
+#
+# The ids are POSIX-shaped, and that is not cosmetic: `path.relative_to(REPO)` gives
+# `databricks\src\...` on Windows, so the closed list below - written with forward slashes -
+# never matched and these two tests failed on every Windows checkout while passing in CI. A
+# check that only works on the platform CI happens to use is the "it works on my machine" class
+# with the machines swapped, and this repository has now found it three times.
 #
 # A routine that does not exist outside a workspace is a property of the TEXT, so it is read
 # from the text. An id can then only be wrong loudly: the closed list below names which

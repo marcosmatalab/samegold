@@ -119,6 +119,27 @@ has no business quoting it.
 
 **Does not show** anything about real retail: the rates are set high so the rare paths appear.
 
+### The same claim, executed in a workspace
+
+SG-04 is measured on the OSS lanes, where a "late arrival" is a row the generator scheduled
+after a close instant. The Databricks lane did it the other way round, with two ingestions and
+a real restatement in between, and that is worth stating separately because it is the claim's
+expensive half: the first close was published, then more events arrived, then a second close
+ran against the published one.
+
+| | |
+|---|---|
+| what happened | January closed at 14 198 046 cents from 425 lines. 573 events the first close never saw were then uploaded, 553 of them for January. The pipeline ran an incremental update and `close_month` ran again |
+| what it produced | a SECOND version of January - 25 582 615 gross, 23 268 535 net, 793 lines, 126 returns, 32 rejected - with `restatement_reason` "late arrivals after close" |
+| what it did not touch | version 0, neither its figures nor its `restated_at`. February gained no version at all: 16 of the late returns fall in February and 4 in March, but they are returns against JANUARY sales, and `gold_close.py` groups by the month of the sale. February's aggregate did not move, and the MERGE's `<>` guard is what stops a close from restating a month that did not change |
+| how it is checked | `tests/fast/test_databricks_close_parity.py` recomputes every published version with the DuckDB reference over the population that version was cut on - 755 events for v0, 1328 for v1 - and compares five columns. Not "the numbers look plausible": a lane sharing no code with `gold_close.py` arrives at the same cents |
+
+**Does not show** that the restatement policy is right, only that two implementations agree on
+what it produces. And the population is what makes that checkable at all:
+`samegold generate-late --seed 20260901 --late-seed 20260904` reproduces the 573 events
+exactly, which it did not until this round - they were made once by a script in `/tmp`, and
+`FINDINGS.md` carries what that cost.
+
 ## SG-05: invariants hold with no oracle involved
 
 **Experiment.** SCD2 intervals disjoint, contiguous and with exactly one open row per

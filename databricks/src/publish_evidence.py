@@ -86,6 +86,13 @@ if deploy_tree_dirty not in ("true", "false", "unknown"):
     raise ValueError(
         f"deploy_tree_dirty must be 'true', 'false' or 'unknown', got {deploy_tree_dirty!r}"
     )
+# A BOOLEAN in the record, not the string it arrives as. A bundle variable is a string and a
+# job widget is a string, so this crossed the wire as "false" - and `if
+# record["deploy"]["tree_dirty"]:` is TRUE for the string "false", on a clean tree, for every
+# reader who writes the obvious thing. `None` for "unknown", because two states cannot carry
+# three and a value nobody supplied must not read as "clean": `deploy.commit` is the
+# discriminator, and it is the word "unknown" in exactly that case.
+tree_dirty: bool | None = {"true": True, "false": False}.get(deploy_tree_dirty)
 
 # COMMAND ----------
 # `get_json_object(details, '$.path')`, not `details:path`, in every query below.
@@ -423,7 +430,7 @@ record = {
     # since the lane first ran, but that one is written by the laptop AFTER the fact: it says
     # what HEAD was when somebody copied the files down, which is a different fact and can be
     # re-stamped onto stale files by a later fetch. This one travels with the deploy.
-    "deploy": {"commit": deploy_commit, "tree_dirty": deploy_tree_dirty},
+    "deploy": {"commit": deploy_commit, "tree_dirty": tree_dirty},
     # Said in the record itself, not only in the document that quotes it. A reader handed this
     # file alone has to be able to see that it is not part of the chain, and why.
     "chain": {
@@ -499,7 +506,7 @@ capture = {
         "job_run_id": dbutils.widgets.get("job_run_id"),
         "task_run_id": dbutils.widgets.get("task_run_id"),
         "commit": deploy_commit,
-        "tree_dirty": deploy_tree_dirty,
+        "tree_dirty": tree_dirty,
         "captured_at": captured_at,
         "catalog": catalog,
     },

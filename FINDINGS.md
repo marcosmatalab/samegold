@@ -133,6 +133,48 @@ aggregates could not see. What did appear is the next finding.
 | **Prevented by** | The capture is written by `publish_evidence.py`, in the same task and the same session as the record, from the same table - so its `provenance.update_id` and the record's are the same read of the same event log. The commit travels with the deploy as a bundle variable rather than being written afterwards by the fetching machine, because a value the fetcher supplies agrees with itself by construction and can be re-stamped onto stale rows. Two ties are checked: the update ids must match, and the record's six dimension aggregates must recompute from the captured rows - the second holds with no header at all, which is what covers the one capture whose header was typed rather than measured. Six doctorings fail it, including a record advanced to a later update. |
 | **Commits** | `02adf05` |
 
+### The evidence rested on a population nobody could regenerate
+
+| | |
+|---|---|
+| **What** | The Databricks lane's second close restated January from 14 198 046 cents to 25 582 615, because 573 events for January arrived after it closed. Those 573 events were produced by a script in `/tmp` on one machine. Nothing in this repository could make them again, so every figure that close published rested on data no reader could reproduce. |
+| **How found** | By asking where the population came from, before touching the four failing tests. Nothing was red because of it: the run was correct, the record was correct, and the gap was in what a reader could do with either. |
+| **Why invisible** | The evidence machinery checks that a figure comes from a record and that a record names a commit. It has nothing to say about whether the DATA behind the record can be produced twice, and this repository's whole argument is that it can - seeds derive from the commit sha precisely so that a stranger can rerun them. The one population that mattered most had opted out of that. |
+| **Class** | The premise inverted. Same family as "not executed here" and the mutation score nobody could recompute: a claim whose support exists only on the machine that made it. |
+| **Prevented by** | `samegold generate-late --seed 20260901 --late-seed 20260904`, in `src/samegold/generator/late.py`: generate the base population, generate a second, keep the events whose id the base did not have, write them under `batch=late-<stamp>` so they cannot collide in the landing volume. `tests/fast/test_late_arrivals.py` pins what it produces - **573 events in 269 batch directories**, by type {order_placed 420, order_line_amended 63, customer_upserted 21, return_registered 69} and by event month {2026-01 553, 2026-02 16, 2026-03 4} - and that two runs produce the same bytes. The OSS lane over the reproduced population computes the restated close **to the cent**: 25 582 615 gross, 23 268 535 net, 793 lines, 126 returns, 32 rejected. |
+| **Commits** | this round |
+
+### A guard that protected the run and not the population
+
+| | |
+|---|---|
+| **What** | The second close made `tests/fast/test_databricks_dimension_parity.py` report that AUTO CDC and the hand-written MERGE had produced different dimensions, **92 versions against 75**. They had not. The workspace had ingested 1328 events and the OSS half of the comparison was computed over 755. |
+| **How found** | The failure was read before it was fixed. Taking it at its word would have meant "fixing" a parity difference that did not exist - by relaxing an assertion, or by writing 92 in as the expected number, which is the same thing with more typing. |
+| **Why invisible** | The file HAD a guard for exactly this shape, added one round earlier: the capture's `update_id` against the record's. It passed. Both files did come from update `289286cc`. Sameness of run is not sameness of population, and nothing was asking the second question. A check that is well defined, does what it says, and answers a different question than the one being asked - the fourth time this repository has found that, after `MAX` over a state string, `str(value)[:19]`, and `row not in theirs`. |
+| **Prevented by** | The population is now CHOSEN BY THE RECORD: each documented population is generated and counted, and the one whose count matches `rows.bronze_events` is what the OSS half is computed over. A record matching neither fails by name. `test_both_halves_of_the_comparison_describe_the_same_population` asks the question the update id could not, three ways - events against the record's count, capture rows against the record's own row count, OSS versions against capture rows. Verified by simulating the second run's record against the first run's capture: the failures name the population, not the parity. |
+| **Commits** | this round |
+
+### The workspace ran what was deployed, and nobody had deployed
+
+| | |
+|---|---|
+| **What** | The second run's record carried no `deploy` key and `publish_evidence.py` wrote no `dim_customer_scd2.json`, although both had been in the repository for a day. `databricks bundle run` runs what was DEPLOYED, and no `bundle deploy` had happened since the commits that added them. |
+| **How found** | By the absence of a field. The task ended SUCCESS, the pipeline was green, the close was correct, and there was no error anywhere - one fault with two symptoms, neither of which is an error message. |
+| **Why invisible** | Nothing compares the deployed code with the tree. A run is green about the code it ran, and the code it ran is invisible from the repository. This is the "it works on my machine" class with the machines swapped: the repository was right and the workspace was old. |
+| **What made it detectable** | The record carries its own deploy provenance, and the ABSENCE of that key was the evidence. A record that named a commit would have named the wrong one; a record with no `deploy` block at all could only have been written by a notebook that predated the block. That is an argument for the round-25 decision to carry the commit into the workspace through the deploy rather than write it afterwards from the fetching machine, and it is worth stating because the argument was theoretical when the decision was made. |
+| **Prevented by** | Not yet, and that is stated rather than papered over: the honest fix is that `step_run` refuses to run when the deployed bundle is older than `HEAD`, which needs a workspace to develop against. Until then `scripts/databricks_run.sh all` deploys before it runs, and the record's missing `deploy` key is the symptom to look for. |
+| **Commits** | this round documents it; the fix is open |
+
+### A return whose order never arrived is counted in no column of the close
+
+| | |
+|---|---|
+| **What** | A `return_registered` whose order line is not in the population gets `sale_ts IS NULL`, so `eligibility` marks it `return_without_order` and it never reaches `returns`; and the `rejected` CTE filters `AND sale_ts IS NOT NULL`, so it never reaches `returns_rejected_count` either. It is classified and then counted nowhere. **Measured: 3 such returns, and the published close says 22 rejected where 25 were classified.** |
+| **How found** | By reading `gold_close.py` while reconciling the second close's return arithmetic. |
+| **Why invisible** | It is not a filter bug that could be deleted. `rejected` groups by an accounting month derived from `sale_ts`, and a return with no sale has no month: a month-grouped close has nowhere to put it. Removing the filter would produce a NULL month group, which is worse. And ALL THREE lanes agree - `databricks/src/gold_close.py`, `src/samegold/oracle/gold_revenue.sql` and `src/samegold/pipelines/transform.py` - so no differential test can see it. This is the blind spot the README names in the witness table, with an instance. |
+| **Not fixed on purpose** | A `COALESCE` would put those returns in some month, and which month is a contract question nobody has answered: the sale's month does not exist, the return's own month is a different quantity, and inventing one to make a total add up is how a close acquires revenue that no sale supports. It is documented in `CONTRACT.md`'s terms as a known gap, in README's "What is NOT claimed", and here. |
+| **Commits** | this round |
+
 ---
 
 ## The expensive specifics
@@ -150,6 +192,7 @@ aggregates could not see. What did appear is the next finding.
 | An `order_line_amended` to a quantity of zero or less was rejected by no lane. | The rule was gated on the two event types that carry `qty`; an amendment carries `new_qty`. All three implementations agreed, so no parity test could see it, and `max(1, ...)` in the generator guaranteed no seed would produce it. | Boundary case 14 emits the zero; the rule covers `new_qty`. | `253dba9` |
 | A fast-lane test imported pyspark through `bronze_schema()`, and the `fast` workflow installs `.[dev]`. | Both development machines have the Spark extras, so both agreed with the mistake. | `tests/fast/conftest.py` fails the session, after everything, if Spark was ever imported. | `845bc7a` |
 | That same hook then failed the fast lane on **both** development machines for eighteen rounds, because the evidence recorder read its version fingerprint with `__import__("pyspark")`. | pytest printed `57 passed` and nobody read the exit status. CI stayed green: it has no Spark to import. | The fingerprint is read from installed distribution metadata; `test_recording_the_environment_does_not_import_what_it_reports_on`. | `d687813` |
+| `deploy.tree_dirty` reached the record as the STRING `"false"`, so `if record["deploy"]["tree_dirty"]:` was true on a clean tree. | Three string-typed layers between the deploy and the record - a bundle variable, a job parameter, a notebook widget - and a string that reads like the value it is not. The same shape as the INT32 literal: a type crossing a boundary that does not carry types. | Converted at the source in `publish_evidence.py` to `True` / `False` / `None`, with `deploy.commit` as the discriminator for "unknown"; `test_a_boolean_in_the_record_is_a_boolean` walks every field of the record rather than the one that was wrong. | this round |
 | The two lanes declared the same seven rules **in different orders**, so a record breaking two of them left by different doors. | Every record in the parity matrix broke exactly one rule, so the order decided nothing and twenty records reported agreement. | Pairwise coverage: for every pair of rules, a record generated for that pair must be rejected by both. | `c8c4a07` |
 
 ---
@@ -170,7 +213,9 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **A message that announces an action is a second implementation of it, and two implementations that are never compared will differ.** | the full-refresh banner that governed nothing (`e002f29`); `development: true` predicting a risk it did not prevent (`e002f29`) |
 | **An aggregate that is well defined and answers the wrong question.** `MAX` on a state string is the alphabetical maximum, and it looks like an answer. | the field reporting whether the lane worked (`8c9faa7`) |
 | **A comparison a file declares as its reason for existing, and nobody runs.** | the two Type 2 dimensions, 78 against 75 on the first run that compared them (`8c9faa7`) |
-| **A comparison is only as current as the captured half it reads.** Without provenance a snapshot expires in silence, and the test stays green. | the dimension capture that could not name its run (this round) |
+| **A comparison is only as current as the captured half it reads.** Without provenance a snapshot expires in silence, and the test stays green. | the dimension capture that could not name its run (`02adf05`) |
+| **Provenance of the RUN is not provenance of the DATA.** Two files from one update can still describe two populations. | the parity comparison reporting 92 against 75 (this round) |
+| **Evidence a reader cannot regenerate is not evidence.** | the late population produced in `/tmp` (this round) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
 
