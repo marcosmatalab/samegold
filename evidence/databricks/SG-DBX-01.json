@@ -43,8 +43,8 @@
     }
   ],
   "deploy": {
-    "commit": "4d13a13836914328b6d8659a98576caa04fa695d",
-    "tree_dirty": "false"
+    "commit": "ad936aa41c5d11b0c7d9fef2167952cfaa2a9002",
+    "tree_dirty": false
   },
   "dim_customer_scd2": [
     {
@@ -115,7 +115,7 @@
     }
   ],
   "incomplete": [],
-  "job_run_id": "399880363499620",
+  "job_run_id": "492686197349187",
   "money_types": [
     {
       "gross_cents": "bigint",
@@ -124,6 +124,14 @@
     }
   ],
   "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
+  "population": [
+    {
+      "columns": "event_id,event_type,event_ts,arrival_ts,order_id,customer_id,sku,qty,new_qty,unit_price_cents,currency,return_id,reason,segment,country,boundary",
+      "digest": "03a7b4b0d5251eedabdc58f8a13ba1a8377ea63f94713274db8516785f3a410d",
+      "digest_rows": 1325,
+      "rows_outside_the_digest": 3
+    }
+  ],
   "quarantine_by_reason": [
     {
       "n": 1300,
@@ -208,7 +216,7 @@
     "silver_quarantine": 28
   },
   "runtime": "databricks-free",
-  "task_run_id": "813985701847770",
+  "task_run_id": "525362435139568",
   "title": "the Databricks lane ran and its expectations reported",
   "undecided_rules": [],
   "update": [
