@@ -234,6 +234,87 @@ update_history = _read(
 )
 
 # COMMAND ----------
+# WHICH EVENTS THIS RUN READ, as a fingerprint the OSS half can recompute.
+#
+# `tests/fast/test_databricks_dimension_parity.py` compares the workspace's dimension against
+# one this repository generates from a seed, and it chose WHICH population to generate by
+# matching `rows.bronze_events` - a COUNT. That is not a tie. Measured: reordering the
+# `countries` list in the OSS generator leaves every published number identical (1328 rows,
+# 96 upserts, 4 heartbeats, 92 versions, 60 customers, 32 closed, the close unchanged to the
+# cent) and gives thirty customers a different history, and the comparison then reports it as
+# AUTO CDC and the hand-written MERGE producing different dimensions. Renaming the skus
+# changes 1216 values and every parity test in the repository still passes.
+#
+# So the workspace publishes what it actually ingested, and the other half has to reproduce it.
+#
+# THE DOMAIN. Three of the lines are deliberately corrupt and they are TRUNCATED objects -
+# `{"event_id": "bad-0000009", "event_type": "order_placed",`. Python's `json.loads` cannot
+# see them at all; local Spark, reading the same files with the declared schema, nulls the
+# whole row. The two halves therefore exclude the same three lines - but they do so by
+# accident of one reader's behaviour, and whether a partially parsed record keeps its leading
+# fields is a setting (`spark.sql.json.enablePartialResults`). The reader that fills THIS
+# table is Auto Loader in rescue mode, which nothing outside a workspace can run. So the
+# domain asks for an `event_id` AND an `arrival_ts`: a line truncated after `event_type` has
+# no arrival time under either behaviour, which makes the domain independent of a question
+# this repository cannot ask. What falls outside is counted, not dropped:
+#
+#     digest_rows + rows_outside_the_digest = rows.bronze_events
+#
+# so a reader that started dropping those lines breaks the arithmetic instead of quietly
+# shrinking the population.
+#
+# THE RENDERING has a counterpart in `samegold.generator.late._render`, and
+# `tests/spark/test_databricks_population_digest.py` runs the two against each other over the
+# real population - which is the only reason this is a tie and not a hope:
+#
+#   * `coalesce(..., '')` on EVERY column. `concat_ws` SKIPS nulls rather than emitting an
+#     empty field, so without it an order with no `sku` and a sku with no `order_id` render to
+#     the same line.
+#   * `chr(31)` and `chr(10)` rather than escape sequences, so the separators do not depend on
+#     how a SQL string literal is unescaped. The OSS side refuses a value containing either.
+#   * `CAST(x AS STRING)` on the three BIGINT columns, which is also where a value the table
+#     could not hold shows up as NULL: the generator emits 9223372036854775808 for two events
+#     and `bad_events` below reports `unit_price_cents: null` for exactly those two ids.
+#   * `sort_array` before hashing, because neither side can promise an order otherwise.
+#
+# The column list is written out twice - as the projection and as the `columns` field a reader
+# gets - and `tests/fast/test_databricks_bundle.py` fails if the two orders drift from each
+# other or from the declared bronze schema. The order is part of what is hashed.
+population = _read(
+    "population",
+    lambda: _rows(f"""
+        SELECT sha2(concat_ws(chr(10), sort_array(collect_list(line))), 256) AS digest,
+               COUNT(line)                                   AS digest_rows,
+               COUNT(*) - COUNT(line)                        AS rows_outside_the_digest,
+               'event_id,event_type,event_ts,arrival_ts,order_id,customer_id,sku,qty,new_qty,unit_price_cents,currency,return_id,reason,segment,country,boundary'
+                                                             AS columns
+        FROM (
+            SELECT CASE
+                       WHEN event_id IS NULL OR arrival_ts IS NULL THEN NULL
+                       ELSE concat_ws(chr(31),
+                            coalesce(CAST(event_id AS STRING), ''),
+                            coalesce(CAST(event_type AS STRING), ''),
+                            coalesce(CAST(event_ts AS STRING), ''),
+                            coalesce(CAST(arrival_ts AS STRING), ''),
+                            coalesce(CAST(order_id AS STRING), ''),
+                            coalesce(CAST(customer_id AS STRING), ''),
+                            coalesce(CAST(sku AS STRING), ''),
+                            coalesce(CAST(qty AS STRING), ''),
+                            coalesce(CAST(new_qty AS STRING), ''),
+                            coalesce(CAST(unit_price_cents AS STRING), ''),
+                            coalesce(CAST(currency AS STRING), ''),
+                            coalesce(CAST(return_id AS STRING), ''),
+                            coalesce(CAST(reason AS STRING), ''),
+                            coalesce(CAST(segment AS STRING), ''),
+                            coalesce(CAST(country AS STRING), ''),
+                            coalesce(CAST(boundary AS STRING), ''))
+                   END AS line
+            FROM {catalog}.main.bronze_events
+        )
+    """),
+)
+
+# COMMAND ----------
 # One statement rather than one per table: a per-table loop would have to interpolate a table
 # NAME into the query, and a name the parse test cannot resolve is a statement the parse test
 # cannot check. The seven tables are the whole lane, bronze to signed-off close.
@@ -456,6 +537,8 @@ record = {
     "rescued_rows": rescued,
     "gross_within_contract_bounds": bounds,
     "rows": rows,
+    # WHICH events those rows are, and not only how many. See the statement above.
+    "population": population,
     "dim_customer_scd2": dimension,
     "revenue_closed": close,
     # Named sections that could not be read. An empty list is a stronger statement than a

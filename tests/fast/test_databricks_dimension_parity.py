@@ -53,7 +53,7 @@ from pathlib import Path
 import pytest
 
 from samegold.generator.events import FAST
-from samegold.generator.late import population_for
+from samegold.generator.late import population_digest, population_for
 from samegold.oracle.duckdb_gold import scd2_as_of
 
 REPO = Path(__file__).resolve().parents[2]
@@ -93,6 +93,14 @@ POPULATION_FACTS = {
         ],
     },
 }
+# The sections a record produced by the DEPLOYED notebook does not carry yet. A CLOSED LIST,
+# not a tolerance: `population` was added to `publish_evidence.py` in the same change as this
+# check, and `databricks bundle run` runs what was DEPLOYED - so until the lane is deployed and
+# the evidence task re-run, the committed record has no digest to compare against. Listing it
+# by name means the absence is a dated fact rather than a check that silently does not run, and
+# the run that lands the digest turns this test RED, which is what forces the set to be
+# emptied and the comparison below to become mandatory.
+SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET = {"population"}
 # Captured from the workspace and COMMITTED, so its absence is a failure rather than a skip:
 # the row-by-row comparison is the one `gold_close.py` names as its reason for existing, and a
 # suite that quietly stops running it is how it came not to exist for nine rounds.
@@ -100,6 +108,11 @@ CAPTURED = REPO / "evidence" / "databricks" / "dim_customer_scd2.json"
 # The record the workspace produced. It carries the dimension's SHAPE - versions, customers,
 # open and closed rows - which is what the divergence showed up in, and not its rows.
 RECORD = REPO / "evidence" / "databricks" / "SG-DBX-01.json"
+
+
+def rows_in_record(record: dict) -> int:
+    """`rows.bronze_events`, which the digest's arithmetic has to reach."""
+    return int((record.get("rows") or {})["bronze_events"])
 
 
 def _bronze_lines(bronze: Path) -> int:
@@ -120,8 +133,8 @@ def ingested(record: dict) -> int:
 
 
 @pytest.fixture(scope="module")
-def population(ingested: int) -> tuple[list[dict], list[dict], int]:
-    """The upserts, the reference dimension over them, and the population's size.
+def selection(ingested: int) -> tuple[Path, list[dict], list[dict], int]:
+    """The bronze tree, the upserts, the reference dimension over them, and the size.
 
     THE POPULATION IS CHOSEN BY THE RECORD, and this is the round's finding turned into code.
     The fixture used to generate the base seed and nothing else, so when the workspace ingested
@@ -172,7 +185,20 @@ def population(ingested: int) -> tuple[list[dict], list[dict], int]:
                 by_id.setdefault(record["event_id"], record)
     upserts = sorted(by_id.values(), key=lambda r: (r["customer_id"], r["event_ts"], r["event_id"]))
     dimension = list(scd2_as_of(bronze, dt.datetime(2030, 1, 1, tzinfo=dt.UTC)))
+    return bronze, upserts, dimension, ingested
+
+
+@pytest.fixture(scope="module")
+def population(selection: tuple[Path, list[dict], list[dict], int]) -> tuple[list, list, int]:  # type: ignore[type-arg]
+    """What every comparison below reads. The bronze path is asked for separately."""
+    _, upserts, dimension, ingested = selection
     return upserts, dimension, ingested
+
+
+@pytest.fixture(scope="module")
+def bronze(selection: tuple[Path, list[dict], list[dict], int]) -> Path:
+    """The files the population was generated into, for the fingerprint below."""
+    return selection[0]
 
 
 def _heartbeats(upserts: list[dict]) -> list[dict]:
@@ -380,8 +406,31 @@ def test_the_capture_names_the_run_the_record_names(capture: dict, record: dict)
     )
 
 
+def test_the_record_says_which_events_it_read_or_says_it_cannot_yet(record: dict) -> None:
+    """The digest is only a tie once a deployed notebook has written one.
+
+    `population` was added to `publish_evidence.py` in the same change as the comparison that
+    reads it, and `databricks bundle run` runs what was DEPLOYED. So there is a window in which
+    the committed record cannot answer, and a check that quietly skips through that window is
+    how a comparison comes not to run for nine rounds.
+
+    The window is a CLOSED LIST instead. This test is red the moment a run from the fixed
+    notebook lands, and emptying the set is what that run requires - after which the
+    fingerprint comparison below stops being conditional.
+    """
+    missing = {name for name in ("population",) if not record.get(name)}
+    assert missing == SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET, (
+        f"the record is missing {sorted(missing)} and this file expects "
+        f"{sorted(SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET)}. If the set got SMALLER, "
+        f"a run from a notebook that publishes the population digest has landed: empty this "
+        f"set, and the comparison in "
+        f"test_both_halves_of_the_comparison_describe_the_same_population stops being "
+        f"conditional on the record carrying one."
+    )
+
+
 def test_both_halves_of_the_comparison_describe_the_same_population(
-    population, capture: dict, record: dict
+    population, bronze: Path, capture: dict, record: dict
 ) -> None:  # type: ignore[no-untyped-def]
     """The guard the update_id check could not be.
 
@@ -405,6 +454,48 @@ def test_both_halves_of_the_comparison_describe_the_same_population(
         comparison stated as the precondition of the row-by-row one below.
     """
     _, dimension, ingested = population
+    # FIRST, because it is the only one of these that compares the events themselves. The
+    # three below compare counts, and a count is what let a moved generator through: reordering
+    # a list literal in the generator leaves every published number identical and gives thirty
+    # customers a different history.
+    published = (record.get("population") or [{}])[0]
+    if published:
+        ours = population_digest(bronze, str(published["columns"]).split(","))
+        assert ours.digest == published["digest"], (
+            f"the events this repository generates are not the events the record says the "
+            f"workspace read.\n"
+            f"  this repository: {ours.digest} over {ours.digest_rows} rows\n"
+            f"  the record:      {published['digest']} over {published['digest_rows']} rows\n"
+            f"This assert cannot say WHICH side moved, and the two are repaired differently:\n"
+            f"  * the generator moved under a committed record - a change to "
+            f"`samegold/generator/` that this record predates. Nothing below is a parity "
+            f"result, and the repair is to regenerate the evidence, not to touch a test;\n"
+            f"  * the workspace ingested something else - a volume re-seeded by hand, or a "
+            f"population `docs/databricks-run.md` does not describe. The repair is in the "
+            f"workspace.\n"
+            f"What it CAN say is that nothing further down this file is comparing two "
+            f"implementations over one population, whichever of those it is. Do not read the "
+            f"row-by-row failures below as a difference between AUTO CDC and the MERGE: they "
+            f"are what a moved population looks like from there."
+        )
+        assert ours.digest_rows == published["digest_rows"], (
+            ours.digest_rows,
+            published["digest_rows"],
+        )
+        # The domain, checked rather than trusted: what the digest leaves out has to be the
+        # three corrupt lines and not a hole that grew.
+        assert ours.rows_outside_the_digest == published["rows_outside_the_digest"], (
+            f"the two halves put a different number of rows outside the digest "
+            f"({ours.rows_outside_the_digest} here, {published['rows_outside_the_digest']} "
+            f"there), so they are hashing different domains and the digests above agreed by "
+            f"accident of arithmetic."
+        )
+        assert ours.digest_rows + ours.rows_outside_the_digest == rows_in_record(record), (
+            f"{ours.digest_rows} + {ours.rows_outside_the_digest} does not reach the "
+            f"record's own `rows.bronze_events` ({rows_in_record(record)}). The domain is "
+            f"not covering the table."
+        )
+
     rows = (record.get("rows") or {}).get("bronze_events")
     assert ingested == rows, (
         f"the OSS half was computed over {ingested} events and the record says the workspace "
@@ -417,9 +508,19 @@ def test_both_halves_of_the_comparison_describe_the_same_population(
         f"table. One of the two files is from a different run of the same update."
     )
     assert len(dimension) == captured_rows, (
-        f"the OSS lane computes {len(dimension)} versions over the population the record "
-        f"describes, and the capture holds {captured_rows}. That IS a parity difference, and "
-        f"the three tests below say where it is."
+        f"the OSS lane computes {len(dimension)} versions over the population whose event "
+        f"count matches the record, and the capture holds {captured_rows}. This assert cannot "
+        f"say which of two things that is, and the two call for opposite responses:\n"
+        f"  * AUTO CDC and the hand-written MERGE disagreeing over the same events, which is "
+        f"a parity difference and is what the three tests below would then locate;\n"
+        f"  * the record not describing a single run - `rows.bronze_events` is what chose "
+        f"the population above and `rows.dim_customer_scd2` is what the capture was "
+        f"checked against, and if those two counts came from different runs then the "
+        f"population above is not the one the capture was read from and nothing below is "
+        f"a parity result.\n"
+        f"Rule the second out first. It costs nothing, and it is the more expensive way "
+        f"round to be wrong: reading a population mismatch as parity is how the last one "
+        f"nearly got 'fixed' by writing the other lane's number in as the expected one."
     )
 
 
