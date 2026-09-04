@@ -18,7 +18,11 @@
 #   seed      generate events with the OSS generator and upload them to the landing volume,
 #             because a pipeline over an empty directory reports nothing and "no expectation
 #             failed" and "no row was read" would arrive as the same evidence
-#   run       databricks bundle run samegold_close -t free
+#   run       databricks bundle run samegold_close -t free, after REFUSING to run when the
+#             deployed job says it was deployed from a commit that is not HEAD. That is
+#             what `bundle run` actually executes, and a run against an older deployment
+#             is green about code this repository cannot see. SAMEGOLD_RUN_STALE=1 is the
+#             way to say you meant it.
 #   fetch     copy the SG-DBX-01 record out of the workspace into evidence/databricks/
 #
 # Every failure here should say what to do about it. A stack trace from a CLI that was never
@@ -28,6 +32,13 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$REPO/databricks"
 TARGET="${SAMEGOLD_DBX_TARGET:-free}"
+# The subcommand, captured HERE rather than read as "$1" inside a function, which is the
+# function's own first argument and not the script's. The first version of the freshness
+# guard below did read it that way and told everybody who ran `run-full-refresh` to retry
+# with `run` - a message that names the wrong command, which is this script's own oldest
+# recurring defect wearing a third set of clothes. A test asserts the message names the
+# subcommand actually being run, and that test is how this was found.
+SUBCOMMAND="${1:-all}"
 CATALOG="${SAMEGOLD_CATALOG:-samegold}"
 BIN="${SAMEGOLD_BIN:-$REPO/.venv/bin}"
 # Overridable so that `step_fetch` can be RUN in a test instead of read. Everything this
@@ -354,7 +365,169 @@ script at whichever directory holds them."
     databricks fs cp --overwrite "$work/truth/ledger.json" "$EVIDENCE_VOLUME/ledger.json"
 }
 
+# The name the bundle deploys this job under. Asserted against resources/jobs.yml by
+# tests/fast/test_databricks_bundle.py, because a literal repeated in two files is a literal
+# that drifts, and the way this one would drift is silent: `jobs list --name` filters on an
+# exact name, so a renamed job simply stops being found and the guard below would say "nothing
+# is deployed" about a job sitting right there.
+JOB_NAME="samegold monthly close"
+
+# Reads the deployed job and prints what it was DEPLOYED FROM. One call.
+#
+# `step_deploy` passes `deploy_commit` into the bundle and resources/jobs.yml puts it in the
+# `publish_evidence` task's `base_parameters`, so the deployed job carries the sha of the tree
+# that deployed it in a field the Jobs API returns. That is the only thing in this lane that
+# can answer "which code is up there", and until now nothing asked it.
+#
+# It prints one word, and the words are different FACTS rather than degrees of one:
+#
+#   <40 hex>    the job says it was deployed from that commit
+#   unknown     it is deployed and does not say - `bundle deploy` run by hand without the vars
+#   NONE        no job of that name exists: nothing has been deployed
+#   NOPARAM     a job exists and carries no `deploy_commit` at all, which is what a deployment
+#               from before that parameter existed looks like
+#   AMBIGUOUS   two tasks disagree, which no deploy this bundle performs can produce
+#   UNREADABLE  the CLI answered with something this cannot parse
+#   NOPYTHON    there is no interpreter here to read the answer with
+#
+# Collapsing any two of those into one value is `MAX` over a state string again: the caller
+# would have to guess which it had, and the guesses point in opposite directions.
+DEPLOYED_COMMIT_FIELDS='
+import json, sys
+try:
+    body = json.load(sys.stdin)
+except Exception:
+    print("UNREADABLE"); raise SystemExit(0)
+# The Jobs list API wraps its rows in {"jobs": [...]}; the CLI prints a bare array. Which of
+# the two arrives here cannot be established from outside a workspace, so both are read rather
+# than one being asserted - and an answer in neither shape says UNREADABLE rather than NONE,
+# because "the CLI said something else" and "nothing is deployed" are not the same fact and
+# reporting the second for the first is how this repository has been wrong before.
+if isinstance(body, dict):
+    jobs = body.get("jobs")
+elif isinstance(body, list):
+    jobs = body
+else:
+    jobs = None
+if jobs is None:
+    print("UNREADABLE"); raise SystemExit(0)
+if not jobs:
+    print("NONE"); raise SystemExit(0)
+found = set()
+for job in jobs:
+    settings = job.get("settings") if isinstance(job.get("settings"), dict) else job
+    for task in (settings.get("tasks") or []):
+        parameters = (task.get("notebook_task") or {}).get("base_parameters") or {}
+        if "deploy_commit" in parameters:
+            found.add(str(parameters["deploy_commit"]))
+if not found:
+    print("NOPARAM")
+elif len(found) > 1:
+    print("AMBIGUOUS " + " ".join(sorted(found)))
+else:
+    print(found.pop())
+'
+
+deployed_commit() {
+    local py answer
+    py="$(python_bin)" || { echo NOPYTHON; return 0; }
+    # The CLI call and the parse are two statements rather than one pipeline, and that is
+    # not a style choice: this script runs under `set -o pipefail`, so a `databricks |
+    # python` pipeline whose first half fails makes the whole substitution fail, and `set
+    # -e` then kills the script at the assignment - with no message, at the one point whose
+    # entire purpose is to produce one. `|| true` keeps the failure INSIDE this function,
+    # where an empty answer parses as UNREADABLE and the caller says so and names the
+    # command to run by hand.
+    answer="$(databricks jobs list --name "$JOB_NAME" --expand-tasks -o json 2>/dev/null || true)"
+    printf '%s' "$answer" | "$py" -c "$DEPLOYED_COMMIT_FIELDS"
+}
+
+# The check that closes "the workspace ran what was deployed, and nobody had deployed".
+#
+# That one cost a morning. `databricks bundle run` runs the DEPLOYED code; no deploy had
+# happened since the commits that added the `deploy` block and the row-level capture; and the
+# run ended SUCCESS with a green pipeline and a correct close. One fault, two symptoms - a
+# missing key and a missing file - and no error anywhere. Nothing compared the deployed code
+# with the tree, so a run was green about code the repository could not see.
+#
+# What this does NOT cover, written here rather than discovered later: a DIRTY tree deploys as
+# HEAD plus whatever is not committed, so the sha matches while the code does not. That is the
+# ordinary development loop and refusing it would break what this script is for; `tree_dirty`
+# in the record is the field that carries that other claim.
+#
+# It REFUSES rather than warning. The command it guards is the one command in this repository
+# that can spend a Free Edition account's compute for the rest of the day, and a banner printed
+# above a run that then happens anyway is the exact defect the refusal below it exists for.
+require_fresh_deployment() {
+    local head deployed advice
+    head="$(deploy_commit)"
+    deployed="$(deployed_commit)"
+
+    if [ -n "${SAMEGOLD_RUN_STALE:-}" ]; then
+        say "SAMEGOLD_RUN_STALE: running what is DEPLOYED without requiring it to be HEAD"
+        echo "  deployed: $deployed"
+        echo "  HEAD:     $head"
+        echo "  What this run publishes describes the deployed commit, not this tree."
+        return 0
+    fi
+
+    advice="
+  scripts/databricks_run.sh deploy
+
+deploys this tree. To run what is up there ON PURPOSE - to reproduce what an older deployment
+published, say - name the decision:
+
+  SAMEGOLD_RUN_STALE=1 scripts/databricks_run.sh $SUBCOMMAND"
+
+    case "$deployed" in
+        NONE)
+            die "no job named \"$JOB_NAME\" exists in this workspace, so there is nothing
+deployed for this to run. The bundle run would fail too, later and less clearly.$advice" ;;
+        NOPARAM)
+            die "the deployed job carries no \`deploy_commit\` parameter at all, which is what
+a deployment made before that parameter existed looks like. It cannot name its own code, so
+this cannot tell you whether it is stale.$advice" ;;
+        unknown)
+            die "the deployed job says it was deployed from \"unknown\", which is what
+\`databricks bundle deploy\` run by hand without --var=\"deploy_commit=...\" leaves behind. The
+deployment cannot name its own code, so this cannot compare it with yours.$advice" ;;
+        NOPYTHON)
+            die "no python on PATH, so the deployed job's commit cannot be read and this run
+cannot be checked against HEAD. Refusing rather than spending a Free Edition run on a
+deployment nobody has identified.$advice" ;;
+        UNREADABLE | AMBIGUOUS*)
+            die "could not read which commit the deployed job was deployed from ($deployed).
+
+  databricks jobs list --name \"$JOB_NAME\" --expand-tasks -o json
+
+is the call this makes; run it and look at what comes back.$advice" ;;
+    esac
+
+    if [ "$head" = unknown ]; then
+        die "the deployed job was deployed from $deployed and this working copy cannot say what
+HEAD is - \`git rev-parse HEAD\` failed - so the two cannot be compared.$advice"
+    fi
+
+    if [ "$deployed" != "$head" ]; then
+        die "the deployed job was deployed from
+
+  $deployed
+
+and HEAD here is
+
+  $head
+
+\`databricks bundle run\` runs what was DEPLOYED. Running now would execute that older code and
+publish a record naming it, which is exactly what happened on 4 September 2026: a green run, a
+correct close, and a notebook from two commits earlier.$advice"
+    fi
+
+    echo "  the deployed job was deployed from HEAD ($head)"
+}
+
 step_run() {
+    # Before anything that can cost compute: is what is about to run the code in this tree?
+    require_fresh_deployment
     # `cloudFiles.schemaLocation` CACHES the schema Auto Loader inferred the first time. The
     # lane's first deployment inferred every column as STRING, and adding `schemaHints` to
     # bronze_autoloader.py changes NOTHING for an existing checkpoint until the schema is

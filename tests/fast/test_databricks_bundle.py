@@ -205,6 +205,51 @@ def test_every_variable_whose_default_means_nobody_said_is_said_by_the_deploy() 
     )
 
 
+def test_the_name_the_run_step_looks_the_job_up_by_is_the_name_the_bundle_deploys() -> None:
+    """One literal in two files, and the drift would be silent.
+
+    `step_run` refuses to run a deployment older than HEAD, and it finds the deployed job with
+    `databricks jobs list --name "..."`, which filters on an EXACT name. Rename the job in
+    resources/jobs.yml and that lookup stops matching - so the guard would report "nothing is
+    deployed" about a job sitting in the workspace, and the fix somebody would reach for is to
+    deploy again, which changes nothing.
+
+    A guard whose failure mode is a confident wrong diagnosis is worse than no guard, so the
+    two spellings are tied here rather than left to agree.
+    """
+    script = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    names = {job.get("name") for job in JOBS.values() if job.get("name")}
+    assert names, "no job in the bundle declares a name"
+    looked_up = re.findall(r'^JOB_NAME="([^"]*)"', script, flags=re.MULTILINE)
+    assert len(looked_up) == 1, (
+        f"expected exactly one JOB_NAME in scripts/databricks_run.sh, found {looked_up}"
+    )
+    assert looked_up[0] in names, (
+        f'scripts/databricks_run.sh looks the deployed job up as "{looked_up[0]}" and the '
+        f"bundle deploys {sorted(names)}. `jobs list --name` is an exact match, so the "
+        f"freshness guard would find nothing and say nothing is deployed."
+    )
+
+
+def test_the_commit_the_run_step_compares_against_is_a_parameter_the_job_carries() -> None:
+    """The guard reads `deploy_commit` off the DEPLOYED job, so a task has to carry it.
+
+    Move it to a job-level parameter, or drop it from base_parameters because the notebook
+    started reading it from somewhere else, and the lookup returns NOPARAM on a perfectly
+    fresh deployment - a refusal with a wrong reason attached.
+    """
+    carriers = [
+        (name, task["task_key"])
+        for name, job in JOBS.items()
+        for task in job.get("tasks", [])
+        if "deploy_commit" in ((task.get("notebook_task") or {}).get("base_parameters") or {})
+    ]
+    assert carriers, (
+        "no notebook task in the bundle passes `deploy_commit` in its base_parameters, which "
+        "is where scripts/databricks_run.sh reads the deployed commit from"
+    )
+
+
 def test_the_notebook_validates_the_commit_it_is_handed() -> None:
     """A widget that is not checked is a widget that publishes whatever it was given.
 
