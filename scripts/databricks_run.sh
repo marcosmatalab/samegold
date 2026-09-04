@@ -22,7 +22,9 @@
 #             deployed job says it was deployed from a commit that is not HEAD. That is
 #             what `bundle run` actually executes, and a run against an older deployment
 #             is green about code this repository cannot see. SAMEGOLD_RUN_STALE=1 is the
-#             way to say you meant it.
+#             way to say you meant it. A second argument selects tasks -
+#             `run publish_evidence` - so that a partial run goes through the same guard
+#             instead of round the side of it.
 #   fetch     copy the SG-DBX-01 record out of the workspace into evidence/databricks/
 #
 # Every failure here should say what to do about it. A stack trace from a CLI that was never
@@ -39,6 +41,14 @@ TARGET="${SAMEGOLD_DBX_TARGET:-free}"
 # recurring defect wearing a third set of clothes. A test asserts the message names the
 # subcommand actually being run, and that test is how this was found.
 SUBCOMMAND="${1:-all}"
+# The task keys to run, for `run` and `run-full-refresh`. It exists because the command
+# that produced this repository's own evidence was typed by hand -
+#   databricks bundle run samegold_close -t free --var="catalog=samegold" --only publish_evidence
+# - and a hand-typed `bundle run` goes straight past `require_fresh_deployment`. That is the
+# exact hole the guard was written for, left open by the one command in the lane that is
+# convenient enough to reach for. A selection is now something this script does, so the
+# guard covers it.
+ONLY_TASKS="${2:-}"
 CATALOG="${SAMEGOLD_CATALOG:-samegold}"
 BIN="${SAMEGOLD_BIN:-$REPO/.venv/bin}"
 # Overridable so that `step_fetch` can be RUN in a test instead of read. Everything this
@@ -543,6 +553,14 @@ step_run() {
     # that announces what is about to happen and does not govern what happens is an assertion
     # nobody verifies, which is this repository's oldest recurring defect.
     local -a command=(databricks bundle run samegold_close -t "$TARGET" --var="catalog=$CATALOG")
+    if [ -n "$ONLY_TASKS" ]; then
+        # `--only <keys>` runs those tasks and skips the rest of the graph. The evidence task
+        # reads no task value from its upstreams - it only SETS one - so running it alone is
+        # safe, and it is what re-publishes a record without spending another pipeline update.
+        command+=(--only "$ONLY_TASKS")
+        say "ONLY: $ONLY_TASKS"
+        echo "  the rest of the job's tasks are skipped, so what they produce is not refreshed"
+    fi
     if [ -n "${SAMEGOLD_FULL_REFRESH:-}" ]; then
         # TWO flags for one intent, and the reason is that neither can be checked from here.
         #
@@ -568,6 +586,18 @@ step_run() {
         command+=(--full-refresh-all --pipeline-params "full_refresh=true")
         say "FULL REFRESH: the pipeline will re-read the landing zone from scratch"
         echo "  needed after a schemaHints change, because the inferred schema is cached"
+    fi
+
+    # Same rule as the refresh flag below, for the same reason: a selection that was announced
+    # and not passed would run the WHOLE job, which on Free Edition is a pipeline update
+    # nobody asked for.
+    if [ -n "$ONLY_TASKS" ] && ! printf '%s\n' "${command[@]}" | grep -qx -- "$ONLY_TASKS"; then
+        die \
+"a task selection was given and --only is not in the command about to run:
+
+  ${command[*]}
+
+Refusing to run the whole job when part of it was asked for."
     fi
 
     # The announcement and the invocation are now the same object, and this is the check that
@@ -608,6 +638,90 @@ conflict the refresh was supposed to clear."
 code_changes() {
     git -C "$REPO" status --porcelain 2>/dev/null \
         | awk '{ p = substr($0, 4); if (p !~ /^"?evidence\//) print p }'
+}
+
+# What the record says about the tree it was deployed from, read back out of the file that
+# just landed.
+#
+# THE FINDING THIS CLOSES, and it is this round's own: `require_fresh_deployment` was written,
+# committed, and the FINDINGS.md entry describing it was not. The next deploy therefore went
+# out from a tree with that document uncommitted, and published `tree_dirty: true`. Nobody
+# noticed by reading; the provenance field noticed. The tree was committed, the lane
+# redeployed, and the record that is in this repository came from a clean one.
+#
+# Deploying a dirty tree WHILE DEVELOPING is legitimate and this does not interfere with it.
+# Committing the evidence it produces is not: `deploy.commit` then names a commit that does not
+# contain the code that ran, so the record cannot be tied to anything, which is the one job
+# that field has.
+#
+# IT REPORTS, AND IT DOES NOT DIE. Three reasons, because "refuse rather than warn" is this
+# script's rule elsewhere and departing from it needs one:
+#
+#   * by the time this can read the field the files are already on disk. Dying prevents
+#     nothing that has happened - it only skips the rest of this step's own output;
+#   * the thing to prevent is the COMMIT, which happens later and possibly elsewhere. A
+#     message here cannot govern it, and this repository's own rule is that a message which
+#     announces something it does not govern is worthless;
+#   * so the refusal lives where the commit is: `test_databricks_bundle.py` fails on committed
+#     evidence whose deploy was not a commit. That runs in `make fast`, in `make preflight` and
+#     in CI - at the moment the record would actually enter the repository, not before it.
+#
+# This is the part that tells you now, so you find out here rather than from a red gate.
+report_uncommittable_provenance() {
+    local py verdict
+    py="$(python_bin)" || return 0
+    verdict="$("$py" - "$OUT/SG-DBX-01.json" <<'PY'
+import json, sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        deploy = (json.load(handle) or {}).get("deploy") or {}
+except Exception as error:
+    print(f"UNREADABLE {type(error).__name__}")
+    raise SystemExit(0)
+dirty, commit = deploy.get("tree_dirty"), deploy.get("commit", "unknown")
+# The string forms are what a notebook deployed before the boolean conversion published, and
+# "true" is truthy either way - which is the whole reason that conversion happened.
+if dirty is True or (isinstance(dirty, str) and dirty.lower() == "true"):
+    print(f"DIRTY {commit}")
+elif dirty is False or (isinstance(dirty, str) and dirty.lower() == "false"):
+    print(f"CLEAN {commit}")
+else:
+    print(f"UNKNOWN {commit}")
+PY
+)"
+    case "$verdict" in
+        CLEAN*)
+            echo "  deploy provenance: clean tree at ${verdict#CLEAN }" ;;
+        DIRTY*)
+            echo
+            echo "  DO NOT COMMIT THIS EVIDENCE."
+            echo
+            echo "  The record says it was produced by a deploy from ${verdict#DIRTY }"
+            echo "  with UNCOMMITTED CHANGES outside evidence/."
+            echo
+            echo "  So the commit it names does not contain the code that ran, and nobody"
+            echo "  with a clone can tie the two together - which is the only thing"
+            echo "  \`deploy.commit\` is for."
+            echo
+            echo "  Deploying a dirty tree while you work is fine. Committing what it produced"
+            echo "  is not. Commit the code, deploy again, and re-run the evidence task:"
+            echo
+            echo "    scripts/databricks_run.sh deploy"
+            echo "    scripts/databricks_run.sh run publish_evidence"
+            echo "    scripts/databricks_run.sh fetch"
+            echo
+            echo "  tests/fast/test_databricks_bundle.py refuses it if you commit it anyway."
+            echo ;;
+        UNKNOWN*)
+            echo
+            echo "  The record does not say whether the tree it was deployed from was clean"
+            echo "  (deploy.tree_dirty is neither true nor false). A record that cannot say"
+            echo "  cannot be tied to a commit either; treat it as uncommittable."
+            echo ;;
+        *)
+            echo "  (could not read the deploy provenance out of the record: $verdict)" ;;
+    esac
 }
 
 step_fetch() {
@@ -672,6 +786,7 @@ JSON
     fi
     echo "  evidence/databricks/SG-DBX-01.json"
     echo "  evidence/databricks/fetch.json"
+    report_uncommittable_provenance
     # The two per-rule tables, rendered ready to paste into the anchored blocks in
     # docs/databricks-run.md. The scalars there are filled in by hand from the record; these
     # two are tables, and a table typed out by hand is a table with a transcription error in
@@ -729,8 +844,23 @@ PY
 
 usage() {
     echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|seed|run|run-full-refresh|fetch]" >&2
+    echo "       run and run-full-refresh take an optional comma-separated list of task keys:" >&2
+    echo "         scripts/databricks_run.sh run publish_evidence" >&2
     exit 2
 }
+
+# An argument nobody reads is an argument that looks obeyed. Only the two run subcommands take
+# a second one, and the rest reject it rather than ignoring it - `deploy publish_evidence`
+# should not deploy everything and say nothing about the word it was handed.
+case "$SUBCOMMAND" in
+    run | run-full-refresh) ;;
+    *)
+        [ -z "$ONLY_TASKS" ] || die \
+"\`$SUBCOMMAND\` takes no task selection, and one was given: '$ONLY_TASKS'.
+
+Only \`run\` and \`run-full-refresh\` select tasks."
+        ;;
+esac
 
 case "${1:-all}" in
     all)      require_cli; require_auth; step_catalog; step_validate; step_deploy; step_seed; step_run; step_fetch ;;
