@@ -34,11 +34,12 @@ surprise the next time somebody uploads a volume.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import shutil
 import tempfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -188,6 +189,228 @@ def population_for(
             base_bronze=out_dir / "bronze",
         )
     return out_dir / "bronze"
+
+
+# ---------------------------------------------------------------------------------------
+# The population's FINGERPRINT, and the reason it exists.
+#
+# `population_for` gives the two halves of the Databricks comparison the same recipe. It does
+# not give them the same DATA, and nothing checked that it had: the parity fixture selected
+# its population by BRONZE LINE COUNT, so any change to the generator that preserved the
+# number of events was invisible to it.
+#
+# Measured, twice, both count-preserving and rng-consumption-preserving:
+#
+#   * reordering `countries` in `generator/events.py` from ["ES","PT","FR","IT"] to
+#     ["ES","PT","IT","FR"] leaves 1328 lines, 96 upserts, 4 heartbeats, 92 versions, 60
+#     customers, 60 open and 32 closed rows - every published count identical - and gives
+#     THIRTY customers a different history. The comparison reported that as AUTO CDC and the
+#     hand-written MERGE producing different dimensions. They had not. The generator had moved
+#     under a committed capture, and the failure sent its reader to look for a difference
+#     between two runtimes that did not exist.
+#   * renaming the skus changes 1216 values and **all nineteen** parity tests still pass -
+#     dimension, close and late arrivals - because gross is `qty * unit_price_cents` and no
+#     dimension carries a sku. Nothing in this repository could see it at all.
+#
+# So the tie is over CONTENT, over the WHOLE population rather than over the events that feed
+# the dimension: the second measurement is the argument, not ambition. A dimension-scoped
+# digest catches the first drift and not the second, and costs exactly the same.
+#
+# THE DOMAIN, which is the part that has to be written where it is read.
+#
+# Three of the 1328 lines are deliberately corrupt, and they are TRUNCATED objects:
+#
+#     {"event_id": "bad-0000009", "event_type": "order_placed",
+#
+# Python's `json.loads` raises on those and yields no record at all. MEASURED in local Spark,
+# reading the same files with the declared schema: 1328 rows, of which three have a NULL
+# `event_id` - so that reader nulls the whole row rather than keeping the fields before the
+# truncation, and the two halves happen to exclude the same three lines.
+#
+# HAPPEN TO is why the domain asks for two columns and not one. Whether a partially parsed
+# record keeps its leading fields is a reader OPTION - `spark.sql.json.enablePartialResults`
+# is a boolean setting - and the reader that actually fills this table is Auto Loader with
+# `schemaEvolutionMode=rescue`, which nothing in this repository can execute. A domain of
+# "rows that have an event_id" would therefore rest on a behaviour measured from a DIFFERENT
+# reader than the one in the workspace.
+#
+# So the domain is **rows carrying both an `event_id` and an `arrival_ts`**: an id and the
+# time it arrived are what make a bronze row a complete event, and a line truncated after
+# `event_type` has no arrival time under the reader measured here NOR under one that returned
+# every field it managed to parse. It costs nothing and it does not depend on the answer to a
+# question this repository cannot ask. What falls outside is COUNTED and published beside the
+# digest rather than dropped silently:
+#
+#     digest_rows + rows_outside_the_digest = rows.bronze_events
+#
+# so a reader that started DROPPING the corrupt lines instead of keeping them would break that
+# arithmetic rather than quietly shrink the population.
+#
+# THE VALUES ARE THE ONES THE TABLE HOLDS, not the ones the JSON text carries, and that
+# distinction is load-bearing. `qty`, `new_qty` and `unit_price_cents` are declared BIGINT, and
+# the generator emits 9223372036854775808 - two to the sixty-third, one past the top of the
+# range - for `bad-0000008` and `bad-0000017`. Python reads that as an int; the workspace
+# cannot store it and holds NULL. This is not inferred: `bad_events` in the committed record
+# names those two ids with `unit_price_cents: null` beside `bad-0000007` and `bad-0000016`,
+# which carry 9223372036854775807 and fit. So the renderer applies the declared range, because
+# the digest is over the rows the workspace ingested and the schema is part of what they are.
+#
+# WHAT IT DOES NOT COVER, said here rather than found later:
+#
+#   * the CONTENT of the three truncated lines. Only their count is tied.
+#   * a NEW field the generator starts emitting. The workspace's bronze schema is declared and
+#     sixteen columns wide, so a new key lands in `_rescued_data` and neither side would see
+#     it - the digests would agree while the populations differed. `_render` REFUSES a record
+#     carrying a key outside the projection for exactly that reason: an unseen field becomes a
+#     red test naming the field instead of a fingerprint that is quietly blind.
+#   * whether either population is CORRECT. It says they are the same, and nothing else.
+_DIGEST_FIELD_SEPARATOR = "\x1f"
+_DIGEST_ROW_SEPARATOR = "\n"
+_INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
+
+# The projection, in the order `samegold.pipelines.schema.bronze_schema` declares it, minus
+# `_rescued_data` - which is Auto Loader's own column and has no counterpart on this side.
+# `tests/fast/test_databricks_bundle.py` fails if this order drifts from the declared schema
+# or from the statement in `publish_evidence.py`. The order is part of what is hashed.
+BRONZE_DIGEST_COLUMNS: tuple[str, ...] = (
+    "event_id",
+    "event_type",
+    "event_ts",
+    "arrival_ts",
+    "order_id",
+    "customer_id",
+    "sku",
+    "qty",
+    "new_qty",
+    "unit_price_cents",
+    "currency",
+    "return_id",
+    "reason",
+    "segment",
+    "country",
+    "boundary",
+)
+# The three the bronze schema declares BIGINT, which is what makes a value outside the signed
+# 64-bit range NULL in the table rather than a large number.
+BRONZE_DIGEST_BIGINT_COLUMNS: tuple[str, ...] = ("qty", "new_qty", "unit_price_cents")
+# The two columns a row must carry to be a complete event, and therefore to be in the domain.
+BRONZE_DIGEST_REQUIRED_COLUMNS: tuple[str, ...] = ("event_id", "arrival_ts")
+
+
+@dataclass(frozen=True)
+class PopulationDigest:
+    """What both halves publish about the events they read."""
+
+    digest: str
+    digest_rows: int
+    rows_outside_the_digest: int
+    columns: tuple[str, ...]
+
+
+def _render(record: dict[str, object], columns: Sequence[str]) -> str:
+    """One bronze row as one line, by the same rule the workspace's SQL applies.
+
+    Every step has a counterpart in `publish_evidence.py`, and the two are executed against
+    each other in `tests/spark/test_databricks_population_digest.py` - which is the only
+    reason this can be called a tie rather than a hope.
+
+      * an absent value renders as the empty string, because the column is NULL in the table
+        and `concat_ws` SKIPS nulls rather than emitting an empty field: without the coalesce
+        an order with no `sku` and a sku with no `order_id` render to the same line;
+      * a BIGINT column holding a value outside the signed 64-bit range renders as empty,
+        because that is what the table holds - see the note above and `bad_events` in the
+        record;
+      * integers render as decimal, which `CAST(x AS STRING)` also does;
+      * nothing else is allowed. A float renders differently in the two engines, and a digest
+        whose value depends on which engine computed it is not a digest.
+    """
+    unexpected = sorted(set(record) - set(columns))
+    if unexpected:
+        raise ValueError(
+            f"the generator emits {unexpected}, which is outside the digest's projection. The "
+            f"workspace's bronze schema is sixteen columns wide, so a new field lands in "
+            f"`_rescued_data` and BOTH digests would ignore it - they would agree while the "
+            f"populations differed. Add the column to the bronze schema, to SCHEMA_HINTS, to "
+            f"BRONZE_DIGEST_COLUMNS and to the statement in publish_evidence.py, or the "
+            f"fingerprint is blind to it."
+        )
+    fields = []
+    for column in columns:
+        value = record.get(column)
+        if value is None:
+            fields.append("")
+            continue
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
+            raise ValueError(
+                f"{column} is {type(value).__name__} ({value!r}); the digest renders only "
+                f"strings and integers, because those are the two things this side and "
+                f"Spark's `CAST(x AS STRING)` are known to render identically"
+            )
+        # Out of range for the declared BIGINT, so the table holds NULL. The generator emits
+        # 2**63 on purpose; `bad_events` in the record shows the workspace's own answer for
+        # those two ids.
+        if (
+            isinstance(value, int)
+            and column in BRONZE_DIGEST_BIGINT_COLUMNS
+            and not _INT64_MIN <= value <= _INT64_MAX
+        ):
+            fields.append("")
+            continue
+        rendered = value if isinstance(value, str) else str(value)
+        if not rendered.isascii():
+            raise ValueError(
+                f"{column} is not ASCII ({rendered!r}). The lines are sorted before hashing, "
+                f"and Spark orders strings by their UTF-8 bytes while Python orders them by "
+                f"code point; on ASCII the two orders are the same and off it they are not."
+            )
+        if _DIGEST_FIELD_SEPARATOR in rendered or _DIGEST_ROW_SEPARATOR in rendered:
+            raise ValueError(
+                f"{column} contains a digest separator ({rendered!r}), so two different rows "
+                f"could render to the same line. The separators are U+001F and U+000A "
+                f"precisely because no value this generator emits contains them - which is "
+                f"checked here rather than asserted in a comment."
+            )
+        fields.append(rendered)
+    return _DIGEST_FIELD_SEPARATOR.join(fields)
+
+
+def population_digest(
+    bronze: Path, columns: Sequence[str] = BRONZE_DIGEST_COLUMNS
+) -> PopulationDigest:
+    """The fingerprint of a generated bronze tree, in the workspace's own terms.
+
+    `columns` is taken from the record when there is one, so a projection that drifted between
+    the two sides shows up as a digest that does not match rather than as two halves hashing
+    different things and never being compared.
+    """
+    columns = tuple(columns)
+    lines: list[str] = []
+    outside = 0
+    for path in sorted(bronze.rglob("part-*.json")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                # A truncated line, which this reader cannot see at all. It is outside the
+                # domain here and outside it in the table too - see the note above for why
+                # that is asked of two columns rather than one.
+                outside += 1
+                continue
+            if not isinstance(record, dict) or any(
+                not record.get(column) for column in BRONZE_DIGEST_REQUIRED_COLUMNS
+            ):
+                outside += 1
+                continue
+            lines.append(_render(record, columns))
+    digest = hashlib.sha256(_DIGEST_ROW_SEPARATOR.join(sorted(lines)).encode("utf-8")).hexdigest()
+    return PopulationDigest(
+        digest=digest,
+        digest_rows=len(lines),
+        rows_outside_the_digest=outside,
+        columns=columns,
+    )
 
 
 def describe(result: LateArrivalResult) -> str:
