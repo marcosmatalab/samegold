@@ -47,6 +47,24 @@ def scalars_from(record: dict[str, Any]) -> dict[str, Any]:
     if isinstance(dimension, list) and dimension and isinstance(dimension[0], dict):
         for field in ("versions", "customers", "open_rows", "closed_rows"):
             out[f"dim.{field}"] = dimension[0].get(field)
+    # What the JOB did, so a document quotes the orchestration instead of describing it.
+    #
+    # These are absent from a record produced before the round that added them, and the filter
+    # at the end drops names whose value is None - so a document may only carry these anchors
+    # once a run has published them, which is the same rule every other figure here follows.
+    orchestration = record.get("orchestration")
+    if isinstance(orchestration, list) and orchestration and isinstance(orchestration[0], dict):
+        for field in ("decision", "branch", "versions_written"):
+            out[f"orch.{field}"] = orchestration[0].get(field)
+        months = orchestration[0].get("months_written")
+        if isinstance(months, list):
+            out["orch.months_written"] = len(months)
+    # The per-month verdicts, as two counts. The rows themselves are a table, and a table
+    # belongs in a pasted block rather than in a scalar anchor.
+    verification = record.get("close_verification")
+    if isinstance(verification, list):
+        out["orch.checks_run"] = len(verification)
+        out["orch.checks_failed"] = sum(1 for row in verification if not row.get("ok"))
     # Keyed by the record's own accounting_month rather than by position: a run over different
     # months should produce anchors nothing claims, which the closed-set check turns into a
     # failure. `2026-01` is not a legal anchor name, so the separator is an underscore.
