@@ -1,14 +1,14 @@
 {
   "capture": "dim_customer_scd2",
   "provenance": {
-    "captured_at": "2026-09-04 10:54:44.948336",
+    "captured_at": "2026-09-04 17:58:28.745768",
     "catalog": "samegold",
-    "commit": "4d13a13836914328b6d8659a98576caa04fa695d",
-    "job_run_id": "399880363499620",
+    "commit": "ad936aa41c5d11b0c7d9fef2167952cfaa2a9002",
+    "job_run_id": "492686197349187",
     "measured_in_the_workspace": true,
     "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
-    "task_run_id": "813985701847770",
-    "tree_dirty": "false",
+    "task_run_id": "525362435139568",
+    "tree_dirty": false,
     "update_id": "289286cc-ca60-4ebf-8a71-6a996e71e0f1"
   },
   "query": "SELECT customer_id, segment, country, __START_AT, __END_AT FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT",
