@@ -169,6 +169,22 @@ def test_the_record_carries_every_terminal_update_so_a_retry_loop_is_visible(spa
     assert [r["final_state"] for r in rows] == ["COMPLETED", "FAILED", "FAILED", "FAILED"]
 
 
+def _lane_tables() -> dict[str, str]:
+    """The declared column types, from the file that already maintains them.
+
+    Imported rather than restated: two lists of the same schema is how a check comes to agree
+    with itself and not with the lane.
+    """
+    import importlib.util
+
+    path = REPO / "tests" / "spark" / "test_databricks_lane_parses.py"
+    spec = importlib.util.spec_from_file_location("_lane_parses_types", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return dict(module.LANE_TABLES)
+
+
 def test_no_statement_takes_a_max_or_min_of_a_non_ordinal_column() -> None:
     """The CLASS, swept, rather than the one line that published a constant.
 
@@ -182,7 +198,29 @@ def test_no_statement_takes_a_max_or_min_of_a_non_ordinal_column() -> None:
     """
     import re
 
+    # Names whose ordinality is a property of the EVENT LOG rather than of a declared table:
+    # `timestamp` is the log's own column, and the AUTO CDC target's two are added by the
+    # primitive and declared nowhere in this repository.
     allowed = re.compile(r"^(timestamp|__START_AT|__END_AT|.*_records|.*count.*|\d+)$", re.I)
+    # And, for everything else, the DECLARED TYPE.
+    #
+    # This used to be the regex alone, and it refused `MAX(close_version)` and
+    # `MAX(restated_at)` - an INT and a TIMESTAMP, both of which MAX means exactly what it says
+    # on. The repair available was to add two names to the pattern, which is how a list that
+    # decides correctness by spelling grows until it decides nothing. The lane already declares
+    # its column types, in `LANE_TABLES` next door, so the question "is this ordered by value"
+    # is answered from the schema instead of from the name.
+    #
+    # The regex stays as the fallback, and the crudeness the docstring promises is intact: a
+    # MAX over a column no schema declares is still refused and still has to be looked at.
+    ordinal = {"INT", "BIGINT", "SMALLINT", "TINYINT", "DOUBLE", "FLOAT", "DECIMAL", "TIMESTAMP"}
+    declared: dict[str, str] = {}
+    for schema in _lane_tables().values():
+        for column in schema.split(","):
+            parts = column.split()
+            if len(parts) >= 2:
+                declared[parts[0].strip().lower()] = parts[1].strip().upper()
+
     offenders: list[str] = []
     for lane in sorted((REPO / "databricks" / "src").glob("*.py")):
         for statement in _sql_calls_of(lane):
@@ -192,8 +230,15 @@ def test_no_statement_takes_a_max_or_min_of_a_non_ordinal_column() -> None:
             code = "\n".join(line.split("--", 1)[0] for line in statement.splitlines())
             for match in re.finditer(r"\b(MAX|MIN)\s*\(([^()]*)\)", code, re.I):
                 argument = match.group(2).strip()
-                if not allowed.match(argument):
-                    offenders.append(f"{lane.name}: {match.group(0)}")
+                if allowed.match(argument):
+                    continue
+                kind = declared.get(argument.lower())
+                if kind in ordinal:
+                    continue
+                offenders.append(
+                    f"{lane.name}: {match.group(0)}"
+                    + (f" - declared {kind}" if kind else " - no declared type")
+                )
     assert not offenders, (
         "MAX/MIN over a column that is not ordered by value. If what is wanted is the latest "
         "or the earliest, that is max_by(value, timestamp):\n  " + "\n  ".join(offenders)

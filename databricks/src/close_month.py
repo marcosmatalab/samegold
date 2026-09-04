@@ -19,6 +19,7 @@ import re
 
 dbutils.widgets.text("as_of", "")
 dbutils.widgets.text("catalog", "samegold")
+dbutils.widgets.text("fail_task", "")
 
 
 def _utc_naive(raw: str) -> str:
@@ -63,6 +64,14 @@ as_of = _utc_naive(dbutils.widgets.get("as_of"))
 catalog = dbutils.widgets.get("catalog") or "samegold"
 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
     raise ValueError(f"catalog must be a bare Unity Catalog identifier, got {catalog!r}")
+
+# COMMAND ----------
+# The deliberate failure. A repair run needs a real failed task, and the alternative to a
+# parameter was breaking the code and redeploying - which `require_fresh_deployment` now
+# requires you to COMMIT first, so the deployed sha would name a tree containing a deliberate
+# bug and every record produced would carry it as provenance. Off unless somebody passes it.
+if dbutils.widgets.get("fail_task").strip() == "close_month":
+    raise RuntimeError("fail_task='close_month': failing the close on purpose")
 
 # COMMAND ----------
 spark.sql(f"""
@@ -128,3 +137,47 @@ USING (
 ON t.accounting_month = s.accounting_month AND t.close_version = s.close_version
 WHEN NOT MATCHED THEN INSERT *
 """)
+
+# COMMAND ----------
+# WHAT THIS TASK DECIDED, published so the rest of the job can act on it.
+#
+# Until now the close ended here. The MERGE either appended versions or appended none, and
+# nothing downstream, and nothing in the evidence, could tell which - a task whose whole
+# purpose is a DECISION, leaving no record of the decision. `publish_evidence` set a task
+# value nobody read; this task read nothing and set nothing.
+#
+# The counts are read back from the table rather than inferred from the MERGE, because
+# `MERGE ... WHEN NOT MATCHED THEN INSERT` returns no count this notebook can see and the
+# number of rows it wrote is exactly the question being asked. `restated_at` identifies this
+# run's rows: it is the close instant, stamped by the MERGE above, and no earlier version
+# carries it.
+written = spark.sql(f"""
+    SELECT accounting_month, close_version
+    FROM {catalog}.main.revenue_closed
+    WHERE restated_at = TIMESTAMP'{as_of}'
+    ORDER BY accounting_month
+""").collect()
+
+months_written = [row["accounting_month"] for row in written]
+# The accounting month of the close instant, in the zone the eligibility rule is written in.
+# Published as a STRING so the task that reads it compares months as months, and never has to
+# interpolate a timestamp into SQL - the one value in this lane with a quote in it would be a
+# timestamp somebody built by hand.
+as_of_month = spark.sql(
+    f"SELECT date_format(from_utc_timestamp(TIMESTAMP'{as_of}', 'Europe/Madrid'), 'yyyy-MM') AS m"
+).collect()[0]["m"]
+
+# Every one of these has a named reader, which is the rule this round adopted:
+#   versions_written -> the `did_the_close_restate` condition task
+#   months_written   -> the `verify_each_restated_month` for_each, as its inputs
+#   as_of_month      -> verify_no_restatement, as its eligibility boundary
+#   decision         -> publish_evidence, which records the branch the run took
+dbutils.jobs.taskValues.set("versions_written", len(written))
+dbutils.jobs.taskValues.set("months_written", months_written)
+dbutils.jobs.taskValues.set("as_of_month", as_of_month)
+dbutils.jobs.taskValues.set("decision", "restated" if written else "no_op")
+
+print(
+    f"close at {as_of} (accounting month {as_of_month}): "
+    f"{len(written)} version(s) written across {months_written or 'no months'}"
+)

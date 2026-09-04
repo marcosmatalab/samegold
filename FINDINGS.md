@@ -188,6 +188,37 @@ aggregates could not see. What did appear is the next finding.
 | **The other half of it** | The command that published the good record was typed by hand - `databricks bundle run ... --only publish_evidence` - and a hand-typed `bundle run` goes straight past `require_fresh_deployment`. Legitimate that day, because a deploy came immediately before it; a hole in the guard on every other day. `step_run` takes a task selection now (`scripts/databricks_run.sh run publish_evidence`), so the convenient path is inside the guard rather than round the side of it, and a subcommand that takes no selection refuses one instead of ignoring it. |
 | **Commits** | this round |
 
+### Every guard on the job walked the tasks it already knew about
+
+| | |
+|---|---|
+| **What** | Adding a `for_each` task to `samegold_close` put its notebook outside **every** check in `tests/fast/test_databricks_bundle.py`. All of them walked `job["tasks"]` and stopped, and a `for_each` carries its work in `for_each_task.task`, one level down - so the notebook it runs would have had no path check, no widget check and no parameter check, silently. In the same file, `test_no_job_can_exceed_the_concurrent_task_ceiling` asserted `len(tasks) <= 5` against a limit of five CONCURRENT tasks: it failed a six-task CHAIN that can only ever run one at a time, and the obvious repair was to raise the 5. |
+| **How found** | Writing the tasks. The ceiling test went red on a shape that does not violate the ceiling, and asking why produced the second half. |
+| **Why invisible** | Both are the shape this repository has now found five times: a check whose NAME describes the thing and whose MEASUREMENT describes something adjacent to it. "No job can exceed the concurrent task ceiling" counted declarations. "Every widget a notebook reads is a parameter the job passes" iterated a list that a new task type is not in. Neither would have gone red; the first would have been bumped from 5 to 6 and the second would have said nothing at all. |
+| **Prevented by** | `_all_tasks()` flattens `for_each` bodies and every parametrised walk uses it, with `test_the_flattening_reaches_every_notebook_in_the_bundle` comparing the flattened count against the raw `notebook_task:` count in the resource files - the guard on the guard. The ceiling test now computes the WIDTH of the dependency DAG (the largest set of tasks none of which waits for another, with a `for_each` counting as its `concurrency`), which is the quantity the limit is about; it overestimates for conditional branches, which is the safe direction. Nine falsifications, one per new check. |
+| **Commits** | this round |
+
+### A task value written for a reader that could not exist
+
+| | |
+|---|---|
+| **What** | `publish_evidence.py` ended with `dbutils.jobs.taskValues.set("evidence", payload)`. Nothing had ever read it, and nothing in the graph CAN: it is the last task. It was also a latent limit - a task value is capped at 48 KiB and the payload is the whole record, 7 KB and growing with every section. Meanwhile `close_month`, the task whose entire job is to make a DECISION, published nothing at all, so no downstream task and no record could say whether the close had restated anything or deliberately not. |
+| **How found** | Asked directly: which values does this job write, and who reads them. |
+| **Why invisible** | A write that nobody reads never fails. It looks like a contract to the next person to touch the job, and the cost only appears when somebody builds on it. |
+| **Prevented by** | The write is deleted, and `close_month` now publishes what it decided: `versions_written` (read by the condition task), `months_written` (the `for_each` inputs), `as_of_month` (the false branch's eligibility boundary) and `decision` (recorded by `publish_evidence`). `test_every_task_value_written_has_a_named_reader` fails on any `taskValues.set` in the lane with no `{{tasks.<key>.values.<name>}}` reference and no `taskValues.get` behind it. Its first version read the COMMENT explaining the deleted call and reported the value it was documenting as still written, which is a check reading prose as code; it walks the AST now. |
+| **Also removed by it** | Two task values in `verify_month.py` that the first draft set and whose comment claimed `publish_evidence` read them. It does not - it reads the per-month verdicts out of `close_verification` with their detail. The comment was the intention and the code was the fact. |
+| **Commits** | this round |
+
+### The check that could not report the failure it was written for
+
+| | |
+|---|---|
+| **What** | `verify_month`'s `versions_have_no_gaps` exists to catch a broken version sequence. Falsifying it with two rows numbered 1 made the task die with `[INTERNAL_ERROR] more than one row returned by a subquery` instead: `newest` was `WHERE close_version = (SELECT MAX(...))`, which returns two rows when a number is duplicated, and every scalar subquery in the statement then raised before any verdict was computed. |
+| **How found** | Falsifying the check, in `tests/spark/test_databricks_close_verification.py`. Reading it finds nothing - the SQL is correct for every input except the one the check is named after. |
+| **Why invisible** | The task still FAILED, so a run would have gone red. It would have gone red with a Spark internal error rather than with `versions_have_no_gaps: false` and the row counts behind it, and the person reading it would have been debugging the verification instead of the close. |
+| **Prevented by** | `newest` is a `row_number()` pick, so it is single-valued whatever the version numbers are, and the gap check reports the shape it was written for. Eleven falsifications now run against the two verification statements - one per claim, each corrupting the fixture in exactly the way that claim exists to catch, executed in local Spark against the notebook's own extracted SQL before any of it costs quota. |
+| **Commits** | this round |
+
 ### A return whose order never arrived is counted in no column of the close
 
 | | |
