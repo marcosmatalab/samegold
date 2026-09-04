@@ -214,13 +214,17 @@ lane and running it: two from the first run, four from the day it worked.
 ## The cloud lane, run
 
 Deployed and executed end to end on **3 September 2026**, on Databricks Free Edition, from
-outside the workspace with Declarative Automation Bundles.
+outside the workspace with Declarative Automation Bundles. And **closed twice**: on
+4 September, 573 events that the first close had never seen were ingested, and January - already
+signed off at 14 198 046 cents - was restated to the figure below, with version 0 untouched.
+That is this project's thesis running in a workspace rather than on a laptop, and the population
+that produced it is reproducible from two seeds by `samegold generate-late`.
 
 | | |
 |---|---|
-| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->14 198 046<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->425<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->**, to the cent against the OSS lane, which computes it without a workspace |
-| the population | **<!--dbx:rows.bronze_events-->755<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->727<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->28<!--/dbx-->** quarantined across seven reasons; conservation closed |
-| the dimension | Type 2, **<!--dbx:dim.versions-->75<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row**, against the workspace's own rows, committed to this repository |
+| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->25 582 615<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->793<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->**, to the cent against the OSS lane, which computes it without a workspace |
+| the population | **<!--dbx:rows.bronze_events-->1328<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->1300<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->28<!--/dbx-->** quarantined across seven reasons; conservation closed |
+| the dimension | Type 2, **<!--dbx:dim.versions-->92<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row** - same customers, same intervals, same instants - against the workspace's own rows, committed to this repository |
 | what it cost | 0 € |
 
 Those figures are anchored, not typed: they are checked against
@@ -229,9 +233,13 @@ file and the record ever disagree. The 2.767e19 at the top of this page is **not
 and that is the same rule seen from the other side: it belongs to a run whose record is not
 in this repository, so it is prose, and `docs/databricks-run.md` says so where it reports it.
 
-Both findings that run produced are closed, confirmed in the workspace, and written up in
+Both findings the first run produced are closed, confirmed in the workspace, and written up in
 `FINDINGS.md`: a field that reported a constant instead of the update's outcome, and two
-Type 2 implementations that disagreed by three versions.
+Type 2 implementations that disagreed by three versions. The second close produced four more,
+and the sharpest is that it made the dimension comparison report a parity difference that did
+not exist: the workspace had read 1328 events and the reference half was computed over 755.
+The guard against that shape - the capture's update id against the record's - passed, because
+both files did come from the same update. Sameness of run is not sameness of population.
 
 **M12 is not closed.** Of the seven things that milestone lists, four are done and verifiable
 against the record; deploy-from-CI, the AI/BI dashboard and screenshots-as-evidence have not
@@ -257,6 +265,15 @@ Written before the results, because it is the part most portfolio projects leave
 - **Not a cost claim in money.** The cost lab measures files and bytes, never seconds and
   never DBUs. `system.billing` needs an account console that Free Edition does not have, and
   wall time in a container is not a substitute.
+- **Not a complete accounting of returns.** A `return_registered` whose order line is not in
+  the population has no sale, so it has no accounting month, and a close grouped by month has
+  nowhere to put it: it is classified `return_without_order` and then counted in neither
+  `return_count` nor `returns_rejected_count`. **Measured: 3 of them, and the published close
+  says 22 rejected where 25 were classified.** All three lanes agree, which is why no
+  differential test sees it - it is the shared-author blind spot in the witness table above,
+  with an instance. It is documented rather than patched: putting those returns in some month
+  means choosing one, and inventing a month to make a total add up is how a close acquires
+  revenue no sale supports. `FINDINGS.md` carries the mechanism.
 - **Not industry figures.** The return rate and the lateness distribution are set high on
   purpose so the rare paths appear often enough to measure.
 

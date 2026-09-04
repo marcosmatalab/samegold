@@ -52,13 +52,47 @@ from pathlib import Path
 
 import pytest
 
-from samegold.generator.events import FAST, generate
+from samegold.generator.events import FAST
+from samegold.generator.late import population_for
 from samegold.oracle.duckdb_gold import scd2_as_of
 
 REPO = Path(__file__).resolve().parents[2]
-# What the seed step writes: `samegold generate --profile fast --seed 20260901`.
-SEED, PROFILE = 20260901, FAST
+# What the seed step writes: `samegold generate --profile fast --seed 20260901`, and then, for
+# the second close, `samegold generate-late --seed 20260901 --late-seed 20260904`.
+SEED, LATE_SEED, PROFILE = 20260901, 20260904, FAST
 TRACKED = ("segment", "country")
+# The two populations this repository documents, as the bronze line count each produces. They
+# are CANDIDATES, not answers: the fixture builds each one and counts it, because a key here
+# that no longer matches what the generator emits is exactly the drift this file exists to
+# catch.
+DOCUMENTED_POPULATIONS = {
+    "the base seed alone, which is the first close": None,
+    "the base seed plus the late arrivals, which is the second": LATE_SEED,
+}
+# What each population is, measured. The numbers are not the point - the arithmetic is:
+# versions + heartbeats = upserts, in both, which is what "a Type 2 dimension records changes,
+# not heartbeats" means when it is counted rather than asserted.
+POPULATION_FACTS = {
+    755: {
+        "upserts": 78,
+        "heartbeats": 3,
+        "versions": 75,
+        "closed_rows": 15,
+        "heartbeat_ids": ["cu-C000028-1", "cu-C000038-1", "cu-C000043-1"],
+    },
+    1328: {
+        "upserts": 96,
+        "heartbeats": 4,
+        "versions": 92,
+        "closed_rows": 32,
+        "heartbeat_ids": [
+            "cu-C000028-1",
+            "cu-C000038-1",
+            "cu-C000039-1",
+            "cu-C000043-1",
+        ],
+    },
+}
 # Captured from the workspace and COMMITTED, so its absence is a failure rather than a skip:
 # the row-by-row comparison is the one `gold_close.py` names as its reason for existing, and a
 # suite that quietly stops running it is how it came not to exist for nine rounds.
@@ -68,12 +102,62 @@ CAPTURED = REPO / "evidence" / "databricks" / "dim_customer_scd2.json"
 RECORD = REPO / "evidence" / "databricks" / "SG-DBX-01.json"
 
 
+def _bronze_lines(bronze: Path) -> int:
+    return sum(
+        1
+        for path in sorted(bronze.rglob("part-*.json"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
+
+
 @pytest.fixture(scope="module")
-def population() -> tuple[list[dict], list[dict]]:
-    """The generated upserts, deduplicated, and the reference dimension over them."""
+def ingested(record: dict) -> int:
+    """How many bronze events the workspace read, according to the workspace."""
+    count = (record.get("rows") or {}).get("bronze_events")
+    assert isinstance(count, int), f"the record does not say how many events it ingested: {count!r}"
+    return count
+
+
+@pytest.fixture(scope="module")
+def population(ingested: int) -> tuple[list[dict], list[dict], int]:
+    """The upserts, the reference dimension over them, and the population's size.
+
+    THE POPULATION IS CHOSEN BY THE RECORD, and this is the round's finding turned into code.
+    The fixture used to generate the base seed and nothing else, so when the workspace ingested
+    a second, later population the two halves of the comparison stopped describing the same
+    events - and the comparison reported it as AUTO CDC and the hand-written MERGE disagreeing,
+    92 versions against 75. They did not disagree. They were looking at different data.
+
+    The guard that was supposed to prevent exactly this - the capture's `update_id` against the
+    record's - PASSED, because both files did come from the same update. It protects a capture
+    from outliving its run. It says nothing about which events that run read. A check that is
+    well defined and answers a different question than the one being asked, which is the class
+    this repository has now found four times.
+
+    So the population is built from the record's own `rows.bronze_events`: each documented
+    population is generated and COUNTED, and the one whose count matches is the one the OSS half
+    is computed over. A record whose count matches neither fails here, by name, rather than
+    reappearing downstream as a parity failure that is not one.
+    """
     root = Path(tempfile.mkdtemp(prefix="dimparity-"))
-    generate(root / "g", seed=SEED, profile=PROFILE)
-    bronze = root / "g" / "bronze"
+    tried: dict[str, int] = {}
+    bronze: Path | None = None
+    for description, late_seed in DOCUMENTED_POPULATIONS.items():
+        candidate = population_for(
+            root / str(late_seed), base_seed=SEED, late_seed=late_seed, profile=PROFILE
+        )
+        tried[description] = _bronze_lines(candidate)
+        if tried[description] == ingested:
+            bronze = candidate
+            break
+    assert bronze is not None, (
+        f"the record says the workspace ingested {ingested} bronze events, and no population "
+        f"this repository documents produces that number: {tried}. Either the generator has "
+        f"moved under a committed record, or the volume was seeded with something "
+        f"docs/databricks-run.md does not describe. Both are worse than a parity failure and "
+        f"neither should be read as one."
+    )
 
     by_id: dict[str, dict] = {}
     for path in sorted(bronze.rglob("*.json")):
@@ -88,7 +172,7 @@ def population() -> tuple[list[dict], list[dict]]:
                 by_id.setdefault(record["event_id"], record)
     upserts = sorted(by_id.values(), key=lambda r: (r["customer_id"], r["event_ts"], r["event_id"]))
     dimension = list(scd2_as_of(bronze, dt.datetime(2030, 1, 1, tzinfo=dt.UTC)))
-    return upserts, dimension
+    return upserts, dimension, ingested
 
 
 def _heartbeats(upserts: list[dict]) -> list[dict]:
@@ -104,33 +188,42 @@ def _heartbeats(upserts: list[dict]) -> list[dict]:
 
 
 def test_the_reference_dimension_records_changes_and_not_heartbeats(population) -> None:  # type: ignore[no-untyped-def]
-    """The arithmetic that explains the divergence, pinned so it cannot drift silently.
+    """The arithmetic that explains the divergence, pinned FOR THE POPULATION IT RAN ON.
 
-    75 + 3 = 78 and 15 + 3 = 18. If any of these three numbers moves, the explanation moves
-    with it and the two lanes have to be compared again rather than assumed to still differ by
-    the same three rows.
+    It used to pin 78 / 3 / 75 with no population attached, because there was only one. There
+    are two now - the first close read 755 events, the second read 1328 - and the numbers move
+    with them:
+
+      755 events   78 upserts   3 heartbeats   75 versions   15 closed
+      1328 events  96 upserts   4 heartbeats   92 versions   32 closed
+
+    The arithmetic does not move, and it is the actual claim: **versions + heartbeats =
+    upserts**, in both. 75 + 3 = 78 and 92 + 4 = 96. One version per EVENT is what AUTO CDC's
+    default produced; one per CHANGE is what the contract asks for; the two differ by exactly
+    the heartbeats.
+
+    The late population adds 18 distinct customer upserts (21 lines, two of those ids delivered
+    more than once, which is what the deduplication is for). Seventeen of the eighteen change a
+    tracked attribute and one, `cu-C000039-1`, repeats what the customer already had - so 75+17
+    = 92 versions and 15+17 = 32 closed rows. Measured, not inferred from the difference.
     """
-    upserts, dimension = population
+    upserts, dimension, ingested = population
+    facts = POPULATION_FACTS[ingested]
     heartbeats = _heartbeats(upserts)
-    assert len(upserts) == 78, len(upserts)
-    assert len(heartbeats) == 3, [r["event_id"] for r in heartbeats]
-    assert len(dimension) == 75, len(dimension)
+    assert len(upserts) == facts["upserts"], len(upserts)
+    assert len(heartbeats) == facts["heartbeats"], [r["event_id"] for r in heartbeats]
+    assert len(dimension) == facts["versions"], len(dimension)
 
     open_rows = [r for r in dimension if r["valid_to"] is None]
     assert len(open_rows) == 60
     assert len({r["customer_id"] for r in dimension}) == 60
-    assert len(dimension) - len(open_rows) == 15
+    assert len(dimension) - len(open_rows) == facts["closed_rows"]
 
-    # One version per EVENT is what AUTO CDC produced; one per CHANGE is what the contract
-    # asks for. The two differ by exactly the heartbeats, and that is the whole finding.
+    # The invariant, which holds on both populations and is what the numbers above are for.
     assert len(dimension) + len(heartbeats) == len(upserts)
 
     # And they are nameable, which is what makes the divergence a finding rather than a delta.
-    assert sorted(r["event_id"] for r in heartbeats) == [
-        "cu-C000028-1",
-        "cu-C000038-1",
-        "cu-C000043-1",
-    ]
+    assert sorted(r["event_id"] for r in heartbeats) == facts["heartbeat_ids"]
 
 
 def test_no_two_consecutive_versions_of_a_customer_are_identical(population) -> None:  # type: ignore[no-untyped-def]
@@ -140,7 +233,7 @@ def test_no_two_consecutive_versions_of_a_customer_are_identical(population) -> 
     with a second row. This is the rule stated as a property rather than as a number, so it
     keeps meaning something on a population these fixtures do not describe.
     """
-    _, dimension = population
+    _, dimension, _ = population
     by_customer: dict[str, list[dict]] = {}
     for row in dimension:
         by_customer.setdefault(row["customer_id"], []).append(row)
@@ -287,6 +380,49 @@ def test_the_capture_names_the_run_the_record_names(capture: dict, record: dict)
     )
 
 
+def test_both_halves_of_the_comparison_describe_the_same_population(
+    population, capture: dict, record: dict
+) -> None:  # type: ignore[no-untyped-def]
+    """The guard the update_id check could not be.
+
+    On 4 September 2026 the workspace ingested a second, later population and this file
+    reported it as AUTO CDC and the hand-written MERGE producing different dimensions, 92
+    versions against 75. They agreed. The OSS half was computed over 755 events and the
+    workspace had read 1328.
+
+    `test_the_capture_names_the_run_the_record_names` passed throughout, and it was doing its
+    job: both files DID come from the same update. Sameness of run is not sameness of
+    population, and nothing here was asking the second question.
+
+    So it is asked, three ways, and each is a different thing that can go wrong:
+
+      * the population the OSS half was built from has as many events as the record says the
+        workspace read - which is what the fixture selects on, asserted here so the failure
+        says "population" rather than arriving as a parity difference;
+      * the capture holds as many rows as the record's own `rows.dim_customer_scd2` - the two
+        come from different queries in the same run;
+      * the OSS dimension has as many versions as the capture has rows, which is the shape
+        comparison stated as the precondition of the row-by-row one below.
+    """
+    _, dimension, ingested = population
+    rows = (record.get("rows") or {}).get("bronze_events")
+    assert ingested == rows, (
+        f"the OSS half was computed over {ingested} events and the record says the workspace "
+        f"read {rows}. Nothing below is a parity result until these two agree."
+    )
+    captured_rows = len(capture["rows"])
+    in_record = (record.get("rows") or {}).get("dim_customer_scd2")
+    assert captured_rows == in_record, (
+        f"the capture holds {captured_rows} rows and the record counts {in_record} in the same "
+        f"table. One of the two files is from a different run of the same update."
+    )
+    assert len(dimension) == captured_rows, (
+        f"the OSS lane computes {len(dimension)} versions over the population the record "
+        f"describes, and the capture holds {captured_rows}. That IS a parity difference, and "
+        f"the three tests below say where it is."
+    )
+
+
 def test_a_capture_that_claims_the_workspace_measured_it_carries_what_only_a_run_knows(
     capture: dict,
 ) -> None:
@@ -374,7 +510,7 @@ def test_the_two_dimensions_agree_row_by_row(population, captured) -> None:  # t
     Multisets, so three extra versions are three differences and not none. Instants, so an hour
     is an hour. Both of those were falsified against this capture before being written.
     """
-    _, dimension = population
+    _, dimension, _ = population
     ours = _versions(dimension, "valid_from", "valid_to")
     theirs = _versions(captured, "__START_AT", "__END_AT")
 
@@ -401,7 +537,7 @@ def test_every_customer_has_the_same_history_in_the_same_order(population, captu
     the same instant. This asks the stronger question, per customer: the same intervals,
     carrying the same attributes, in the same sequence.
     """
-    _, dimension = population
+    _, dimension, _ = population
     ours = _history(dimension, "valid_from", "valid_to")
     theirs = _history(captured, "__START_AT", "__END_AT")
 
@@ -455,7 +591,7 @@ def test_the_workspace_dimension_has_the_shape_the_oss_lane_computes(population)
     """
     import json
 
-    _, dimension = population
+    _, dimension, _ = population
     record = json.loads(RECORD.read_text(encoding="utf-8"))
     shape = (record.get("dim_customer_scd2") or [{}])[0]
     assert shape, "the record carries no dim_customer_scd2 section"

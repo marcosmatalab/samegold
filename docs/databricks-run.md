@@ -256,16 +256,27 @@ all.
 ## The run that worked, and the checklist scored against it
 
 The lane ran end to end on 3 September 2026. The first run of the day was correct on the close
-and exposed two defects of its own; both were fixed, the lane was run again from commit
-`8c9faa7`, and **that record is in this repository** at `evidence/databricks/SG-DBX-01.json`.
-Every anchor below is filled from it, mechanically, and
+and exposed two defects of its own; both were fixed and the lane was run again from commit
+`8c9faa7`. That is the run this checklist was scored against, and its `update` was 58d3de6f,
+COMPLETED, 0 ERROR-level events, `incomplete: []`.
+
+**The record in this repository is no longer that one.** It is the SECOND close's - update
+`289286cc`, 4 September 2026, over 1328 events - because the lane ran again and the record is
+whatever the last fetch brought down. Every anchor in this document is filled from it by
+`samegold readme`, mechanically, and
 `tests/fast/test_databricks_bundle.py::test_the_run_document_agrees_with_the_record` fails if
-the document and the record ever disagree.
+the document and the record ever disagree. That test is what caught the two being out of step
+in the first place.
 
-`update` 58d3de6f, COMPLETED, 0 ERROR-level events, `incomplete: []` - so no section of the
-record is a hole.
+### The first close's checklist, scored
 
-### The checklist, scored
+Everything from here to the end of the checklist is about the FIRST close, over 755 events. It
+is kept as it was scored rather than rewritten, because the point of it was that the expected
+column had been written before the run - editing it now to describe a later population would
+destroy exactly the property that made it worth anything. The second close is the section above,
+and the anchored figures in "What the run returned" describe the CURRENT record, which is the
+second close's.
+
 
 Every expected value in the section below it was written **before** any of this ran, from the
 generator and the OSS reference on the same seed. Here is each one against what the workspace
@@ -343,7 +354,7 @@ which was pushed after those failures; every update since has succeeded, and an 
 succeeds does not exercise a retry setting. The setting is deployed and untested, and the next
 FAILED update is what tests it.
 
-## What the run returned## What the run returned
+## What the run returned
 
 ### The pipeline update
 
@@ -356,13 +367,13 @@ FAILED update is what tests it.
 
 | table | rows |
 |---|---|
-| `bronze_events` | <!--dbx:rows.bronze_events-->755<!--/dbx--> |
-| `silver_classified` | <!--dbx:rows.silver_classified-->755<!--/dbx--> |
-| `silver_events` | <!--dbx:rows.silver_events-->727<!--/dbx--> |
+| `bronze_events` | <!--dbx:rows.bronze_events-->1328<!--/dbx--> |
+| `silver_classified` | <!--dbx:rows.silver_classified-->1328<!--/dbx--> |
+| `silver_events` | <!--dbx:rows.silver_events-->1300<!--/dbx--> |
 | `silver_quarantine` | <!--dbx:rows.silver_quarantine-->28<!--/dbx--> |
-| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->75<!--/dbx--> |
+| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->92<!--/dbx--> |
 | `revenue_by_month` | <!--dbx:rows.revenue_by_month-->2<!--/dbx--> |
-| `revenue_closed` | <!--dbx:rows.revenue_closed-->2<!--/dbx--> |
+| `revenue_closed` | <!--dbx:rows.revenue_closed-->3<!--/dbx--> |
 
 `silver_events` is the expectation-filtered table and `silver_classified` is every row with a
 reason attached, so `silver_classified = silver_events + silver_quarantine` is the conservation
@@ -381,13 +392,13 @@ drift, and `tests/spark/test_adversarial_records.py` compares these predicates a
 
 <!--dbx:expectations.table-->| rule | dataset | passed | failed |
 |---|---|---|---|
-| amount_out_of_range | samegold.main.silver_events | 741 | 14 |
-| missing_required_field | samegold.main.silver_events | 747 | 8 |
-| negative_price | samegold.main.silver_events | 744 | 11 |
-| non_positive_quantity | samegold.main.silver_events | 743 | 12 |
-| unknown_currency | samegold.main.silver_events | 747 | 8 |
-| unknown_event_type | samegold.main.silver_events | 749 | 6 |
-| unparseable_json | samegold.main.silver_events | 752 | 3 |<!--/dbx-->
+| amount_out_of_range | samegold.main.silver_events | 573 | 0 |
+| missing_required_field | samegold.main.silver_events | 573 | 0 |
+| negative_price | samegold.main.silver_events | 573 | 0 |
+| non_positive_quantity | samegold.main.silver_events | 573 | 0 |
+| unknown_currency | samegold.main.silver_events | 573 | 0 |
+| unknown_event_type | samegold.main.silver_events | 573 | 0 |
+| unparseable_json | samegold.main.silver_events | 573 | 0 |<!--/dbx-->
 
 ### Quarantine reasons, from the classified table
 
@@ -397,7 +408,7 @@ never reached.
 
 <!--dbx:quarantine.table-->| quarantine reason | rows |
 |---|---|
-| accepted | 727 |
+| accepted | 1300 |
 | amount_out_of_range | 6 |
 | missing_required_field | 5 |
 | negative_price | 3 |
@@ -415,14 +426,129 @@ that the two agree is the point of having both.
 
 | | |
 |---|---|
-| version rows | <!--dbx:dim.versions-->75<!--/dbx--> |
+| version rows | <!--dbx:dim.versions-->92<!--/dbx--> |
 | distinct customers | <!--dbx:dim.customers-->60<!--/dbx--> |
 | open rows (`__END_AT IS NULL`) | <!--dbx:dim.open_rows-->60<!--/dbx--> |
-| closed rows | <!--dbx:dim.closed_rows-->15<!--/dbx--> |
+| closed rows | <!--dbx:dim.closed_rows-->32<!--/dbx--> |
 
 Open rows must equal distinct customers: one current version per key is what Type 2 means, and
 a dimension with two open rows for one customer is the defect the hand-written `MERGE` on the
 OSS lane has a delete-by-absence branch for.
+
+## The second close: a month that had already been signed off moved
+
+This is what the project is for, and until 4 September 2026 it had only ever happened on a
+laptop. January was closed at 14 198 046 cents. 573 events the first close had never seen were
+then ingested, 553 of them for January, and a second close restated it - without touching the
+version finance had signed off.
+
+### The population, reproduced
+
+The first time this was done, the 573 events were produced by a script in `/tmp` on one
+machine. That made every figure the second close published rest on data no reader could
+regenerate, which is this repository's premise inverted, and it is now a command:
+
+```sh
+samegold generate-late --out /tmp/late --seed 20260901 --late-seed 20260904
+```
+
+It generates the base population, generates a second one from the late seed, keeps the events
+whose `event_id` the base did not have, and writes them under `batch=late-<stamp>` - the prefix
+matters, because both generations bucket arrivals into the same instants and Auto Loader lists
+one directory: uploaded under the base names, the second batch would replace the first.
+
+What it must print, and what `tests/fast/test_late_arrivals.py` fails on if it does not:
+
+```
+573 late events in 269 batch directories (269 files)
+  from 761 generated, of which 185 were already in the base population of 755 and 3 carried no event_id
+  by type : customer_upserted 21, order_line_amended 63, order_placed 420, return_registered 69
+  by month: 2026-01 553, 2026-02 16, 2026-03 4
+```
+
+The three dropped lines are the ones with no `event_id`. That is a decision, not an accident:
+"not already present" cannot be decided for a record with no id, and keeping them would
+re-deliver a corrupt line the base population already carries - the quarantine counts would
+charge one fault twice. So the late batch carries no corrupt records, and the run's arithmetic
+shows it: quarantine stays at 28, all from the base population, and 727 + 573 = 1300 accepted.
+
+### Uploading and running it
+
+```sh
+databricks fs cp -r /tmp/late/bronze dbfs:/Volumes/samegold/raw/landing
+scripts/databricks_run.sh run          # NOT run-full-refresh: this is an incremental update
+scripts/databricks_run.sh fetch
+```
+
+`run`, not `run-full-refresh`. A full refresh re-reads the whole landing volume and recomputes
+the close from scratch, which would produce one correct close over 1328 events and no
+restatement at all - the second version exists because the first one was already there.
+
+**Deploy first if anything in `databricks/` has changed since the last deploy.**
+`databricks bundle run` runs what was DEPLOYED, not what is in the tree, and on 4 September that
+cost two things silently: `publish_evidence.py` did not write `dim_customer_scd2.json` and the
+record carried no `deploy` key, both because the commits that added them had never been
+deployed. The task ended SUCCESS. `FINDINGS.md` carries it; `scripts/databricks_run.sh all`
+deploys before it runs.
+
+### What the close has to say
+
+Computed by the DuckDB reference over the reproduced population, so this table is derived and
+not transcribed - `tests/fast/test_databricks_close_parity.py` recomputes it on every run of the
+fast lane and compares five columns against the record:
+
+| month | version | gross_cents | net_cents | line_count | return_count | rejected |
+|---|---|---|---|---|---|---|
+| 2026-01 | 0 | 14 198 046 | 12 911 212 | 425 | 71 | 22 |
+| 2026-01 | 1 | 25 582 615 | 23 268 535 | 793 | 126 | 32 |
+| 2026-02 | 0 | 199 379 | 199 379 | 3 | 0 | 0 |
+
+Three properties, and each is a different thing that could have gone wrong:
+
+- **version 0 is untouched**, figures and `restated_at` both. A restatement that rewrites the
+  signed-off version has destroyed the evidence that it moved.
+- **February gains no version.** Sixteen of the late returns fall in February and four in March,
+  and they are returns against JANUARY sales: `gold_close.py` groups by the month of the sale,
+  February's aggregate is unchanged, and the MERGE's `<>` guard is what stops a close from
+  restating a month that did not move. March never appears at all, for the same reason.
+- **conservation closes over the whole population**: `bronze_events` = `silver_classified` =
+  1328 = 755 + 573, and `silver_events` 1300 + `silver_quarantine` 28 = 1328.
+
+And `close_month` was run a second time over the same data: `revenue_closed` stayed at three
+rows. The close's idempotence is executed rather than asserted.
+
+### What the workspace produced, and how it got into this document
+
+`evidence/databricks/SG-DBX-01.json` is the second close's record: update `289286cc`,
+COMPLETED, 0 ERROR-level events, `incomplete: []`. The capture beside it holds the workspace's
+own 92 dimension rows with `measured_in_the_workspace: true`, written by the notebook in the
+same session rather than exported by hand.
+
+**Every anchored figure in this document was re-rendered from that record by a command.**
+
+```sh
+scripts/databricks_run.sh fetch        # brings the record and the capture down
+samegold readme                        # fills every sg: and dbx: anchor from both
+```
+
+That is new this round and it is the fix for how this document went wrong: the anchors were
+filled by hand the first time and by a script in a scratch directory the second, so when the
+lane ran again the document went on describing a run that no longer existed until a test caught
+it. `src/samegold/evidence/databricks_doc.py` derives every anchor name from a field the record
+carries, and an anchor the record cannot answer renders as `NOT RUN` rather than as a blank.
+
+### What the comparison says now
+
+The row-by-row dimension comparison ran against the workspace's 92 rows and **they agree**:
+same sixty customers, same ninety-two intervals, same attributes, same instants, as multisets
+and as per-customer histories. The parity did not merely survive the second close, it got
+wider - it now covers late arrivals, which is the case a Type 2 dimension is hardest on.
+
+The arithmetic is measured rather than inferred from the difference. The late population adds
+eighteen distinct customer upserts; seventeen change a tracked attribute and one,
+`cu-C000039-1`, repeats what the customer already had. So 75 + 17 = 92 versions and
+15 + 17 = 32 closed rows, and the heartbeat that changed nothing produced no version, which is
+what `track_history_column_list` is for.
 
 ## The checklist: what to run afterwards, and what each answer has to be
 
@@ -534,7 +660,8 @@ SELECT (SELECT count(*) FROM samegold.main.silver_classified) AS classified,
        (SELECT count(*) FROM samegold.main.bronze_events)     AS bronze;
 ```
 
-Expected `755, 727, 28, 755`, and `classified = accepted + quarantined` on the same row. If
+Expected `755, 727, 28, 755` **for the first close**; the second close makes it
+`1328, 1300, 28, 1328`, and `classified = accepted + quarantined` holds on both. If
 `bronze` is 752 rather than 755, Auto Loader dropped the three unreadable lines instead of
 rescuing them - which the OSS reader does not do, so it is a divergence to record here and not
 a rounding difference to wave through.
@@ -634,10 +761,11 @@ FROM samegold.main.dim_customer_scd2;
 | open_rows | 60 |
 | closed_rows | 15 |
 
-`open_rows = customers` is what Type 2 means, and it is the property rather than the count: a
-dimension with two open rows for one customer is broken whatever the totals say. The 75 and the
-15 are AUTO CDC agreeing with the hand-written `MERGE` the OSS lane uses, which is the only
-reason this lane keeps both.
+Those four numbers are the FIRST close's; the second close makes them 92 / 60 / 60 / 32, and
+`open_rows = customers` holds on both - which is the point. That identity is what Type 2 means,
+and it is the property rather than the count: a dimension with two open rows for one customer is
+broken whatever the totals say. Both sets are AUTO CDC agreeing with the hand-written `MERGE`
+the OSS lane uses, which is the only reason this lane keeps both.
 
 The rows themselves are captured by the run, not by you. `publish_evidence.py` reads the same
 table a second time -

@@ -122,6 +122,20 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_generate_late(args: argparse.Namespace) -> int:
+    from samegold.generator.late import describe, late_arrivals
+
+    result = late_arrivals(
+        Path(args.out),
+        base_seed=args.seed,
+        late_seed=args.late_seed,
+        profile=PROFILES[args.profile],
+    )
+    print(describe(result))
+    print(f"under {Path(args.out) / 'bronze'}")
+    return 0
+
+
 def _run_claims(
     names: list[str],
     profile: str,
@@ -209,7 +223,24 @@ def cmd_readme(args: argparse.Namespace) -> int:
         # beside it claim an uncommitted tree.
         path.write_text(render_readme(text, latest), encoding="utf-8", newline="\n")
         print(f"rendered {name}")
+    for line in _render_databricks_anchors():
+        print(f"rendered {line}")
     return 0
+
+
+# The two documents that quote the Databricks record. The run document carries the whole closed
+# set of anchors; the README carries a subset. Both are RENDERED from the record and neither is
+# filled by hand: they were, twice - once by typing and once by a script in a scratch directory
+# - and the second time the lane ran again, the record changed, and `docs/databricks-run.md`
+# went on describing a run that no longer existed until a test caught it.
+DBX_DOCUMENTS = ("docs/databricks-run.md", "README.md")
+DBX_RECORD = "evidence/databricks/SG-DBX-01.json"
+
+
+def _render_databricks_anchors() -> list[str]:
+    from samegold.evidence.databricks_doc import render_files
+
+    return render_files(REPO_ROOT, REPO_ROOT / DBX_RECORD, DBX_DOCUMENTS)
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -425,6 +456,20 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--profile", choices=sorted(PROFILES), default="fast")
     gen.add_argument("--seed", type=int, default=None)
     gen.set_defaults(func=cmd_generate)
+
+    # The late population the Databricks lane's SECOND close ingested. It was produced once by
+    # a script in `/tmp` on one machine, which made every figure that close published rest on
+    # a population nobody with a clone could regenerate. It is deterministic given two seeds,
+    # so it is a command.
+    late = sub.add_parser(
+        "generate-late",
+        help="write the late-arrival batches: the events of --late-seed that --seed did not have",
+    )
+    late.add_argument("--out", required=True)
+    late.add_argument("--profile", choices=sorted(PROFILES), default="fast")
+    late.add_argument("--seed", type=int, required=True, help="the base population's seed")
+    late.add_argument("--late-seed", type=int, required=True)
+    late.set_defaults(func=cmd_generate_late)
 
     ev = sub.add_parser("evidence", help="run the claims and append evidence records")
     ev.add_argument("--profile", choices=sorted(PROFILES), default="fast")

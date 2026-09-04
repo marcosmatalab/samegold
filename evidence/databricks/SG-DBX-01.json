@@ -1,61 +1,102 @@
 {
+  "bad_events": [
+    {
+      "event_id": "bad-0000007",
+      "qty": 1,
+      "quarantine_reason": "amount_out_of_range",
+      "undecided_rules": "",
+      "unit_price_cents": 9223372036854775807
+    },
+    {
+      "event_id": "bad-0000008",
+      "qty": 1,
+      "quarantine_reason": "missing_required_field",
+      "undecided_rules": "",
+      "unit_price_cents": null
+    },
+    {
+      "event_id": "bad-0000016",
+      "qty": 1,
+      "quarantine_reason": "amount_out_of_range",
+      "undecided_rules": "",
+      "unit_price_cents": 9223372036854775807
+    },
+    {
+      "event_id": "bad-0000017",
+      "qty": 1,
+      "quarantine_reason": "missing_required_field",
+      "undecided_rules": "",
+      "unit_price_cents": null
+    }
+  ],
   "catalog": "samegold",
   "chain": {
     "chained": false,
     "why": "produced inside a Databricks workspace by a deploy, not by `samegold evidence` on a commit of this repository. It derives no seed from a commit sha and nobody with a clone can recompute it, so appending it to evidence/history.jsonl would put an unverifiable link in a chain whose only value is that every link is verifiable."
   },
   "claim_id": "SG-DBX-01",
+  "column_types": [
+    {
+      "new_qty": "bigint",
+      "qty": "bigint",
+      "unit_price_cents": "bigint"
+    }
+  ],
+  "deploy": {
+    "commit": "4d13a13836914328b6d8659a98576caa04fa695d",
+    "tree_dirty": "false"
+  },
   "dim_customer_scd2": [
     {
-      "closed_rows": 15,
+      "closed_rows": 32,
       "customers": 60,
       "first_start": "2026-01-01T00:00:00+00:00",
-      "last_start": "2026-01-14T20:00:00+00:00",
+      "last_start": "2026-01-14T22:00:00+00:00",
       "open_rows": 60,
-      "versions": 75
+      "versions": 92
     }
   ],
   "expectations": [
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 14,
-      "passed": 741,
+      "failed": 0,
+      "passed": 573,
       "rule": "amount_out_of_range"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 8,
-      "passed": 747,
+      "failed": 0,
+      "passed": 573,
       "rule": "missing_required_field"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 11,
-      "passed": 744,
+      "failed": 0,
+      "passed": 573,
       "rule": "negative_price"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 12,
-      "passed": 743,
+      "failed": 0,
+      "passed": 573,
       "rule": "non_positive_quantity"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 8,
-      "passed": 747,
+      "failed": 0,
+      "passed": 573,
       "rule": "unknown_currency"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 6,
-      "passed": 749,
+      "failed": 0,
+      "passed": 573,
       "rule": "unknown_event_type"
     },
     {
       "dataset": "samegold.main.silver_events",
-      "failed": 3,
-      "passed": 752,
+      "failed": 0,
+      "passed": 573,
       "rule": "unparseable_json"
     }
   ],
@@ -63,8 +104,8 @@
     {
       "above_contract_ceiling": false,
       "accounting_month": "2026-01",
-      "gross_cents": 14198046,
-      "line_count": 425
+      "gross_cents": 25582615,
+      "line_count": 793
     },
     {
       "above_contract_ceiling": false,
@@ -74,11 +115,18 @@
     }
   ],
   "incomplete": [],
-  "job_run_id": "419180811298205",
+  "job_run_id": "399880363499620",
+  "money_types": [
+    {
+      "gross_cents": "bigint",
+      "net_cents": "bigint",
+      "returns_cents": "bigint"
+    }
+  ],
   "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
   "quarantine_by_reason": [
     {
-      "n": 727,
+      "n": 1300,
       "reason": "accepted"
     },
     {
@@ -110,6 +158,11 @@
       "reason": "unparseable_json"
     }
   ],
+  "rescued_rows": [
+    {
+      "n": 2
+    }
+  ],
   "revenue_closed": [
     {
       "accounting_month": "2026-01",
@@ -121,6 +174,17 @@
       "return_count": 71,
       "returns_cents": 1286834,
       "returns_rejected_count": 22
+    },
+    {
+      "accounting_month": "2026-01",
+      "close_version": 1,
+      "gross_cents": 25582615,
+      "line_count": 793,
+      "net_cents": 23268535,
+      "restatement_reason": "late arrivals after close",
+      "return_count": 126,
+      "returns_cents": 2314080,
+      "returns_rejected_count": 32
     },
     {
       "accounting_month": "2026-02",
@@ -135,28 +199,33 @@
     }
   ],
   "rows": {
-    "bronze_events": 755,
-    "dim_customer_scd2": 75,
+    "bronze_events": 1328,
+    "dim_customer_scd2": 92,
     "revenue_by_month": 2,
-    "revenue_closed": 2,
-    "silver_classified": 755,
-    "silver_events": 727,
+    "revenue_closed": 3,
+    "silver_classified": 1328,
+    "silver_events": 1300,
     "silver_quarantine": 28
   },
   "runtime": "databricks-free",
-  "task_run_id": "1097269990940060",
+  "task_run_id": "813985701847770",
   "title": "the Databricks lane ran and its expectations reported",
   "undecided_rules": [],
   "update": [
     {
-      "ended_at": "2026-09-03 18:01:18.026000",
+      "ended_at": "2026-09-04 08:43:49.773000",
       "error_events": 0,
       "last_state": "COMPLETED",
-      "started_at": "2026-09-03 17:59:21.310000",
-      "update_id": "58d3de6f-311b-4204-a70d-3ba47ec78c31"
+      "started_at": "2026-09-04 08:41:54.816000",
+      "update_id": "289286cc-ca60-4ebf-8a71-6a996e71e0f1"
     }
   ],
   "update_history": [
+    {
+      "ended_at": "2026-09-04 08:43:49.773000",
+      "final_state": "COMPLETED",
+      "update_id": "289286cc-ca60-4ebf-8a71-6a996e71e0f1"
+    },
     {
       "ended_at": "2026-09-03 18:01:18.026000",
       "final_state": "COMPLETED",
@@ -201,11 +270,6 @@
       "ended_at": "2026-09-03 12:43:18.173000",
       "final_state": "FAILED",
       "update_id": "d56d5da0-681e-4cf5-84fe-a7bfee45caf2"
-    },
-    {
-      "ended_at": "2026-09-03 12:31:13.322000",
-      "final_state": "FAILED",
-      "update_id": "78785ff2-5047-48f1-a429-600a65e09599"
     }
   ]
 }

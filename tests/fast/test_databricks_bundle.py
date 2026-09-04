@@ -25,6 +25,8 @@ from typing import Any
 import pytest
 import yaml
 
+from samegold.evidence.databricks_doc import scalars_from
+
 REPO = Path(__file__).resolve().parents[2]
 LANE = REPO / "databricks"
 BUNDLE = yaml.safe_load((LANE / "databricks.yml").read_text(encoding="utf-8"))
@@ -449,27 +451,10 @@ def test_the_run_document_agrees_with_the_record() -> None:
     if not RECORD.exists():
         pytest.skip("the lane has not been deployed yet")
     record = json.loads(RECORD.read_text(encoding="utf-8"))
-    update = record.get("update") or [{}]
-    scalars: dict[str, Any] = {}
-    if isinstance(update, list) and update:
-        scalars["update.last_state"] = update[0].get("last_state")
-        scalars["update.error_events"] = update[0].get("error_events")
-    for table, count in (record.get("rows") or {}).items():
-        scalars[f"rows.{table}"] = count
-    dimension = record.get("dim_customer_scd2") or [{}]
-    if isinstance(dimension, list) and dimension:
-        for field in ("versions", "customers", "open_rows", "closed_rows"):
-            scalars[f"dim.{field}"] = dimension[0].get(field)
-    # `2026-01` is not a legal anchor name (`[\w.]+`), so the month is spelled with an
-    # underscore. Derived from the record's own accounting_month rather than positionally: a
-    # run over different months would produce anchors nothing in the documents claims, which
-    # the closed-list check below turns into a failure rather than a silent pass.
-    for row in record.get("gross_within_contract_bounds") or []:
-        if not isinstance(row, dict) or not row.get("accounting_month"):
-            continue
-        month = str(row["accounting_month"]).replace("-", "_")
-        scalars[f"revenue.{month}.gross_cents"] = row.get("gross_cents")
-        scalars[f"revenue.{month}.line_count"] = row.get("line_count")
+    # ONE derivation of the mapping, imported from the renderer that fills the anchors. It
+    # used to be restated here, and two derivations of the same mapping is how a document and
+    # its test come to agree with each other and not with the record.
+    scalars = dict(scalars_from(record))
 
     for document in QUOTING_DOCUMENTS:
         anchors = _anchors(document)
@@ -757,3 +742,60 @@ def test_the_money_columns_are_declared_as_integers() -> None:
     types = _declared_bronze_types()
     for column in ("qty", "new_qty", "unit_price_cents"):
         assert types[column] == "BIGINT", f"{column} is {types[column]}, not BIGINT"
+
+
+# The record's remaining string boolean, by name. `publish_evidence.py` converts it now; the
+# deployed notebook that wrote this record does not, because it was deployed before the fix.
+STILL_STRINGS_IN_THE_COMMITTED_RECORD = {"deploy.tree_dirty"}
+
+
+def test_a_boolean_in_the_record_is_a_boolean() -> None:
+    """`"false"` is true.
+
+    `deploy.tree_dirty` crossed three string-typed layers to reach the record - a bundle
+    variable, a job parameter, a notebook widget - and arrived as the STRING "false". Every
+    reader who writes `if record["deploy"]["tree_dirty"]:` gets True on a clean tree, and the
+    field exists precisely so that a reader can decide whether the commit beside it describes
+    what ran.
+
+    The fix is at the source, in `publish_evidence.py`, where the three states become
+    `True` / `False` / `None`: two states cannot carry three, and a value nobody supplied must
+    not read as "clean". `deploy.commit` is the discriminator, and it is the word "unknown" in
+    exactly that case.
+
+    Checked over EVERY boolean-named field the record carries rather than the one that was
+    wrong, because a type that crossed a string boundary once will cross it again.
+    """
+    if not RECORD.exists():
+        pytest.skip("the lane has not been deployed yet")
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+
+    def walk(node: Any, path: str = "") -> list[tuple[str, Any]]:
+        found: list[tuple[str, Any]] = []
+        if isinstance(node, dict):
+            for key, value in node.items():
+                found.extend(walk(value, f"{path}.{key}" if path else str(key)))
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                found.extend(walk(value, f"{path}[{index}]"))
+        else:
+            found.append((path, node))
+        return found
+
+    wrong = {
+        path
+        for path, value in walk(record)
+        if isinstance(value, str) and value.lower() in {"true", "false"}
+    }
+    # A CLOSED LIST, not a tolerance. The record committed here was produced by a notebook
+    # deployed from `4d13a13`, which is before the conversion above existed - `bundle run` runs
+    # what was deployed - so it still carries the one field. Listing it by name means two
+    # things: a NEW string boolean fails immediately, and the next run from a deployed fix
+    # fails too, because this set will no longer match. Emptying it is what that run requires.
+    assert wrong == STILL_STRINGS_IN_THE_COMMITTED_RECORD, (
+        f"string booleans in the record: {sorted(wrong)}, expected "
+        f"{sorted(STILL_STRINGS_IN_THE_COMMITTED_RECORD)}. A field that carries a boolean as a "
+        f"string is truthy either way; convert at the source, not at each reader. If this "
+        f"failure says the set got SMALLER, a run from the fixed notebook has landed and the "
+        f"list above should be emptied."
+    )
