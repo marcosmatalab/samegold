@@ -889,6 +889,69 @@ def test_the_money_columns_are_declared_as_integers() -> None:
 STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE: set[str] = set()
 
 
+def _tree_dirty(value: Any) -> bool | None:
+    """True, False or None, from a boolean or from the string a widget used to publish.
+
+    The string form is refused elsewhere; it is READ here anyway, because a test that only
+    understands the fixed shape would go quiet on exactly the regression it should catch.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in {"true", "false"}:
+        return value.lower() == "true"
+    return None
+
+
+def test_no_committed_evidence_came_from_a_deploy_that_was_not_a_commit() -> None:
+    """The gate at the point of entry, and this round produced its own instance.
+
+    `require_fresh_deployment` was written and committed; the FINDINGS.md entry describing it
+    was not. The next deploy went out from that tree, and the record it produced said
+    `tree_dirty: true`. Nobody caught it by reading - the provenance field caught it, which is
+    the field doing precisely what it was added for.
+
+    Deploying a dirty tree while working is legitimate. COMMITTING what it produced is not:
+    `deploy.commit` then names a commit that does not contain the code that ran, so nobody
+    with a clone can tie the record to anything, and tying it to something is the only job
+    that field has. A record like that is worse than no record, because it looks chained.
+
+    `scripts/databricks_run.sh fetch` says so at the moment the files land. It cannot do more
+    than say it: the files are already on disk by then and the commit happens later, possibly
+    on another machine. THIS is the half that governs, because it runs in `make fast`, in
+    `make preflight` and in CI - at the moment the evidence would actually enter the
+    repository.
+    """
+    if not RECORD.exists():
+        pytest.skip("the lane has not been deployed yet")
+
+    offenders = {}
+    for document, path in (
+        (RECORD, ("deploy", "tree_dirty")),
+        (CAPTURE, ("provenance", "tree_dirty")),
+    ):
+        if not document.exists():
+            continue
+        node: Any = json.loads(document.read_text(encoding="utf-8"))
+        for key in path:
+            node = (node or {}).get(key)
+        state = _tree_dirty(node)
+        if state is not False:
+            offenders[document.name] = "unknown" if state is None else "dirty"
+
+    assert not offenders, (
+        f"committed evidence whose deploy was not a commit: {offenders}. A record produced by "
+        f"a deploy from a tree with uncommitted code names a commit that does not contain the "
+        f"code that ran, so it can be tied to nothing - and a record that cannot be tied to "
+        f"anything still looks like evidence. Commit the code, deploy again, re-run the "
+        f"evidence task, and fetch:\n"
+        f"    scripts/databricks_run.sh deploy\n"
+        f"    scripts/databricks_run.sh run publish_evidence\n"
+        f"    scripts/databricks_run.sh fetch\n"
+        f"'unknown' is the same verdict for a different reason: a deploy by hand, without the "
+        f"variables, leaves a record that cannot say what it came from."
+    )
+
+
 def test_a_boolean_in_the_record_is_a_boolean() -> None:
     """`"false"` is true.
 

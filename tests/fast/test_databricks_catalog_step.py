@@ -166,6 +166,7 @@ def _run(
     warehouses: str = RUNNING_WAREHOUSE,
     exists_from_call: int = 0,
     subcommand: str = "catalog",
+    second: str = "",
     jobs: str | None = None,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -245,7 +246,7 @@ def _run(
     launch = (
         f'chmod +x "{stub}" 2>/dev/null || true; '
         f'export PATH="{_bash_path(stub_dir)}:$PATH"; '
-        f"exec scripts/databricks_run.sh {subcommand}"
+        f"exec scripts/databricks_run.sh {subcommand} {second}".rstrip()
     )
     return subprocess.run(
         ["bash", "-c", launch],
@@ -588,6 +589,55 @@ def test_a_cli_that_fails_the_lookup_dies_with_a_message_rather_than_bare(
     assert "bundle run samegold_close" not in _captured_calls(tmp_path)
 
 
+def test_a_task_selection_reaches_the_cli(tmp_path: Path) -> None:
+    """The hole this closes is the one the guard was written for.
+
+    The command that produced this repository's evidence was typed by hand -
+    `databricks bundle run samegold_close -t free --var="catalog=samegold" --only
+    publish_evidence` - and a hand-typed `bundle run` goes straight past
+    `require_fresh_deployment`. Leaving the convenient path outside the guard is leaving the
+    guard optional.
+    """
+    result = _run(tmp_path, [], subcommand="run", second="publish_evidence")
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "--only publish_evidence" in calls, calls
+    assert "ONLY: publish_evidence" in result.stdout
+
+
+def test_a_task_selection_goes_through_the_freshness_guard(tmp_path: Path) -> None:
+    """The point of routing it through the script rather than typing it."""
+    result = _run(
+        tmp_path,
+        [],
+        subcommand="run",
+        second="publish_evidence",
+        jobs=_deployed_job("0" * 40),
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_a_plain_run_selects_no_tasks(tmp_path: Path) -> None:
+    """The symmetric half: `--only` with nothing after it would run nothing at all."""
+    result = _run(tmp_path, [], subcommand="run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--only" not in _captured_calls(tmp_path)
+    assert "ONLY:" not in result.stdout
+
+
+def test_a_subcommand_that_takes_no_selection_refuses_one(tmp_path: Path) -> None:
+    """An argument nobody reads is an argument that looks obeyed.
+
+    `deploy publish_evidence` must not deploy everything and say nothing about the word it was
+    handed - that is the shape of the full-refresh banner that announced a flag it did not
+    pass.
+    """
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="deploy", second="publish_evidence")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "takes no task selection" in result.stdout + result.stderr
+
+
 def test_run_full_refresh_is_guarded_too(tmp_path: Path) -> None:
     """The other door into `step_run`, which is the one that spends most.
 
@@ -692,23 +742,30 @@ def test_the_fetch_step_does_not_call_its_own_output_an_uncommitted_change(tmp_p
 
 
 # A record with just enough in it for the fetch step's own summary to read.
-RECORD_FIXTURE = json.dumps(
-    {
-        "claim_id": "SG-DBX-01",
-        "update": [{"update_id": "u-1", "last_state": "COMPLETED"}],
-        "incomplete": [],
-        "expectations": [],
-        "quarantine_by_reason": [],
-    }
-)
+def _record_fixture(tree_dirty: object = False) -> str:
+    return json.dumps(
+        {
+            "claim_id": "SG-DBX-01",
+            "update": [{"update_id": "u-1", "last_state": "COMPLETED"}],
+            "incomplete": [],
+            "expectations": [],
+            "quarantine_by_reason": [],
+            "deploy": {"commit": "a" * 40, "tree_dirty": tree_dirty},
+        }
+    )
 
 
-def _fetch(tmp_path: Path, *, missing: str = "") -> tuple[subprocess.CompletedProcess[str], Path]:
+RECORD_FIXTURE = _record_fixture()
+
+
+def _fetch(
+    tmp_path: Path, *, missing: str = "", record: str | None = None
+) -> tuple[subprocess.CompletedProcess[str], Path]:
     """Run the fetch step for real, with the evidence directory pointed at a temp dir."""
     out = tmp_path / "evidence"
     out.mkdir()
     payload = tmp_path / "payload.json"
-    payload.write_text(RECORD_FIXTURE, encoding="utf-8", newline="\n")
+    payload.write_text(record or RECORD_FIXTURE, encoding="utf-8", newline="\n")
     result = _run(
         tmp_path,
         [_state("SUCCEEDED")],
@@ -720,6 +777,62 @@ def _fetch(tmp_path: Path, *, missing: str = "") -> tuple[subprocess.CompletedPr
         },
     )
     return result, out
+
+
+def test_the_fetch_says_when_the_evidence_must_not_be_committed(tmp_path: Path) -> None:
+    """The round's own incident, as a test.
+
+    `require_fresh_deployment` was committed and the FINDINGS.md entry describing it was not,
+    so the next deploy went out dirty and the record said `tree_dirty: true`. The provenance
+    caught it; no person did. This is the step saying it out loud at the moment the files land.
+
+    It does NOT die, and that is a decision rather than an omission: the files are already on
+    disk by the time this can read the field, the commit happens later and possibly elsewhere,
+    and a message that cannot govern what it announces is this script's oldest defect. The
+    refusal lives in `test_databricks_bundle.py`, where the commit is. This is the part that
+    tells you now.
+    """
+    result, out = _fetch(tmp_path, record=_record_fixture(tree_dirty=True))
+    assert result.returncode == 0, (
+        f"the fetch died on a dirty deploy. It should report and finish: the files are "
+        f"already down, and the rest of this step's output is what you read to check the "
+        f"run.\n{result.stdout}{result.stderr}"
+    )
+    assert (out / "SG-DBX-01.json").exists()
+    assert "DO NOT COMMIT THIS EVIDENCE" in result.stdout, result.stdout
+    # And it says WHY, not only that. A bare refusal teaches nothing and gets worked around.
+    assert "does not contain the code that ran" in result.stdout, result.stdout
+    # And it says what to do instead, with the selection this script now takes.
+    assert "run publish_evidence" in result.stdout, result.stdout
+
+
+def test_a_clean_deploy_is_reported_as_clean_and_says_nothing_alarming(tmp_path: Path) -> None:
+    """The symmetric half, without which the message above could be printed unconditionally."""
+    result, _ = _fetch(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "DO NOT COMMIT" not in result.stdout, result.stdout
+    assert "clean tree at" in result.stdout, result.stdout
+
+
+def test_a_record_that_cannot_say_is_not_read_as_clean(tmp_path: Path) -> None:
+    """`unknown` is a third state, and defaulting it to "clean" is how a hole becomes a tick.
+
+    A deploy by hand without `--var="deploy_tree_dirty=..."` leaves the word "unknown". That
+    record cannot be tied to a commit either, and the two reasons are different enough that
+    the message says which.
+    """
+    result, _ = _fetch(tmp_path, record=_record_fixture(tree_dirty="unknown"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "does not say whether the tree" in result.stdout, result.stdout
+    assert "clean tree at" not in result.stdout, result.stdout
+
+
+def test_the_string_true_is_read_as_dirty(tmp_path: Path) -> None:
+    """A notebook deployed before the boolean conversion publishes `"true"`, which is truthy
+    either way - and that truthiness is the reason the conversion happened. The reader here
+    understands the old shape so a regression to it cannot go quiet."""
+    result, _ = _fetch(tmp_path, record=_record_fixture(tree_dirty="true"))
+    assert "DO NOT COMMIT THIS EVIDENCE" in result.stdout, result.stdout
 
 
 def test_the_fetch_brings_down_the_row_level_capture(tmp_path: Path) -> None:
