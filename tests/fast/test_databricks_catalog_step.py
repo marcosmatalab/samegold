@@ -59,6 +59,14 @@ case "$1 $2" in
         exit 0
       fi
       exit 1 ;;
+  "jobs list")
+      # `step_run` asks the workspace which commit the deployed job was deployed from before
+      # it spends anything. The stub reads the answer out of a file so a test can say what is
+      # deployed - the same commit, an older one, or no job at all. $SG_JOBS_FAIL makes the
+      # CLI FAIL instead of answering, which is a different thing again and used to kill the
+      # script with no message at all.
+      if [ -n "${SG_JOBS_FAIL:-}" ]; then exit 1; fi
+      cat "$SG_JOBS" ; exit 0 ;;
   "warehouses list") cat "$SG_WAREHOUSES" ; exit 0 ;;
   "warehouses start") exit 0 ;;
   "fs cp")
@@ -107,6 +115,43 @@ def _bash_path(path: Path) -> str:
     return text
 
 
+def _head() -> str:
+    """This checkout's HEAD, which is what `step_run` compares the deployment against."""
+    done = subprocess.run(
+        ["git", "-C", str(REPO), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout.strip() if done.returncode == 0 else "unknown"
+
+
+def _deployed_job(commit: str, *, wrapped: bool = False) -> str:
+    """What `databricks jobs list --name ... --expand-tasks -o json` answers with.
+
+    `wrapped` is the Jobs API's own envelope, `{"jobs": [...]}`; the CLI prints the bare
+    array. Which of the two arrives cannot be established without a workspace, so the parser
+    reads both and both shapes are exercised here rather than one being assumed.
+    """
+    job = {
+        "job_id": 1,
+        "settings": {
+            "name": "samegold monthly close",
+            "tasks": [
+                {"task_key": "ingest_and_transform", "pipeline_task": {"pipeline_id": "p-1"}},
+                {
+                    "task_key": "publish_evidence",
+                    "notebook_task": {
+                        "notebook_path": "../src/publish_evidence.py",
+                        "base_parameters": {"catalog": "samegold", "deploy_commit": commit},
+                    },
+                },
+            ],
+        },
+    }
+    return json.dumps({"jobs": [job]} if wrapped else [job])
+
+
 def _state(state: str, statement_id: str = "stmt-1", error: str = "") -> str:
     body = f'{{"statement_id": "{statement_id}", "status": {{"state": "{state}"'
     if error:
@@ -121,6 +166,7 @@ def _run(
     warehouses: str = RUNNING_WAREHOUSE,
     exists_from_call: int = 0,
     subcommand: str = "catalog",
+    jobs: str | None = None,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `scripts/databricks_run.sh catalog` against a stub that answers `answers` in order.
@@ -139,12 +185,18 @@ def _run(
     calls.write_text("", encoding="utf-8")
     (tmp_path / "answers").write_text("\n".join(answers) + "\n", encoding="utf-8", newline="\n")
     (tmp_path / "warehouses").write_text(warehouses, encoding="utf-8", newline="\n")
+    # A deployment made from THIS checkout, so that the steps that are not about the freshness
+    # guard are not blocked by it. A test that is about the guard passes its own.
+    (tmp_path / "jobs").write_text(
+        jobs if jobs is not None else _deployed_job(_head()), encoding="utf-8", newline="\n"
+    )
 
     environment = {
         **os.environ,
         "SG_CALLS": calls.as_posix(),
         "SG_ANSWERS": (tmp_path / "answers").as_posix(),
         "SG_WAREHOUSES": (tmp_path / "warehouses").as_posix(),
+        "SG_JOBS": (tmp_path / "jobs").as_posix(),
         "SG_POLL_COUNT": (tmp_path / "poll_count").as_posix(),
         "SG_GET_COUNT": (tmp_path / "get_count").as_posix(),
         "SG_EXISTS_FROM": str(exists_from_call),
@@ -362,6 +414,194 @@ def test_the_banner_governs_the_command_rather_than_describing_it(tmp_path: Path
     source = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
     body = source.split("step_run() {", 1)[1].split("\n}", 1)[0]
     assert "Refusing to spend a Free Edition run" in body
+
+
+# ------------------------------------------------- the run that executed code nobody deployed
+#
+# `databricks bundle run` runs what was DEPLOYED. On 4 September 2026 a run of this lane
+# executed a notebook from two commits earlier and ended SUCCESS: the pipeline was green, the
+# close was correct, and the record it published carried no `deploy` key and no row-level
+# capture, because the deployed notebook predated both. One fault, two symptoms, and no error
+# anywhere - nothing compared the deployed code with the tree.
+#
+# `step_deploy` already carries the commit INTO the deploy, as a `base_parameters` field on the
+# publish_evidence task, so the workspace can be asked. These tests are that question being
+# asked, driven against the stub CLI rather than reasoned about: what the step CONCLUDES from
+# each answer, and - the half that matters most - whether it spent the run anyway.
+
+
+def test_a_deployment_older_than_head_is_refused_rather_than_run(tmp_path: Path) -> None:
+    """The finding, closed. A refusal, and no `bundle run` in the argv."""
+    stale = "0" * 40
+    result = _run(tmp_path, [], subcommand="run", jobs=_deployed_job(stale))
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    message = result.stdout + result.stderr
+    # Both shas, because "your deployment is stale" without them is a puzzle: the next question
+    # anybody asks is which commit is up there.
+    assert stale in message, message
+    assert _head() in message, message
+    # And the thing that actually costs: it did not run.
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path), _captured_calls(tmp_path)
+
+
+def test_the_refusal_names_the_way_to_run_the_deployment_on_purpose(tmp_path: Path) -> None:
+    """A gate with no legitimate exit is a gate people learn to delete.
+
+    Reproducing what an older deployment published is a real thing to want, and the answer to
+    it should be a decision somebody made in one visible word rather than a commented-out line
+    in this script.
+    """
+    result = _run(tmp_path, [], subcommand="run", jobs=_deployed_job("0" * 40))
+    assert "SAMEGOLD_RUN_STALE=1" in result.stdout + result.stderr
+
+
+def test_the_override_runs_the_stale_deployment_and_says_that_is_what_it_did(
+    tmp_path: Path,
+) -> None:
+    """The escape hatch, exercised - and the announcement checked against the argv again.
+
+    An override that is honoured silently is how somebody ends up reading a record from an
+    older commit as though it described this tree.
+    """
+    stale = "0" * 40
+    result = _run(
+        tmp_path,
+        [],
+        subcommand="run",
+        jobs=_deployed_job(stale),
+        extra_env={"SAMEGOLD_RUN_STALE": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" in _captured_calls(tmp_path)
+    assert stale in result.stdout, result.stdout
+
+
+def test_a_deployment_from_head_is_run(tmp_path: Path) -> None:
+    """The symmetric half, without which the guard could be `exit 1` and pass everything above."""
+    result = _run(tmp_path, [], subcommand="run", jobs=_deployed_job(_head()))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" in _captured_calls(tmp_path)
+
+
+def test_the_jobs_api_envelope_is_read_as_well_as_the_bare_array(tmp_path: Path) -> None:
+    """Both shapes, because which one the CLI prints cannot be checked from outside a workspace.
+
+    The parser accepts `[...]` and `{"jobs": [...]}`. Asserting one of them here would be this
+    repository's own recurring defect - a check that is well defined and answers a question
+    nobody asked - so the test says the same thing the parser does: either shape is an answer.
+    """
+    result = _run(tmp_path, [], subcommand="run", jobs=_deployed_job(_head(), wrapped=True))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" in _captured_calls(tmp_path)
+
+
+def test_a_workspace_with_no_such_job_is_refused_rather_than_left_to_the_cli(
+    tmp_path: Path,
+) -> None:
+    """Nothing deployed at all is a different fact from a stale deployment, and says so.
+
+    `databricks bundle run` would fail here too. It would fail later, after authentication and
+    a bundle load, with a message about a resource key rather than about a deploy that never
+    happened.
+    """
+    result = _run(tmp_path, [], subcommand="run", jobs="[]")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "nothing" in (result.stdout + result.stderr).lower()
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_a_deployment_that_cannot_name_its_own_commit_is_refused(tmp_path: Path) -> None:
+    """`bundle deploy` by hand leaves `deploy_commit` at its default, the word "unknown".
+
+    That is not "stale" and it is not "fresh": it is a deployment that cannot be compared, and
+    reporting it as either would be inventing a fact. The refusal says which of the two it
+    could not tell.
+    """
+    result = _run(tmp_path, [], subcommand="run", jobs=_deployed_job("unknown"))
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "unknown" in result.stdout + result.stderr
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_a_deployment_predating_the_parameter_is_refused(tmp_path: Path) -> None:
+    """A job whose tasks carry no `deploy_commit` at all - which is what the deployment that
+    caused this finding actually looked like, since the parameter was added after it."""
+    job = json.dumps(
+        [
+            {
+                "job_id": 1,
+                "settings": {
+                    "name": "samegold monthly close",
+                    "tasks": [
+                        {
+                            "task_key": "publish_evidence",
+                            "notebook_task": {
+                                "notebook_path": "../src/publish_evidence.py",
+                                "base_parameters": {"catalog": "samegold"},
+                            },
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+    result = _run(tmp_path, [], subcommand="run", jobs=job)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_an_unreadable_answer_is_refused_and_not_read_as_nothing_deployed(
+    tmp_path: Path,
+) -> None:
+    """The distinction the `MAX`-over-a-state-string finding is about.
+
+    A CLI that answers with something this cannot parse has said nothing, and "it said nothing"
+    is not "no job exists". Collapsing the two would make the message name the wrong cause and
+    send the reader to deploy something that is already there.
+    """
+    result = _run(tmp_path, [], subcommand="run", jobs="not json at all")
+    assert result.returncode != 0, result.stdout + result.stderr
+    message = result.stdout + result.stderr
+    assert "could not read" in message.lower(), message
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_a_cli_that_fails_the_lookup_dies_with_a_message_rather_than_bare(
+    tmp_path: Path,
+) -> None:
+    """The failure mode the guard itself introduced, and it is a shell one.
+
+    The lookup was written as `databricks jobs list ... | python -c ...`. This script runs
+    under `set -o pipefail`, so when the first half of that pipeline fails the whole command
+    substitution fails, and `set -e` then kills the script AT THE ASSIGNMENT - exit 1, no
+    output, at the one point in the script whose entire purpose is to say what went wrong.
+
+    A guard that fails silently is worse than the failure it guards, so the CLI call is its own
+    statement now and this is the test that says so.
+    """
+    result = _run(tmp_path, [], subcommand="run", extra_env={"SG_JOBS_FAIL": "1"})
+    assert result.returncode != 0, result.stdout + result.stderr
+    message = result.stdout + result.stderr
+    assert message.strip(), "the script died without saying anything, which is the defect"
+    assert "jobs list" in message, message
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+
+
+def test_run_full_refresh_is_guarded_too(tmp_path: Path) -> None:
+    """The other door into `step_run`, which is the one that spends most.
+
+    A full refresh re-reads the whole landing zone. Doing that against code from two commits
+    ago is the expensive version of the failure this guard exists for, so the dispatch is
+    checked rather than assumed to share the path.
+    """
+    result = _run(tmp_path, [], subcommand="run-full-refresh", jobs=_deployed_job("0" * 40))
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "bundle run samegold_close" not in _captured_calls(tmp_path)
+    # And it named the override for the subcommand actually being run, not for a different one.
+    assert "SAMEGOLD_RUN_STALE=1 scripts/databricks_run.sh run-full-refresh" in (
+        result.stdout + result.stderr
+    )
 
 
 def test_no_shell_script_leaks_an_assignment_into_a_later_function(tmp_path: Path) -> None:

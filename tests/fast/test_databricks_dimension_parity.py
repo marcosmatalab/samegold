@@ -417,9 +417,19 @@ def test_both_halves_of_the_comparison_describe_the_same_population(
         f"table. One of the two files is from a different run of the same update."
     )
     assert len(dimension) == captured_rows, (
-        f"the OSS lane computes {len(dimension)} versions over the population the record "
-        f"describes, and the capture holds {captured_rows}. That IS a parity difference, and "
-        f"the three tests below say where it is."
+        f"the OSS lane computes {len(dimension)} versions over the population whose event "
+        f"count matches the record, and the capture holds {captured_rows}. This assert cannot "
+        f"say which of two things that is, and the two call for opposite responses:\n"
+        f"  * AUTO CDC and the hand-written MERGE disagreeing over the same events, which is "
+        f"a parity difference and is what the three tests below would then locate;\n"
+        f"  * the record not describing a single run - `rows.bronze_events` is what chose "
+        f"the population above and `rows.dim_customer_scd2` is what the capture was "
+        f"checked against, and if those two counts came from different runs then the "
+        f"population above is not the one the capture was read from and nothing below is "
+        f"a parity result.\n"
+        f"Rule the second out first. It costs nothing, and it is the more expensive way "
+        f"round to be wrong: reading a population mismatch as parity is how the last one "
+        f"nearly got 'fixed' by writing the other lane's number in as the expected one."
     )
 
 
