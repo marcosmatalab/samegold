@@ -93,14 +93,18 @@ POPULATION_FACTS = {
         ],
     },
 }
-# The sections a record produced by the DEPLOYED notebook does not carry yet. A CLOSED LIST,
-# not a tolerance: `population` was added to `publish_evidence.py` in the same change as this
-# check, and `databricks bundle run` runs what was DEPLOYED - so until the lane is deployed and
-# the evidence task re-run, the committed record has no digest to compare against. Listing it
-# by name means the absence is a dated fact rather than a check that silently does not run, and
-# the run that lands the digest turns this test RED, which is what forces the set to be
-# emptied and the comparison below to become mandatory.
-SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET = {"population"}
+# The sections a record produced by the DEPLOYED notebook does not carry yet.
+#
+# CLOSED by the run from `ad936aa` on 4 September 2026, fetched in `65df0bc`. It held
+# `{"population"}` for one round: the digest was added to `publish_evidence.py` in `57e2a13`
+# and `databricks bundle run` runs what was DEPLOYED, so between that commit and the deploy
+# there was a window in which the committed record could not answer. Naming the window meant
+# the comparison below was conditional AND the condition was dated - the run that landed the
+# digest turned this test red, and emptying it is what made that comparison mandatory.
+#
+# Still declared, empty: a NEW section the notebook publishes but a deployment has not caught
+# up with fails here by name instead of quietly skipping a check.
+SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET: set[str] = set()
 # Captured from the workspace and COMMITTED, so its absence is a failure rather than a skip:
 # the row-by-row comparison is the one `gold_close.py` names as its reason for existing, and a
 # suite that quietly stops running it is how it came not to exist for nine rounds.
@@ -409,23 +413,26 @@ def test_the_capture_names_the_run_the_record_names(capture: dict, record: dict)
 def test_the_record_says_which_events_it_read_or_says_it_cannot_yet(record: dict) -> None:
     """The digest is only a tie once a deployed notebook has written one.
 
-    `population` was added to `publish_evidence.py` in the same change as the comparison that
-    reads it, and `databricks bundle run` runs what was DEPLOYED. So there is a window in which
-    the committed record cannot answer, and a check that quietly skips through that window is
-    how a comparison comes not to run for nine rounds.
+    `population` was added to `publish_evidence.py` in `57e2a13`, and `databricks bundle run`
+    runs what was DEPLOYED - so there was a window in which the committed record could not
+    answer, and a check that quietly skips through such a window is how a comparison comes not
+    to run for nine rounds.
 
-    The window is a CLOSED LIST instead. This test is red the moment a run from the fixed
-    notebook lands, and emptying the set is what that run requires - after which the
-    fingerprint comparison below stops being conditional.
+    The window was a CLOSED LIST instead: it held `{"population"}`, the run from `ad936aa`
+    turned this test red, and emptying it is what made the fingerprint comparison below
+    unconditional. The set stays declared and empty, so the next such window has to be named
+    the same way rather than absorbed into an `if`.
     """
     missing = {name for name in ("population",) if not record.get(name)}
     assert missing == SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET, (
         f"the record is missing {sorted(missing)} and this file expects "
-        f"{sorted(SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET)}. If the set got SMALLER, "
-        f"a run from a notebook that publishes the population digest has landed: empty this "
-        f"set, and the comparison in "
-        f"test_both_halves_of_the_comparison_describe_the_same_population stops being "
-        f"conditional on the record carrying one."
+        f"{sorted(SECTIONS_THE_DEPLOYED_NOTEBOOK_DOES_NOT_WRITE_YET)}.\n"
+        f"  BIGGER than expected: the committed record came from a deployment that predates a "
+        f"section this repository reads. Deploy and re-run the evidence task - do not add the "
+        f"name here to make it pass, which turns a stale deployment into a permanent "
+        f"exemption.\n"
+        f"  SMALLER than expected: a run has landed the section. Empty the set; that is what "
+        f"makes the check reading it unconditional."
     )
 
 
@@ -459,42 +466,47 @@ def test_both_halves_of_the_comparison_describe_the_same_population(
     # a list literal in the generator leaves every published number identical and gives thirty
     # customers a different history.
     published = (record.get("population") or [{}])[0]
-    if published:
-        ours = population_digest(bronze, str(published["columns"]).split(","))
-        assert ours.digest == published["digest"], (
-            f"the events this repository generates are not the events the record says the "
-            f"workspace read.\n"
-            f"  this repository: {ours.digest} over {ours.digest_rows} rows\n"
-            f"  the record:      {published['digest']} over {published['digest_rows']} rows\n"
-            f"This assert cannot say WHICH side moved, and the two are repaired differently:\n"
-            f"  * the generator moved under a committed record - a change to "
-            f"`samegold/generator/` that this record predates. Nothing below is a parity "
-            f"result, and the repair is to regenerate the evidence, not to touch a test;\n"
-            f"  * the workspace ingested something else - a volume re-seeded by hand, or a "
-            f"population `docs/databricks-run.md` does not describe. The repair is in the "
-            f"workspace.\n"
-            f"What it CAN say is that nothing further down this file is comparing two "
-            f"implementations over one population, whichever of those it is. Do not read the "
-            f"row-by-row failures below as a difference between AUTO CDC and the MERGE: they "
-            f"are what a moved population looks like from there."
-        )
-        assert ours.digest_rows == published["digest_rows"], (
-            ours.digest_rows,
-            published["digest_rows"],
-        )
-        # The domain, checked rather than trusted: what the digest leaves out has to be the
-        # three corrupt lines and not a hole that grew.
-        assert ours.rows_outside_the_digest == published["rows_outside_the_digest"], (
-            f"the two halves put a different number of rows outside the digest "
-            f"({ours.rows_outside_the_digest} here, {published['rows_outside_the_digest']} "
-            f"there), so they are hashing different domains and the digests above agreed by "
-            f"accident of arithmetic."
-        )
-        assert ours.digest_rows + ours.rows_outside_the_digest == rows_in_record(record), (
-            f"{ours.digest_rows} + {ours.rows_outside_the_digest} does not reach the "
-            f"record's own `rows.bronze_events` ({rows_in_record(record)}). The domain is "
-            f"not covering the table."
-        )
+    assert published, (
+        "the record carries no `population` section, so the events behind it cannot be "
+        "reproduced and nothing below is a parity result. This stopped being conditional when "
+        "the run from `ad936aa` landed one; if a later record has none, it came from a "
+        "deployment older than that."
+    )
+    ours = population_digest(bronze, str(published["columns"]).split(","))
+    assert ours.digest == published["digest"], (
+        f"the events this repository generates are not the events the record says the "
+        f"workspace read.\n"
+        f"  this repository: {ours.digest} over {ours.digest_rows} rows\n"
+        f"  the record:      {published['digest']} over {published['digest_rows']} rows\n"
+        f"This assert cannot say WHICH side moved, and the two are repaired differently:\n"
+        f"  * the generator moved under a committed record - a change to "
+        f"`samegold/generator/` that this record predates. Nothing below is a parity "
+        f"result, and the repair is to regenerate the evidence, not to touch a test;\n"
+        f"  * the workspace ingested something else - a volume re-seeded by hand, or a "
+        f"population `docs/databricks-run.md` does not describe. The repair is in the "
+        f"workspace.\n"
+        f"What it CAN say is that nothing further down this file is comparing two "
+        f"implementations over one population, whichever of those it is. Do not read the "
+        f"row-by-row failures below as a difference between AUTO CDC and the MERGE: they "
+        f"are what a moved population looks like from there."
+    )
+    assert ours.digest_rows == published["digest_rows"], (
+        ours.digest_rows,
+        published["digest_rows"],
+    )
+    # The domain, checked rather than trusted: what the digest leaves out has to be the three
+    # corrupt lines and not a hole that grew.
+    assert ours.rows_outside_the_digest == published["rows_outside_the_digest"], (
+        f"the two halves put a different number of rows outside the digest "
+        f"({ours.rows_outside_the_digest} here, {published['rows_outside_the_digest']} "
+        f"there), so they are hashing different domains and the digests above agreed by "
+        f"accident of arithmetic."
+    )
+    assert ours.digest_rows + ours.rows_outside_the_digest == rows_in_record(record), (
+        f"{ours.digest_rows} + {ours.rows_outside_the_digest} does not reach the record's "
+        f"own `rows.bronze_events` ({rows_in_record(record)}). The domain is not covering "
+        f"the table."
+    )
 
     rows = (record.get("rows") or {}).get("bronze_events")
     assert ingested == rows, (

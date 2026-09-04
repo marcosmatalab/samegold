@@ -877,12 +877,16 @@ def test_the_money_columns_are_declared_as_integers() -> None:
 # found in its own linting, its own mutation campaign and its own preflight; here it is again,
 # in the test written to catch the class.
 #
-# `publish_evidence.py` converts both now. The notebook that wrote these two files was deployed
-# from `4d13a13`, before that conversion, and `databricks bundle run` runs what was deployed.
-STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE = {
-    "SG-DBX-01.json:deploy.tree_dirty",
-    "dim_customer_scd2.json:provenance.tree_dirty",
-}
+# `publish_evidence.py` has converted both since `8c9faa7`, and for a while the committed files
+# still carried the strings: the notebook that wrote them was deployed from `4d13a13`, before
+# the conversion, and `databricks bundle run` runs what was DEPLOYED. That gap is the reason
+# this list existed, and it is why the entries were named rather than tolerated - a run from
+# the fixed notebook had to turn this test red, and it did.
+# CLOSED by the run from `ad936aa` on 4 September 2026, fetched in `65df0bc`: both files now
+# carry a real `false`. The set is empty and stays declared, because an empty closed list is a
+# stronger statement than no list - it says the exception was retired rather than forgotten,
+# and a NEW string boolean fails against `set()` immediately.
+STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE: set[str] = set()
 
 
 def test_a_boolean_in_the_record_is_a_boolean() -> None:
