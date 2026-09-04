@@ -26,6 +26,11 @@ import pytest
 import yaml
 
 from samegold.evidence.databricks_doc import scalars_from
+from samegold.generator.late import (
+    BRONZE_DIGEST_BIGINT_COLUMNS,
+    BRONZE_DIGEST_COLUMNS,
+    BRONZE_DIGEST_REQUIRED_COLUMNS,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 LANE = REPO / "databricks"
@@ -36,6 +41,11 @@ RESOURCES = {
 }
 RUN_DOC = REPO / "docs" / "databricks-run.md"
 RECORD = REPO / "evidence" / "databricks" / "SG-DBX-01.json"
+# The row-level capture the same task writes. Beside RECORD rather than beside the test
+# that reads it, because tests/fast/test_architecture.py attributes a module constant to
+# whichever test body precedes it - and a path into evidence/ decides whether a test has to
+# carry the evidence_dependent marker.
+CAPTURE = REPO / "evidence" / "databricks" / "dim_customer_scd2.json"
 
 
 def _merged() -> dict[str, Any]:
@@ -777,6 +787,76 @@ def test_the_auto_loader_hints_are_the_declared_bronze_schema() -> None:
     )
 
 
+def _digest_statement() -> str:
+    """The one statement in the notebook that computes the population fingerprint."""
+    source = (LANE / "src" / "publish_evidence.py").read_text(encoding="utf-8")
+    start = source.index("population = _read(")
+    return source[start : source.index('"""),', start)]
+
+
+def test_the_digest_projection_is_the_declared_bronze_schema() -> None:
+    """The order is part of what is hashed, so it has one definition and three spellings.
+
+    `BRONZE_DIGEST_COLUMNS` renders the OSS half, the `coalesce(CAST(...))` list renders the
+    workspace's, and the `columns` literal is what a reader of the record is told was hashed.
+    Any two of those drifting produces a digest mismatch that looks like a moved population -
+    the failure this fingerprint exists to make legible, arriving with the wrong explanation
+    attached.
+
+    So all three are tied to `samegold.pipelines.schema.bronze_schema`, minus `_rescued_data`,
+    which is Auto Loader's own column and has no counterpart on the OSS side.
+    """
+    declared = [name for name in _declared_bronze_types() if name != "_rescued_data"]
+    assert list(BRONZE_DIGEST_COLUMNS) == declared, (
+        f"BRONZE_DIGEST_COLUMNS is {list(BRONZE_DIGEST_COLUMNS)} and the declared bronze "
+        f"schema is {declared}. A column in the table and not in the projection is a column "
+        f"the fingerprint is blind to."
+    )
+
+    statement = _digest_statement()
+    rendered = re.findall(r"coalesce\(CAST\((\w+) AS STRING\), ''\)", statement)
+    assert rendered == declared, (
+        f"the notebook hashes {rendered} and the declared schema is {declared}. The order is "
+        f"part of the digest, so this is not cosmetic."
+    )
+
+    published = re.findall(r"'((?:\w+,){5,}\w+)'", statement)
+    assert len(published) == 1, f"expected one column list literal, found {published}"
+    assert published[0].split(",") == declared, (
+        f"the notebook TELLS a reader it hashed {published[0]} and it hashed "
+        f"{','.join(rendered)}. The OSS half renders whatever the record says, so this is the "
+        f"spelling that would silently make the two hash different things."
+    )
+
+
+def test_the_columns_the_digest_clamps_are_the_declared_bigints() -> None:
+    """The BIGINT range is a property of the TABLE, and this is where the two agree on which.
+
+    The generator emits 9223372036854775808 for two events - one past the top of a BIGINT - so
+    the workspace holds NULL and Python holds an integer. The OSS renderer applies the range to
+    the columns declared BIGINT; declare a fourth one and forget this tuple, and the two halves
+    disagree on exactly the rows nobody looks at.
+    """
+    declared = {name for name, sql_type in _declared_bronze_types().items() if sql_type == "BIGINT"}
+    assert set(BRONZE_DIGEST_BIGINT_COLUMNS) == declared, (
+        f"the digest clamps {sorted(BRONZE_DIGEST_BIGINT_COLUMNS)} and the schema declares "
+        f"{sorted(declared)} as BIGINT"
+    )
+
+
+def test_the_domain_the_digest_covers_is_columns_the_schema_declares() -> None:
+    """A domain over a column the table does not have would exclude every row, silently."""
+    declared = set(_declared_bronze_types())
+    missing = sorted(set(BRONZE_DIGEST_REQUIRED_COLUMNS) - declared)
+    assert not missing, missing
+    statement = _digest_statement()
+    for column in BRONZE_DIGEST_REQUIRED_COLUMNS:
+        assert f"{column} IS NULL" in statement, (
+            f"the OSS half requires {column} to be present and the notebook's domain does "
+            f"not mention it, so the two are hashing different sets of rows"
+        )
+
+
 def test_the_money_columns_are_declared_as_integers() -> None:
     """The thesis of the repository, asserted where it can be violated silently.
 
@@ -789,9 +869,20 @@ def test_the_money_columns_are_declared_as_integers() -> None:
         assert types[column] == "BIGINT", f"{column} is {types[column]}, not BIGINT"
 
 
-# The record's remaining string boolean, by name. `publish_evidence.py` converts it now; the
-# deployed notebook that wrote this record does not, because it was deployed before the fix.
-STILL_STRINGS_IN_THE_COMMITTED_RECORD = {"deploy.tree_dirty"}
+# The remaining string booleans in the committed evidence, by name and BY FILE.
+#
+# It used to be a set of paths in the record alone, and the capture beside it was not walked at
+# all - so `dim_customer_scd2.json`'s own `provenance.tree_dirty` carried the same `"false"`
+# and nothing said so. One file covered out of two is the scope defect this repository has
+# found in its own linting, its own mutation campaign and its own preflight; here it is again,
+# in the test written to catch the class.
+#
+# `publish_evidence.py` converts both now. The notebook that wrote these two files was deployed
+# from `4d13a13`, before that conversion, and `databricks bundle run` runs what was deployed.
+STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE = {
+    "SG-DBX-01.json:deploy.tree_dirty",
+    "dim_customer_scd2.json:provenance.tree_dirty",
+}
 
 
 def test_a_boolean_in_the_record_is_a_boolean() -> None:
@@ -813,7 +904,6 @@ def test_a_boolean_in_the_record_is_a_boolean() -> None:
     """
     if not RECORD.exists():
         pytest.skip("the lane has not been deployed yet")
-    record = json.loads(RECORD.read_text(encoding="utf-8"))
 
     def walk(node: Any, path: str = "") -> list[tuple[str, Any]]:
         found: list[tuple[str, Any]] = []
@@ -827,9 +917,14 @@ def test_a_boolean_in_the_record_is_a_boolean() -> None:
             found.append((path, node))
         return found
 
+    # BOTH files the run publishes. The capture is not a lesser document: it is the one the
+    # row-by-row comparison reads, and its header is what says the rows were measured in a
+    # workspace rather than typed.
     wrong = {
-        path
-        for path, value in walk(record)
+        f"{document.name}:{path}"
+        for document in (RECORD, CAPTURE)
+        if document.exists()
+        for path, value in walk(json.loads(document.read_text(encoding="utf-8")))
         if isinstance(value, str) and value.lower() in {"true", "false"}
     }
     # A CLOSED LIST, not a tolerance. The record committed here was produced by a notebook
@@ -837,9 +932,9 @@ def test_a_boolean_in_the_record_is_a_boolean() -> None:
     # what was deployed - so it still carries the one field. Listing it by name means two
     # things: a NEW string boolean fails immediately, and the next run from a deployed fix
     # fails too, because this set will no longer match. Emptying it is what that run requires.
-    assert wrong == STILL_STRINGS_IN_THE_COMMITTED_RECORD, (
-        f"string booleans in the record: {sorted(wrong)}, expected "
-        f"{sorted(STILL_STRINGS_IN_THE_COMMITTED_RECORD)}. A field that carries a boolean as a "
+    assert wrong == STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE, (
+        f"string booleans in the committed evidence: {sorted(wrong)}, expected "
+        f"{sorted(STILL_STRINGS_IN_THE_COMMITTED_EVIDENCE)}. A field that carries a boolean as a "
         f"string is truthy either way; convert at the source, not at each reader. If this "
         f"failure says the set got SMALLER, a run from the fixed notebook has landed and the "
         f"list above should be emptied."
