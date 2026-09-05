@@ -35,6 +35,46 @@ whose only property is that every link is verifiable. The claim id says so too -
   commit it deployed from, whether that tree was dirty, the CLI version and the timestamp.
   Kept in a separate file on purpose. Nothing a laptop asserts about a deploy belongs in the
   file the workspace produced.
+- `SG-DBX-01.<label>.json`, if any - a run kept beside the canonical record rather than over
+  it. See the section below for which runs those are and why they are not interchangeable.
+
+## Which record is canonical, and which runs may replace it
+
+`SG-DBX-01.json` is **the** record: every `<!--dbx:...-->` anchor in every document in this
+repository is rendered from it, and `tests/fast/test_databricks_dimension_parity.py` and
+`tests/fast/test_databricks_close_parity.py` compare the OSS lane against it. There is one of
+it, and a fetch overwrites it.
+
+So not every run may replace it, and the rule is a rule rather than a judgement someone makes
+again each time:
+
+**A run replaces `SG-DBX-01.json` only if its record can answer every anchor the documents
+require.** `tests/fast/test_databricks_bundle.py::test_the_committed_record_answers_every_anchor_the_documents_require`
+is that sentence as a check, so committing the wrong record fails rather than being noticed.
+
+Two runs that cannot, and they are not hypothetical - they are the next two:
+
+- **a run that ingests nothing.** The lane starts with the landing volume already ingested, the
+  update processes no rows, and no `flow_progress` event carrying data quality is produced: the
+  record's `expectations` comes back empty. Rendering from it would replace a measured table
+  with `NOT RUN`, which is a regression whose diff reads like an update.
+- **a run that failed on purpose.** The record of a deliberately failed verification is worth
+  keeping - it is the evidence that `run_if: ALL_DONE` keeps the evidence alive through a
+  failure, and that the record names the hole instead of publishing zeros. It is exactly not the
+  description of the lane that the documents should render from.
+
+Both are kept, neither replaces anything:
+
+    scripts/databricks_run.sh fetch run-1
+    scripts/databricks_run.sh fetch run-2-failed
+
+writes `SG-DBX-01.<label>.json` beside the canonical record, with its own capture and its own
+`fetch.<label>.json`, and leaves `SG-DBX-01.json` alone. Nothing renders or compares a labelled
+record; what it is for is being read, and being cited by run id in
+`docs/predictions-2026-09-05.md` when the prediction is scored. A labelled record that cannot
+name its own job run is refused by
+`tests/fast/test_databricks_bundle.py::test_a_record_kept_beside_the_canonical_one_can_still_name_its_run`
+- the reason to keep one at all is that it describes a run somebody can look up.
 
 ## Why the capture carries a header
 

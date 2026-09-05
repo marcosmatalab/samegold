@@ -80,6 +80,7 @@ This is the weakest section of the project and the honest reason is money, not e
 | a consumption layer someone actually reads | `samegold report`: one self-contained HTML page with every version of the close and what moved after signature | `tests/fast/test_serve.py` |
 | an incident written up like an incident | `docs/postmortem-2026-03-06.md`, with the numbers taken from SG-04 | SG-04 |
 | "Use system tables for observability over resource utilization, cost, auditing and workload" | **not available on Free Edition** (no account console, no metastore-admin role) | `docs/limits.md` |
+| job health rules and task notifications | **declared nowhere, deliberately.** A `health:` rule pairs a metric threshold with a notification and notifying is all it does; this account has no destination, so the rule fires into nothing - or into a personal email address in a public repository. A construct whose only effect is an announcement nobody receives is decoration, and the thing it would have watched is bounded by `timeout_seconds` on the job and on every task, which kills a stuck run instead of announcing it. The reasoning is written out in `docs/databricks-run.md` | `databricks/resources/jobs.yml` |
 
 ## 6. Cost and performance optimisation (13%)
 

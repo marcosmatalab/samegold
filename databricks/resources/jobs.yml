@@ -14,8 +14,40 @@ resources:
         # midnight. The schedule is DECLARED so the shape of the close is in the bundle;
         # `databricks bundle run samegold_close -t free` is how it is actually started.
         pause_status: PAUSED
-      # Five concurrent job tasks per account is the Free Edition ceiling. This job has three,
-      # and they are a chain, so one runs at a time.
+      # The switch that produces a real failed task, and the only reason it exists is that a
+      # repair run cannot be demonstrated without one. It defaults to the empty string, so a
+      # failure takes a deliberate `--params fail_task=verify_month:2026-02` at launch, and
+      # tests/fast/test_databricks_bundle.py asserts that default and that every notebook task
+      # is handed it.
+      #
+      # The alternative was to break the code and redeploy. `require_fresh_deployment` refuses
+      # to run a deployment that is not HEAD, so that means COMMITTING the break - and every
+      # record the run produced would then carry the sha of a tree containing a deliberate bug
+      # as its provenance. A parameter keeps the deployed code honest.
+      parameters:
+        - name: fail_task
+          default: ""
+      # A CEILING ON THE WHOLE RUN, and the thing it protects is the daily compute quota: on
+      # Free Edition, overrunning it stops every lane on the account until midnight. This is
+      # deliberately not an estimate. The lane's measured work is about two minutes of pipeline
+      # plus a handful of short notebook tasks; thirty minutes is roughly ten times that, so it
+      # cannot fire on a slow day and does fire on a stuck one.
+      #
+      # docs/limits.md used to say a job timeout was "deliberately NOT set here because no
+      # successful run exists yet to size it from". Successful runs exist now, so the sentence
+      # and the omission both go.
+      #
+      # AND NOT A `health:` RULE, which is the other way to bound a run and was considered and
+      # refused. A health rule pairs a threshold with a NOTIFICATION and notifying is all it
+      # does; this account has no destination, so it would fire into nothing or into a personal
+      # email address in a public repository. A timeout acts. `docs/databricks-run.md` and
+      # `EXAM_MAP.md` carry the argument where a reader who never opens this file will find it.
+      timeout_seconds: 1800
+      # Five concurrent job tasks per account is the Free Edition ceiling. This job now has six
+      # tasks plus a for_each body, and it is still a CHAIN: the two branches are mutually
+      # exclusive, and the for_each runs its iterations one at a time (see `concurrency` below),
+      # so at most one task of this job is ever running. Four below the ceiling, and the number
+      # that would move it is the for_each concurrency.
       max_concurrent_runs: 1
       tasks:
         - task_key: ingest_and_transform
@@ -27,10 +59,23 @@ resources:
           # databricks.yml; an earlier version of this comment said the reference exposed
           # none, which was wrong and is the kind of wrong that stops people looking.
           max_retries: 0
+          # Ten minutes against a MEASURED update of 115 seconds (08:41:54 to 08:43:49 on
+          # 4 September 2026, from `update` in the record). Five times the measurement, and
+          # chosen against the incident rather than round: one launch once produced six failed
+          # updates over fourteen minutes, and this would have ended that at ten. The retry
+          # loop itself is supposed to be off now, and this is what bounds it if it is not.
+          timeout_seconds: 600
           pipeline_task:
             pipeline_id: ${resources.pipelines.samegold_pipeline.id}
         - task_key: close_month
           max_retries: 0
+          # No per-task duration has been measured for any notebook in this lane, so this is a
+          # CEILING and not an estimate, and saying which it is matters more than the number: a
+          # serverless cold start alone can be one to two minutes, so a tight bound would kill
+          # a healthy run. Ten minutes for a task that runs two statements is a hang detector.
+          # The run this round is about will produce per-task durations; that is when these get
+          # tightened, and until then they are honest about being loose.
+          timeout_seconds: 600
           depends_on:
             - task_key: ingest_and_transform
           notebook_task:
@@ -43,10 +88,124 @@ resources:
               # run: point the bundle at another catalog and the close would have been written
               # into a catalog named "samegold" that the deploy never created.
               catalog: ${var.catalog}
-        - task_key: publish_evidence
-          max_retries: 0
+              fail_task: "{{job.parameters.fail_task}}"
+
+        # ---------------------------------------------------------------- the decision
+        #
+        # A close either appends a version or decides not to, and the two need DIFFERENT work
+        # afterwards - which is the only reason this task exists. `close_month` publishes
+        # `versions_written`, and it is read here.
+        #
+        # The alternative considered and rejected: no condition at all, and let the for_each
+        # below iterate an empty list. That runs zero iterations and succeeds, so a close that
+        # decided not to restate would produce exactly nothing - and "nothing changed" and
+        # "nothing ran" would arrive as the same evidence, which is the failure this whole
+        # repository is written against. The false branch is a check, not an absence.
+        - task_key: did_the_close_restate
           depends_on:
             - task_key: close_month
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.close_month.values.versions_written}}"
+            right: "0"
+
+        # ---------------------------------------------------------------- the true branch
+        #
+        # One task per restated month, over a list whose length is set by the DATA: the input
+        # is the task value `close_month` published, not a list maintained here. Two months
+        # today; a close that restates five would run five iterations with nothing edited.
+        #
+        # WHY NOT ONE TASK WITH A GROUP BY, which is cheaper and was the first design:
+        #   * a single task gives one verdict for every month at once, so a failure says "the
+        #     close is wrong" without saying which month - and this lane's whole subject is
+        #     that a month moves INDEPENDENTLY of its neighbours;
+        #   * a failed month can be re-run alone with `jobs repair-run --rerun-tasks`, and
+        #     the months that passed are not spent again. On an account with a daily compute
+        #     quota that is the difference between repairing and re-running.
+        # The cost is one task run per month, which is what makes the concurrency below a
+        # decision rather than a default.
+        - task_key: verify_each_restated_month
+          depends_on:
+            - task_key: did_the_close_restate
+              outcome: "true"
+          for_each_task:
+            inputs: "{{tasks.close_month.values.months_written}}"
+            # ONE AT A TIME, and the binding constraint is not the five-task account ceiling -
+            # it is the daily compute quota. On serverless each iteration is its own
+            # allocation, so two in parallel means two cold starts, and a cold start is the
+            # expensive part of an iteration that runs one SELECT. Wall clock is not the scarce
+            # thing on this account; compute is.
+            #
+            # This is a CAP and not a count: the input's length is data-driven, so a close over
+            # twelve months queues twelve iterations behind this same 1. If the month count
+            # ever makes that wait matter, this is the line to change, and the ceiling it must
+            # stay under is five.
+            concurrency: 1
+            task:
+              task_key: verify_month
+              max_retries: 0
+              timeout_seconds: 600
+              notebook_task:
+                notebook_path: ../src/verify_month.py
+                base_parameters:
+                  catalog: ${var.catalog}
+                  # The iteration's own input. This is the value that makes the cardinality
+                  # data-driven, and the notebook checks its shape rather than trusting it.
+                  accounting_month: "{{input}}"
+                  job_run_id: "{{job.run_id}}"
+                  task_run_id: "{{task.run_id}}"
+                  fail_task: "{{job.parameters.fail_task}}"
+
+        # ---------------------------------------------------------------- the false branch
+        #
+        # A close that wrote nothing is claiming that no eligible month has moved. That claim
+        # is checkable and nothing checked it, and it is the more dangerous of the two: a wrong
+        # restatement leaves a version somebody can compare, a MISSING one leaves nothing.
+        #
+        # Not a for_each, deliberately, and the contrast is the argument: this claim is an
+        # aggregate over every eligible month with one answer, so per-month tasks would give a
+        # task per month whose combined verdict is the same boolean - nothing isolated, nothing
+        # separately repairable, which is decoration.
+        - task_key: verify_no_restatement
+          depends_on:
+            - task_key: did_the_close_restate
+              outcome: "false"
+          max_retries: 0
+          timeout_seconds: 600
+          notebook_task:
+            notebook_path: ../src/verify_no_restatement.py
+            base_parameters:
+              catalog: ${var.catalog}
+              # The close's own eligibility boundary, as a month string. Passing the close
+              # INSTANT instead would put a timestamp this task has to parse and interpolate
+              # into SQL; the month is compared as a string and has nothing to escape.
+              as_of_month: "{{tasks.close_month.values.as_of_month}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              fail_task: "{{job.parameters.fail_task}}"
+
+        # ---------------------------------------------------------------- the evidence
+        - task_key: publish_evidence
+          max_retries: 0
+          timeout_seconds: 900
+          depends_on:
+            - task_key: verify_each_restated_month
+            - task_key: verify_no_restatement
+          # ALL_DONE, and this is the honest use rather than a way to make a red run look
+          # green. Two reasons, and the first is structural:
+          #
+          #   * one of the two branches above is ALWAYS skipped, because they are the two
+          #     outcomes of one condition. Under the default ALL_SUCCESS this task would never
+          #     run at all - a skipped dependency is not a successful one.
+          #   * a failure upstream must not leave the evidence silent. Today, if `close_month`
+          #     fails, no record is written and the run leaves NOTHING behind: the lane whose
+          #     entire subject is that a green tick must mean something would have no evidence
+          #     for its worst outcome. `_read` already records unreadable sections by name in
+          #     `incomplete`, so a record written after a failure says which parts are holes.
+          #
+          # It does NOT make the run green: the job's own state is failed if a task failed.
+          # This decides what is recorded, not what is reported.
+          run_if: ALL_DONE
           notebook_task:
             notebook_path: ../src/publish_evidence.py
             base_parameters:
@@ -64,8 +223,28 @@ resources:
               # reference here becomes visible instead of becoming a plausible-looking blank.
               job_run_id: "{{job.run_id}}"
               task_run_id: "{{task.run_id}}"
+              # What the close DECIDED, carried into the record. The same pass-through rule is
+              # what makes this safe under ALL_DONE: if `close_month` failed, it published no
+              # task values, and these arrive as their own literal text - which the notebook
+              # recognises and records as unresolved rather than as data.
+              close_decision: "{{tasks.close_month.values.decision}}"
+              close_months_written: "{{tasks.close_month.values.months_written}}"
+              close_versions_written: "{{tasks.close_month.values.versions_written}}"
+              # WHAT EACH UPSTREAM TASK DID, which no task value can say.
+              #
+              # A task value that does not resolve reports a task that never published one -
+              # which catches a failed `close_month` and nothing else. When a VERIFICATION
+              # fails, the close succeeded, every value above resolves, and the only trace left
+              # is a `close_verification` table with no rows for this run. `result_state` is
+              # the reference that can say so; `excluded` is what the skipped branch reports,
+              # and the notebook records these without ever letting one silence a hole it
+              # derived from the branch.
+              state_close_month: "{{tasks.close_month.result_state}}"
+              state_verify_each_restated_month: "{{tasks.verify_each_restated_month.result_state}}"
+              state_verify_no_restatement: "{{tasks.verify_no_restatement.result_state}}"
               # Passed through the deploy rather than written afterwards by whoever fetched
               # the files. This is what lets the record - and the row-level capture the same
               # task writes - name the code that produced them, from inside the run.
               deploy_commit: ${var.deploy_commit}
               deploy_tree_dirty: ${var.deploy_tree_dirty}
+              fail_task: "{{job.parameters.fail_task}}"

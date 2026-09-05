@@ -123,15 +123,43 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def cmd_generate_late(args: argparse.Namespace) -> int:
-    from samegold.generator.late import describe, late_arrivals
+    """Write the batches of the LAST `--late-seed`, with the earlier ones already delivered.
 
-    result = late_arrivals(
-        Path(args.out),
-        base_seed=args.seed,
-        late_seed=args.late_seed,
-        profile=PROFILES[args.profile],
-    )
+    `--late-seed` is repeatable because a third close needs a second late arrival, and the
+    second one has to be filtered against the base AND the first: an event the first arrival
+    already delivered is not late, it is a re-delivery, which is a different claim.
+
+    What lands in `--out` is one arrival - the last - because that is what gets uploaded to the
+    landing volume. The volume already holds every earlier one, and uploading them again is at
+    best a no-op and at worst the collision this arrival's prefix exists to avoid.
+    """
+    import shutil
+    import tempfile
+
+    from samegold.generator.late import describe, late_arrivals, population_for
+
+    late_seeds = list(args.late_seed)
+    work = Path(tempfile.mkdtemp(prefix="samegold-arrivals-"))
+    try:
+        already = population_for(
+            work,
+            base_seed=args.seed,
+            late_seeds=late_seeds[:-1],
+            profile=PROFILES[args.profile],
+        )
+        result = late_arrivals(
+            Path(args.out),
+            base_seed=args.seed,
+            late_seed=late_seeds[-1],
+            profile=PROFILES[args.profile],
+            base_bronze=already,
+            arrival=len(late_seeds),
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     print(describe(result))
+    if len(late_seeds) > 1:
+        print(f"arrival {len(late_seeds)}, after {late_seeds[:-1]}")
     print(f"under {Path(args.out) / 'bronze'}")
     return 0
 
@@ -468,7 +496,9 @@ def build_parser() -> argparse.ArgumentParser:
     late.add_argument("--out", required=True)
     late.add_argument("--profile", choices=sorted(PROFILES), default="fast")
     late.add_argument("--seed", type=int, required=True, help="the base population's seed")
-    late.add_argument("--late-seed", type=int, required=True)
+    # Repeatable, in arrival order: one seed is the second close's population, two is the
+    # third's. The batches written are the LAST seed's, filtered against every seed before it.
+    late.add_argument("--late-seed", type=int, required=True, action="append")
     late.set_defaults(func=cmd_generate_late)
 
     ev = sub.add_parser("evidence", help="run the claims and append evidence records")
