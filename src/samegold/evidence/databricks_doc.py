@@ -61,8 +61,15 @@ def scalars_from(record: dict[str, Any]) -> dict[str, Any]:
             out["orch.months_written"] = len(months)
     # The per-month verdicts, as two counts. The rows themselves are a table, and a table
     # belongs in a pasted block rather than in a scalar anchor.
+    #
+    # OFFERED ONLY IF THE RECORD SHOWS THE VERIFICATION ACTUALLY REPORTED, which is the whole
+    # of `_verification_reported` below. Zero rows is the shape a run leaves behind when the
+    # verification task FAILED - it wrote none - and rendering that as "0 checks run, 0 failed"
+    # puts a clean-looking pair of figures on a page about a run whose verification never
+    # executed. A document that cannot answer says NOT RUN, which is what withholding the name
+    # here produces.
     verification = record.get("close_verification")
-    if isinstance(verification, list):
+    if isinstance(verification, list) and _verification_reported(record):
         out["orch.checks_run"] = len(verification)
         out["orch.checks_failed"] = sum(1 for row in verification if not row.get("ok"))
     # Keyed by the record's own accounting_month rather than by position: a run over different
@@ -75,6 +82,34 @@ def scalars_from(record: dict[str, Any]) -> dict[str, Any]:
         out[f"revenue.{month}.gross_cents"] = row.get("gross_cents")
         out[f"revenue.{month}.line_count"] = row.get("line_count")
     return {name: value for name, value in out.items() if value is not None}
+
+
+def _verification_reported(record: dict[str, Any]) -> bool:
+    """Whether the record POSITIVELY shows the branch's verification wrote what it owed.
+
+    Three states, not two, and the middle one is the reason this function exists:
+
+      * the record says what the branch owed and that none of it is missing - the only case
+        that may be quoted;
+      * the record says something is missing, or names the hole in `incomplete`. Refused;
+      * the record does not say at all. Also refused, and that is not pedantry: a run whose
+        `verify_no_restatement` failed publishes a `close_verification` with no rows in it and
+        is otherwise indistinguishable from a healthy run, so "the record did not mention a
+        problem" is exactly the sentence that must not count as evidence there. A record
+        produced before `publish_evidence.py` derived this carries no such fields either, and
+        it has no more standing to be quoted than the failed run has.
+    """
+    orchestration = record.get("orchestration")
+    if not (isinstance(orchestration, list) and orchestration):
+        return False
+    job = orchestration[0]
+    if not isinstance(job, dict):
+        return False
+    if job.get("missing_checks") != [] or not isinstance(job.get("expected_checks"), list):
+        return False
+    if not job["expected_checks"]:
+        return False
+    return str(job.get("branch")) not in {str(name) for name in record.get("incomplete") or []}
 
 
 def _table(rows: list[dict[str, Any]], columns: list[str], headings: list[str]) -> str:

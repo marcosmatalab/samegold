@@ -26,7 +26,7 @@ from typing import Any
 import pytest
 import yaml
 
-from samegold.evidence.databricks_doc import scalars_from
+from samegold.evidence.databricks_doc import NOT_RUN, scalars_from, tables_from
 from samegold.generator.late import (
     BRONZE_DIGEST_BIGINT_COLUMNS,
     BRONZE_DIGEST_COLUMNS,
@@ -636,6 +636,159 @@ def test_the_verification_table_is_declared_the_same_way_in_both_places() -> Non
     )
 
 
+# ------------------------------------- the verification that did not run, and left no trace
+#
+# `run_if: ALL_DONE` is what makes the record survive a failure, and it is also what lets a
+# failure through unremarked. `unresolved_task_values` sees a failed `close_month`: no task
+# values were published, the references arrive as their own text. It cannot see a failed
+# VERIFICATION - the close succeeded, every value resolves, and the only difference between
+# that record and a healthy one is a `close_verification` section with no rows in it.
+#
+# Zero rows reads as "every check passed". These are the checks that make it read as a hole.
+
+# The `check_name` literals each verification notebook actually SELECTs. A `SELECT '<name>'` is
+# how every one of them is written; the record's own catalogue is compared against this rather
+# than against a list restated here, so the comparison cannot be satisfied by editing the test.
+CHECK_NAME = re.compile(r"SELECT\s+'([a-z][a-z0-9_]*)'")
+
+
+def _check_names(file_name: str) -> set[str]:
+    return set(CHECK_NAME.findall((LANE / "src" / file_name).read_text(encoding="utf-8")))
+
+
+def _lane_definitions(file_name: str, *names: str) -> dict[str, Any]:
+    """Evaluate named module-level definitions out of a lane notebook, and nothing else.
+
+    These notebooks cannot be imported: `spark` and `dbutils` are injected by a runtime that
+    does not exist here. The alternative to lifting the definition out is to restate it in the
+    test, which tests the restatement - the defect this repository has already found in a
+    document, in a fixture and in a spark harness. So the PURE definitions are executed by
+    name, the way `tests/spark/test_databricks_lane_parses.py` executes the SQL out of the same
+    files, and a name that is not there raises rather than leaving the test with nothing to do.
+    """
+    path = LANE / "src" / file_name
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    wanted = list(names)
+    body: list[ast.stmt] = []
+    found: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in wanted:
+            body.append(node)
+            found.append(node.name)
+        elif (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id in wanted
+        ):
+            body.append(node)
+            found.append(node.targets[0].id)
+    missing = [name for name in wanted if name not in found]
+    assert not missing, f"{file_name} no longer defines {missing} at module level"
+    namespace: dict[str, Any] = {}
+    exec(compile(ast.Module(body=body, type_ignores=[]), str(path), "exec"), namespace)
+    return namespace
+
+
+def test_the_checks_the_record_expects_are_the_checks_the_lane_writes() -> None:
+    """One fact in two files, held together by the only thing that can hold it.
+
+    `publish_evidence.py` names what each branch owes so that an absence is derivable. That is
+    a second copy of what the two verify notebooks SELECT, and a second copy nothing compares
+    is how the two come to disagree: add a sixth check to `verify_month.py` and the record
+    would go on treating five as the whole debt, which is the guard reporting the scope of its
+    own list.
+    """
+    catalogue = _lane_definitions("publish_evidence.py", "CHECKS_BY_BRANCH")["CHECKS_BY_BRANCH"]
+    written = {
+        "verify_each_restated_month": _check_names("verify_month.py"),
+        "verify_no_restatement": _check_names("verify_no_restatement.py"),
+    }
+    assert {branch: sorted(names) for branch, names in catalogue.items()} == {
+        branch: sorted(names) for branch, names in written.items()
+    }, (
+        f"publish_evidence.py expects {catalogue} and the notebooks write {written}. The record "
+        f"derives a missing verification from the first; a check the second writes and the "
+        f"first does not name is a check whose absence nothing would notice."
+    )
+
+
+def test_a_verification_that_wrote_nothing_is_a_hole_and_not_a_clean_report() -> None:
+    """The defect, at the function that closes it, in the four shapes a run can take.
+
+    The middle two are the ones that matter. A `verify_no_restatement` that fails writes no
+    rows, and every other field of the record is what a healthy run produces; a for_each whose
+    second month fails leaves the FIRST month's five rows in place, so a check on check names
+    alone would find all five names present and call the run complete.
+    """
+    holes = _lane_definitions("publish_evidence.py", "CHECKS_BY_BRANCH", "_verification_holes")[
+        "_verification_holes"
+    ]
+    no_op_rows = [
+        {"check_name": "every_eligible_month_has_a_version", "accounting_month": "2026-01"},
+        {"check_name": "no_eligible_month_drifted", "accounting_month": "2026-01"},
+    ]
+    expected, missing = holes("verify_no_restatement", [], no_op_rows)
+    assert expected and not missing, (expected, missing)
+
+    # The run this fix exists for: the task failed, so the table has no rows for it.
+    expected, missing = holes("verify_no_restatement", [], [])
+    assert (
+        missing
+        == expected
+        == [
+            "every_eligible_month_has_a_version",
+            "no_eligible_month_drifted",
+        ]
+    ), (expected, missing)
+
+    months = ["2026-01", "2026-02"]
+    every = [
+        {"check_name": name, "accounting_month": month}
+        for month in months
+        for name in _check_names("verify_month.py")
+    ]
+    expected, missing = holes("verify_each_restated_month", months, every)
+    assert len(expected) == 10 and not missing, (expected, missing)
+
+    # One iteration of the for_each failed. Every check NAME is still present, in the month
+    # that passed - which is why the true branch is checked per month and not per name.
+    january_only = [row for row in every if row["accounting_month"] == "2026-01"]
+    expected, missing = holes("verify_each_restated_month", months, january_only)
+    february = sorted(f"{name}:2026-02" for name in _check_names("verify_month.py"))
+    assert sorted(missing) == february, missing
+
+    # The close itself failed, so there is no branch to derive a debt from. Saying "nothing was
+    # owed" here would be the same absence wearing the same disguise one level up.
+    expected, missing = holes("unknown", None, [])
+    assert expected == [] and missing == [], (expected, missing)
+
+
+def test_every_task_state_the_record_reports_is_a_reference_the_job_passes() -> None:
+    """The states are read from the job, so the job has to hand them over, by task key.
+
+    The widget is named after the task it reports and the reference is built from the same
+    key, which makes the correspondence checkable instead of remembered. A `result_state` for a
+    task key the job does not have would resolve to nothing and be recorded as `None` - a state
+    the record could not learn, which is indistinguishable from a task that never ran.
+    """
+    widgets = _lane_definitions("publish_evidence.py", "TASK_STATE_WIDGETS")["TASK_STATE_WIDGETS"]
+    tasks = {task["task_key"] for task in _all_tasks(JOBS["samegold_close"])}
+    evidence = next(
+        task
+        for task in _all_tasks(JOBS["samegold_close"])
+        if task["task_key"] == "publish_evidence"
+    )
+    parameters = evidence["notebook_task"]["base_parameters"]
+    for task_key, widget in sorted(widgets.items()):
+        assert task_key in tasks, f"{widget} reports a task the job does not declare: {task_key}"
+        assert parameters.get(widget) == f"{{{{tasks.{task_key}.result_state}}}}", (
+            f"publish_evidence reads {widget} and the job passes "
+            f"{parameters.get(widget)!r}. A state nobody passes is a state the record cannot "
+            f"learn, and it is written down as `None` rather than as 'fine'."
+        )
+
+
 # ---------------------------------------------- pipeline configuration versus job parameters
 
 
@@ -830,30 +983,86 @@ def test_the_orchestration_facts_reach_the_anchor_map() -> None:
     check` holds them to the record - which is the whole point of putting orchestration facts
     in the evidence rather than in prose.
     """
-    scalars = dict(
-        scalars_from(
-            {
-                "orchestration": [
-                    {
-                        "decision": "restated",
-                        "branch": "verify_each_restated_month",
-                        "versions_written": 2,
-                        "months_written": ["2026-01", "2026-02"],
-                    }
-                ],
-                "close_verification": [
-                    {"check_name": "a", "ok": True},
-                    {"check_name": "b", "ok": False},
-                ],
-            }
-        )
-    )
+    scalars = dict(scalars_from(_healthy_record()))
     assert scalars["orch.decision"] == "restated"
     assert scalars["orch.branch"] == "verify_each_restated_month"
     assert scalars["orch.versions_written"] == 2
     assert scalars["orch.months_written"] == 2
     assert scalars["orch.checks_run"] == 2
     assert scalars["orch.checks_failed"] == 1
+
+
+def _healthy_record() -> dict[str, Any]:
+    """A record from a run whose verification reported: the only shape that may be quoted.
+
+    `expected_checks` and `missing_checks` are what say so. They are part of the fixture
+    because they are part of the fact - a run that published a count of checks without saying
+    what it OWED has published a number, not a result.
+    """
+    return {
+        "orchestration": [
+            {
+                "decision": "restated",
+                "branch": "verify_each_restated_month",
+                "versions_written": 2,
+                "months_written": ["2026-01", "2026-02"],
+                "expected_checks": ["a:2026-01", "b:2026-01"],
+                "missing_checks": [],
+                "task_states": {"verify_each_restated_month": "success"},
+            }
+        ],
+        "close_verification": [
+            {"check_name": "a", "ok": True},
+            {"check_name": "b", "ok": False},
+        ],
+        "incomplete": [],
+    }
+
+
+def test_a_record_whose_verification_did_not_report_offers_no_check_anchors() -> None:
+    """The trap this round was written to remove, at the reader's end of it.
+
+    A run whose `verify_no_restatement` failed publishes a `close_verification` with no rows
+    in it, and nothing else about the record differs from a healthy one. Rendered, that is
+    `orch.checks_run = 0` and `orch.checks_failed = 0` on a page describing a run whose
+    verification never executed - two figures that look like a clean result and are the
+    absence of one.
+
+    So the anchors are offered only against a record that POSITIVELY says the branch paid what
+    it owed. Everything else - a record that names the hole, and a record that does not speak
+    to it at all - renders NOT RUN, which is what every other figure this repository cannot
+    answer already does.
+    """
+    healthy = dict(scalars_from(_healthy_record()))
+    assert healthy["orch.checks_run"] == 2 and healthy["orch.checks_failed"] == 1
+
+    # The failed run, as the notebook now publishes it.
+    named = _healthy_record()
+    named["close_verification"] = []
+    named["orchestration"][0].update(
+        branch="verify_no_restatement",
+        decision="no_op",
+        months_written=[],
+        expected_checks=["every_eligible_month_has_a_version", "no_eligible_month_drifted"],
+        missing_checks=["every_eligible_month_has_a_version", "no_eligible_month_drifted"],
+        task_states={"verify_no_restatement": "failed"},
+    )
+    named["incomplete"] = ["verify_no_restatement"]
+    offered = dict(scalars_from(named))
+    assert "orch.checks_run" not in offered and "orch.checks_failed" not in offered, offered
+    # The branch it took is still quotable: what is withheld is the RESULT of a verification
+    # that produced none, not the record of which one was owed.
+    assert offered["orch.branch"] == "verify_no_restatement"
+
+    # The same failed run through a notebook that does not derive the hole - which is every
+    # record committed before this round, and would be every record again if the derivation
+    # were deleted. "The record did not mention a problem" is not evidence of none.
+    silent = _healthy_record()
+    silent["close_verification"] = []
+    for field in ("expected_checks", "missing_checks", "task_states"):
+        silent["orchestration"][0].pop(field)
+    quiet = dict(scalars_from(silent))
+    assert "orch.checks_run" not in quiet and "orch.checks_failed" not in quiet, quiet
 
 
 def test_a_record_without_orchestration_offers_no_orchestration_anchors() -> None:
@@ -893,6 +1102,55 @@ def test_the_run_document_holds_no_figure_the_run_has_not_produced() -> None:
         f"these anchors hold values while {RECORD.relative_to(REPO)} does not exist, so no run "
         f"produced them: {wrong}"
     )
+
+
+def test_the_committed_record_answers_every_anchor_the_documents_require() -> None:
+    """WHICH RECORD MAY BE COMMITTED, as a check rather than as a judgement somebody repeats.
+
+    `evidence/databricks/SG-DBX-01.json` is the canonical record: every `dbx:` anchor in every
+    document is rendered from it. So a run whose record cannot answer the closed list above
+    must not replace it, and the case is not hypothetical - a run that ingests NOTHING (the
+    lane started with no new files in the landing volume) produces no `flow_progress` event
+    carrying data quality, and its `expectations` comes back empty. Committing that record
+    would turn a measured table into `NOT RUN` and the diff would read like an update.
+
+    A regression disguised as an update is exactly what an unwritten norm lets through, so it
+    is written down twice: in `evidence/databricks/README.md`, and here where it fails.
+
+    The other runs are not thrown away. `scripts/databricks_run.sh fetch <label>` keeps one
+    beside the canonical record under a name of its own, and nothing renders or compares those.
+    """
+    if not RECORD.exists():
+        pytest.skip("the lane has not been deployed yet")
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    answerable = set(scalars_from(record)) | set(tables_from(record))
+    missing = sorted(REQUIRED_ANCHORS - answerable)
+    assert not missing, (
+        f"the committed record cannot answer {missing}, so rendering the documents from it "
+        f"would replace those figures with '{NOT_RUN}'.\n"
+        f"If this is a run that ingested nothing, or one whose verification did not report, it "
+        f"is not the canonical record: fetch it under a label instead -\n"
+        f"    scripts/databricks_run.sh fetch <label>\n"
+        f"and restore the record the documents are rendered from. "
+        f"evidence/databricks/README.md says which file is canonical and why."
+    )
+
+
+def test_a_record_kept_beside_the_canonical_one_can_still_name_its_run() -> None:
+    """A labelled record is evidence too, and evidence that cannot name its run is prose.
+
+    There is no test that a sidecar EXISTS - runs 1 and 2 may be read and thrown away, that is
+    the operator's call. What is not allowed is a file sitting in `evidence/databricks/` that
+    nobody can trace to a job run, because the reason for keeping it at all is that it
+    describes one.
+    """
+    for path in sorted(RECORD.parent.glob("SG-DBX-01.*.json")):
+        kept = json.loads(path.read_text(encoding="utf-8"))
+        assert str(kept.get("job_run_id", "")).isdigit(), (
+            f"{path.name} is kept beside the canonical record and does not name a job run "
+            f"({kept.get('job_run_id')!r}). Fetch it again from the run it came from, or "
+            f"delete it: a record nobody can look up is not evidence of anything."
+        )
 
 
 def test_the_run_document_agrees_with_the_record() -> None:

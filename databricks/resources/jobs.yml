@@ -36,6 +36,12 @@ resources:
       # docs/limits.md used to say a job timeout was "deliberately NOT set here because no
       # successful run exists yet to size it from". Successful runs exist now, so the sentence
       # and the omission both go.
+      #
+      # AND NOT A `health:` RULE, which is the other way to bound a run and was considered and
+      # refused. A health rule pairs a threshold with a NOTIFICATION and notifying is all it
+      # does; this account has no destination, so it would fire into nothing or into a personal
+      # email address in a public repository. A timeout acts. `docs/databricks-run.md` and
+      # `EXAM_MAP.md` carry the argument where a reader who never opens this file will find it.
       timeout_seconds: 1800
       # Five concurrent job tasks per account is the Free Edition ceiling. This job now has six
       # tasks plus a for_each body, and it is still a CHAIN: the two branches are mutually
@@ -224,6 +230,18 @@ resources:
               close_decision: "{{tasks.close_month.values.decision}}"
               close_months_written: "{{tasks.close_month.values.months_written}}"
               close_versions_written: "{{tasks.close_month.values.versions_written}}"
+              # WHAT EACH UPSTREAM TASK DID, which no task value can say.
+              #
+              # A task value that does not resolve reports a task that never published one -
+              # which catches a failed `close_month` and nothing else. When a VERIFICATION
+              # fails, the close succeeded, every value above resolves, and the only trace left
+              # is a `close_verification` table with no rows for this run. `result_state` is
+              # the reference that can say so; `excluded` is what the skipped branch reports,
+              # and the notebook records these without ever letting one silence a hole it
+              # derived from the branch.
+              state_close_month: "{{tasks.close_month.result_state}}"
+              state_verify_each_restated_month: "{{tasks.verify_each_restated_month.result_state}}"
+              state_verify_no_restatement: "{{tasks.verify_no_restatement.result_state}}"
               # Passed through the deploy rather than written afterwards by whoever fetched
               # the files. This is what lets the record - and the row-level capture the same
               # task writes - name the code that produced them, from inside the run.
