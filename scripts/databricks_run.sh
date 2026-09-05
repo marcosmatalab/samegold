@@ -338,6 +338,86 @@ step_validate() { say "bundle validate -t $TARGET"; (cd "$BUNDLE" && databricks 
 # `step_fetch` uses, and it excludes evidence/ for the same reason.
 deploy_commit() { git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown; }
 
+# WHAT THE DEPLOYED JOB CAME BACK WITH, for the settings whose whole job is to not happen.
+#
+# THE FINDING THIS CLOSES. `max_retries: 0` was declared on every task, under a comment saying
+# "Declared, not left to a default". On 5 September 2026 `databricks jobs get` on the deployed
+# job reported it NOT DECLARED on any of the six, while `timeout_seconds` had survived as 600
+# and 900. Nothing looked. A retry setting is invisible until the day something fails, and on
+# that day it is too late to discover that the declaration never arrived.
+#
+# It REPORTS and does not refuse, and the reason is specific rather than timid: one of the two
+# fields it watches is expected to be missing right now. `max_retries: 0` is the API's own
+# default, so a bundle that drops it and a bundle that sends it produce the same deployed job,
+# and refusing would wedge the lane over a difference with no consequence. The other field,
+# `disable_auto_optimization: true`, is not a default and is not a zero - if THAT one goes
+# missing, the line below is how anybody finds out.
+DEPLOYED_TASK_SETTINGS='
+import json, sys
+
+try:
+    jobs = json.load(sys.stdin)
+except Exception:
+    print("UNREADABLE"); raise SystemExit(0)
+if isinstance(jobs, dict):
+    jobs = jobs.get("jobs") or []
+rows = []
+for job in jobs or []:
+    settings = job.get("settings") if isinstance(job.get("settings"), dict) else job
+    for task in (settings.get("tasks") or []):
+        key = task.get("task_key", "?")
+        # A condition task starts no compute and a for_each carries its work one level down,
+        # which is where the settings that matter are declared.
+        if "condition_task" in task:
+            continue
+        inner = ((task.get("for_each_task") or {}).get("task")) or task
+        rows.append((
+            key,
+            inner.get("max_retries", "ABSENT"),
+            inner.get("disable_auto_optimization", "ABSENT"),
+            inner.get("timeout_seconds", "ABSENT"),
+        ))
+if not rows:
+    print("NOTASKS"); raise SystemExit(0)
+for key, retries, auto, timeout in rows:
+    print(f"ROW {key} max_retries={retries} disable_auto_optimization={auto} timeout_seconds={timeout}")
+missing = [key for key, _, auto, _ in rows if auto == "ABSENT"]
+if missing:
+    print("MISSING_AUTO " + " ".join(missing))
+'
+
+report_deployed_task_settings() {
+    local py answer
+    py="$(python_bin)" || return 0
+    answer="$(databricks jobs list --name "$JOB_NAME" --expand-tasks -o json 2>/dev/null || true)"
+    answer="$(printf '%s' "$answer" | "$py" -c "$DEPLOYED_TASK_SETTINGS")"
+    case "$answer" in
+        UNREADABLE* | NOTASKS* | "")
+            echo "  (could not read the deployed task settings back; check by hand with"
+            echo "   databricks jobs list --name \"$JOB_NAME\" --expand-tasks -o json)"
+            return 0 ;;
+    esac
+    echo "  what the deployed job came back with:"
+    printf '%s\n' "$answer" | while IFS= read -r line; do
+        case "$line" in
+            ROW*) echo "    ${line#ROW }" ;;
+        esac
+    done
+    case "$answer" in
+        *MISSING_AUTO*)
+            echo
+            echo "  WARNING: disable_auto_optimization did not arrive on:"
+            echo "    $(printf '%s\n' "$answer" | sed -n 's/^MISSING_AUTO //p')"
+            echo
+            echo "  That is the field that turns off serverless auto-optimization, which is ON"
+            echo "  by default and retries failed tasks. max_retries: 0 does NOT do it - 0 is"
+            echo "  the API's own default - so with this field missing, a failed task on this"
+            echo "  lane can still be retried, and a retry costs quota this account measures"
+            echo "  in a day. docs/limits.md carries the measurement."
+            echo ;;
+    esac
+}
+
 step_deploy() {
     say "bundle deploy -t $TARGET"
     local commit dirty
@@ -348,6 +428,8 @@ step_deploy() {
         --var="catalog=$CATALOG" \
         --var="deploy_commit=$commit" \
         --var="deploy_tree_dirty=$dirty")
+    # Read back, because a deploy that succeeds is not a deploy that sent what was written.
+    report_deployed_task_settings
 }
 
 step_seed() {
@@ -578,6 +660,29 @@ step_run() {
         say "ONLY: $ONLY_TASKS"
         echo "  the rest of the job's tasks are skipped, so what they produce is not refreshed"
     fi
+    if [ -n "${SAMEGOLD_PARAMS:-}" ]; then
+        # THE SECOND HOLE OF THE SAME SHAPE, and finding two makes it a property rather than
+        # an oversight.
+        #
+        # `require_fresh_deployment` guards the run, and it guards it by being INSIDE this
+        # function. A hand-typed `databricks bundle run` goes straight past it, so every option
+        # this script does not wrap is a reason to type the command by hand - which is exactly
+        # how the evidence that made this repository's own record was produced, with `--only`.
+        # That one is wrapped now. `--params` was the next one: the three runs of 5 September
+        # 2026 needed `--params fail_task=verify_no_restatement`, and there was no way to ask
+        # for it here.
+        #
+        # WHAT THIS STILL DOES NOT DO, said plainly because the alternative is a guard people
+        # believe covers more than it does: this script WRAPS the CLI, it does not replace it.
+        # The guard covers the path through this script and nothing else. It cannot cover a
+        # `databricks bundle run` typed into a terminal, an API call, or the Run now button in
+        # the workspace, and no amount of wrapping will change that - the workspace has no way
+        # to know which commit a laptop is sitting on. What wrapping buys is that the
+        # convenient path is the guarded one, so the unguarded path is a deliberate act rather
+        # than the shortest route to what you wanted.
+        command+=(--params "$SAMEGOLD_PARAMS")
+        say "PARAMS: $SAMEGOLD_PARAMS"
+    fi
     if [ -n "${SAMEGOLD_FULL_REFRESH:-}" ]; then
         # TWO flags for one intent, and the reason is that neither can be checked from here.
         #
@@ -615,6 +720,20 @@ step_run() {
   ${command[*]}
 
 Refusing to run the whole job when part of it was asked for."
+    fi
+
+    # Same object, same check, for the same reason as the two below it: an announced parameter
+    # that did not reach the argv would run the job WITHOUT it, and the run that needs
+    # `fail_task` is a run whose whole point is that one task fails.
+    if [ -n "${SAMEGOLD_PARAMS:-}" ] &&
+       ! printf '%s\n' "${command[@]}" | grep -qx -- "$SAMEGOLD_PARAMS"; then
+        die \
+"SAMEGOLD_PARAMS is set and it is not in the command about to run:
+
+  ${command[*]}
+
+Refusing to spend a Free Edition run on a job that was asked for with parameters and would
+receive none."
     fi
 
     # The announcement and the invocation are now the same object, and this is the check that

@@ -577,6 +577,40 @@ def test_every_task_that_executes_something_declares_a_timeout() -> None:
             )
 
 
+def test_no_task_relies_on_max_retries_to_stop_a_serverless_retry() -> None:
+    """The lever that governs, beside the one that only looks like it does.
+
+    `max_retries: 0` was declared on every task with a comment saying it stopped the job
+    retrying them. On 5 September 2026 the deployed job came back from `databricks jobs get`
+    with max_retries NOT DECLARED on any task while `timeout_seconds` survived - and in run
+    44869473800771 `verify_no_restatement` ran twice inside the original run anyway, 6s then
+    12s, 57 seconds apart.
+
+    Both halves matter and they are separate. The declaration did not arrive, which is a
+    serializer question and is open. And `max_retries: 0` is the API's own DEFAULT - "the value
+    0 means to never retry" - so arriving would have changed nothing: what retried that task is
+    serverless auto-optimization, which is on by default, which the UI calls "may include
+    additional retries", and whose field is `disable_auto_optimization`.
+
+    So a task declaring only `max_retries: 0` is a task whose retry behaviour is not decided by
+    anything in this bundle. That is the fourth instance of a declaration that does not govern,
+    after `development: true`, `--full-refresh-all` and the bash flag, and the first where the
+    comment beside it asserted the opposite.
+    """
+    for job_name, job in JOBS.items():
+        for task in _all_tasks(job):
+            if "condition_task" in task or "for_each_task" in task:
+                continue
+            key = f"{job_name}/{task['task_key']}"
+            assert task.get("max_retries") == 0, f"{key} does not declare max_retries: 0"
+            assert task.get("disable_auto_optimization") is True, (
+                f"{key} declares max_retries: 0 and not `disable_auto_optimization: true`. "
+                f"max_retries 0 is the API's default, so on its own it decides nothing; "
+                f"serverless auto-optimization is what retried a failed task on 5 September "
+                f"2026, and this is the field that turns it off."
+            )
+
+
 def test_the_evidence_is_written_whatever_the_rest_of_the_job_did() -> None:
     """`run_if` in the use that is not a way of hiding a red run.
 
