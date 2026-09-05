@@ -188,6 +188,37 @@ aggregates could not see. What did appear is the next finding.
 | **The other half of it** | The command that published the good record was typed by hand - `databricks bundle run ... --only publish_evidence` - and a hand-typed `bundle run` goes straight past `require_fresh_deployment`. Legitimate that day, because a deploy came immediately before it; a hole in the guard on every other day. `step_run` takes a task selection now (`scripts/databricks_run.sh run publish_evidence`), so the convenient path is inside the guard rather than round the side of it, and a subcommand that takes no selection refuses one instead of ignoring it. |
 | **Commits** | this round |
 
+### Every guard on the job walked the tasks it already knew about
+
+| | |
+|---|---|
+| **What** | Adding a `for_each` task to `samegold_close` put its notebook outside **every** check in `tests/fast/test_databricks_bundle.py`. All of them walked `job["tasks"]` and stopped, and a `for_each` carries its work in `for_each_task.task`, one level down - so the notebook it runs would have had no path check, no widget check and no parameter check, silently. In the same file, `test_no_job_can_exceed_the_concurrent_task_ceiling` asserted `len(tasks) <= 5` against a limit of five CONCURRENT tasks: it failed a six-task CHAIN that can only ever run one at a time, and the obvious repair was to raise the 5. |
+| **How found** | Writing the tasks. The ceiling test went red on a shape that does not violate the ceiling, and asking why produced the second half. |
+| **Why invisible** | Both are the shape this repository has now found five times: a check whose NAME describes the thing and whose MEASUREMENT describes something adjacent to it. "No job can exceed the concurrent task ceiling" counted declarations. "Every widget a notebook reads is a parameter the job passes" iterated a list that a new task type is not in. Neither would have gone red; the first would have been bumped from 5 to 6 and the second would have said nothing at all. |
+| **Prevented by** | `_all_tasks()` flattens `for_each` bodies and every parametrised walk uses it, with `test_the_flattening_reaches_every_notebook_in_the_bundle` comparing the flattened count against the raw `notebook_task:` count in the resource files - the guard on the guard. The ceiling test now computes the WIDTH of the dependency DAG (the largest set of tasks none of which waits for another, with a `for_each` counting as its `concurrency`), which is the quantity the limit is about; it overestimates for conditional branches, which is the safe direction. Nine falsifications, one per new check. |
+| **Commits** | this round |
+
+### A task value written for a reader that could not exist
+
+| | |
+|---|---|
+| **What** | `publish_evidence.py` ended with `dbutils.jobs.taskValues.set("evidence", payload)`. Nothing had ever read it, and nothing in the graph CAN: it is the last task. It was also a latent limit - a task value is capped at 48 KiB and the payload is the whole record, 7 KB and growing with every section. Meanwhile `close_month`, the task whose entire job is to make a DECISION, published nothing at all, so no downstream task and no record could say whether the close had restated anything or deliberately not. |
+| **How found** | Asked directly: which values does this job write, and who reads them. |
+| **Why invisible** | A write that nobody reads never fails. It looks like a contract to the next person to touch the job, and the cost only appears when somebody builds on it. |
+| **Prevented by** | The write is deleted, and `close_month` now publishes what it decided: `versions_written` (read by the condition task), `months_written` (the `for_each` inputs), `as_of_month` (the false branch's eligibility boundary) and `decision` (recorded by `publish_evidence`). `test_every_task_value_written_has_a_named_reader` fails on any `taskValues.set` in the lane with no `{{tasks.<key>.values.<name>}}` reference and no `taskValues.get` behind it. Its first version read the COMMENT explaining the deleted call and reported the value it was documenting as still written, which is a check reading prose as code; it walks the AST now. |
+| **Also removed by it** | Two task values in `verify_month.py` that the first draft set and whose comment claimed `publish_evidence` read them. It does not - it reads the per-month verdicts out of `close_verification` with their detail. The comment was the intention and the code was the fact. |
+| **Commits** | this round |
+
+### The check that could not report the failure it was written for
+
+| | |
+|---|---|
+| **What** | `verify_month`'s `versions_have_no_gaps` exists to catch a broken version sequence. Falsifying it with two rows numbered 1 made the task die with `[INTERNAL_ERROR] more than one row returned by a subquery` instead: `newest` was `WHERE close_version = (SELECT MAX(...))`, which returns two rows when a number is duplicated, and every scalar subquery in the statement then raised before any verdict was computed. |
+| **How found** | Falsifying the check, in `tests/spark/test_databricks_close_verification.py`. Reading it finds nothing - the SQL is correct for every input except the one the check is named after. |
+| **Why invisible** | The task still FAILED, so a run would have gone red. It would have gone red with a Spark internal error rather than with `versions_have_no_gaps: false` and the row counts behind it, and the person reading it would have been debugging the verification instead of the close. |
+| **Prevented by** | `newest` is a `row_number()` pick, so it is single-valued whatever the version numbers are, and the gap check reports the shape it was written for. Eleven falsifications now run against the two verification statements - one per claim, each corrupting the fixture in exactly the way that claim exists to catch, executed in local Spark against the notebook's own extracted SQL before any of it costs quota. |
+| **Commits** | this round |
+
 ### A return whose order never arrived is counted in no column of the close
 
 | | |
@@ -196,6 +227,17 @@ aggregates could not see. What did appear is the next finding.
 | **How found** | By reading `gold_close.py` while reconciling the second close's return arithmetic. |
 | **Why invisible** | It is not a filter bug that could be deleted. `rejected` groups by an accounting month derived from `sale_ts`, and a return with no sale has no month: a month-grouped close has nowhere to put it. Removing the filter would produce a NULL month group, which is worse. And ALL THREE lanes agree - `databricks/src/gold_close.py`, `src/samegold/oracle/gold_revenue.sql` and `src/samegold/pipelines/transform.py` - so no differential test can see it. This is the blind spot the README names in the witness table, with an instance. |
 | **Not fixed on purpose** | A `COALESCE` would put those returns in some month, and which month is a contract question nobody has answered: the sale's month does not exist, the return's own month is a different quantity, and inventing one to make a total add up is how a close acquires revenue that no sale supports. It is documented in `CONTRACT.md`'s terms as a known gap, in README's "What is NOT claimed", and here. |
+| **Commits** | this round |
+
+### The prefix that separated two populations could not separate three
+
+| | |
+|---|---|
+| **What** | Late arrivals are written into the landing volume as `batch=late-<stamp>`, and the prefix exists because the base population and a late one bucket their events into the same instants: without it, `batch=202601010000` from the late generation would replace the base's directory of the same name in one volume. That is what it was written for, and it works. It does not separate a late arrival from ANOTHER late arrival - every arrival got the same prefix, and the stamp comes from the generating population, so two late seeds collide with each other exactly as freely as a late seed once collided with the base. **Measured, for the third population: of the 278 batch directories the second late arrival writes, 112 are names the first arrival already occupies.** In the volume those 112 replace files Auto Loader has already ingested. |
+| **How found** | Computing the third close's population before running it, in order to write the run's prediction. Nothing was looking for this. |
+| **Why invisible** | There was no second late arrival. `test_the_late_batches_cannot_collide_with_the_base_ones` asserts that every batch name starts with `late-`, which is exactly the property that CAUSES the second collision, and it passes - correctly - on the only case that existed. Every test of the mechanism was a test of the case that motivated it. |
+| **The class** | **A fix is verified against the case that motivated it and against nothing after it.** While the fix is being written, the instance it is for is the only instance there is, so the check written beside it can only be a check of that instance. The fix is not wrong; its scope is a guess, and nothing records that it was a guess. Two populations do not tell you whether a rule generalises to three. |
+| **Prevented by** | `late_batch_prefix(n)` in `src/samegold/generator/late.py`: `late-` for the first arrival, `late2-`, `late3-` after it - generalised to N rather than special-cased for the third. The first stays unnumbered because its 269 directories are in the workspace's landing volume and `evidence/databricks/SG-DBX-01.json` describes what Auto Loader made of them; a reproduction that renames them reproduces a different population. `tests/fast/test_late_arrivals.py` pins the first arrival's tree by a hash over its PATHS and bytes (which `test_it_is_deterministic` cannot see - it compares one generation against another generation of the same code), asserts that no two arrivals write the same directory, and measures the 112 that would have collided. `population_for` takes a SEQUENCE of late seeds, so the composition has one definition instead of one per caller. |
 | **Commits** | this round |
 
 ---
@@ -241,6 +283,7 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **Evidence a reader cannot regenerate is not evidence.** | the late population produced in `/tmp` (this round) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
+| **A fix is verified against the case that motivated it and against nothing after it.** The instance it was written for is the only one that exists while it is being written, so the check beside it can only cover that instance. | the late-arrival prefix that separated two populations and not three (this round) |
 
 ---
 

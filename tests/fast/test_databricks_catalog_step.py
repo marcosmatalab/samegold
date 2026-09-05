@@ -759,7 +759,7 @@ RECORD_FIXTURE = _record_fixture()
 
 
 def _fetch(
-    tmp_path: Path, *, missing: str = "", record: str | None = None
+    tmp_path: Path, *, missing: str = "", record: str | None = None, label: str = ""
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """Run the fetch step for real, with the evidence directory pointed at a temp dir."""
     out = tmp_path / "evidence"
@@ -770,6 +770,7 @@ def _fetch(
         tmp_path,
         [_state("SUCCEEDED")],
         subcommand="fetch",
+        second=label,
         extra_env={
             "SAMEGOLD_EVIDENCE_OUT": out.as_posix(),
             "SG_FS_CP_PAYLOAD": payload.as_posix(),
@@ -777,6 +778,60 @@ def _fetch(
         },
     )
     return result, out
+
+
+def test_a_labelled_fetch_keeps_the_run_beside_the_canonical_record_and_not_over_it(
+    tmp_path: Path,
+) -> None:
+    """The run whose record is worth keeping and must not be the one documents render from.
+
+    Run 2 of this round FAILS on purpose, and the record it produces is the artefact: it is
+    what shows that `run_if: ALL_DONE` keeps evidence alive through a failure and that the
+    record says the verification did not report. `step_fetch` writes to one path, so fetching
+    it would REPLACE the record every page in this repository is rendered from - a failed run
+    becoming the canonical description of the lane.
+
+    So the label puts it under a name of its own. The canonical files are not touched, and
+    nothing that renders or compares reads a labelled one: `evidence/databricks/README.md`
+    says which file is canonical and why, and this is the switch that makes obeying it
+    possible.
+    """
+    out = tmp_path / "evidence"
+    out.mkdir()
+    canonical = out / "SG-DBX-01.json"
+    canonical.write_text('{"claim_id": "the one the documents render from"}', encoding="utf-8")
+    payload = tmp_path / "payload.json"
+    payload.write_text(RECORD_FIXTURE, encoding="utf-8", newline="\n")
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="fetch",
+        second="run-2-failed",
+        extra_env={
+            "SAMEGOLD_EVIDENCE_OUT": out.as_posix(),
+            "SG_FS_CP_PAYLOAD": payload.as_posix(),
+            "SG_FS_CP_MISSING": "",
+        },
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (out / "SG-DBX-01.run-2-failed.json").exists(), result.stdout
+    assert (out / "dim_customer_scd2.run-2-failed.json").exists(), result.stdout
+    assert (out / "fetch.run-2-failed.json").exists(), result.stdout
+    assert canonical.read_text(encoding="utf-8") == (
+        '{"claim_id": "the one the documents render from"}'
+    ), "a labelled fetch overwrote the canonical record, which is what it exists to avoid"
+    assert "LABELLED" in result.stdout, result.stdout
+    # And the provenance report is about the file that was just fetched, not about whatever
+    # happens to be sitting at the canonical path.
+    assert "clean tree at" in result.stdout, result.stdout
+
+
+def test_a_label_that_is_not_a_filename_is_refused(tmp_path: Path) -> None:
+    """The label becomes part of a path, so it is checked rather than interpolated."""
+    result, out = _fetch(tmp_path, label="../../etc/passwd")
+    assert result.returncode != 0, result.stdout
+    assert "label made of lower-case letters" in result.stdout + result.stderr
+    assert not list(out.glob("*.json")), sorted(p.name for p in out.glob("*"))
 
 
 def test_the_fetch_says_when_the_evidence_must_not_be_committed(tmp_path: Path) -> None:

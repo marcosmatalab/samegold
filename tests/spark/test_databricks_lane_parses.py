@@ -418,6 +418,14 @@ LANE_TABLES = {
         "net_cents BIGINT, line_count BIGINT, return_count BIGINT, "
         "returns_rejected_count BIGINT, restated_at TIMESTAMP, restatement_reason STRING"
     ),
+    # Written by the two verification tasks. `tests/fast/test_databricks_bundle.py` ties this
+    # spelling to the CREATE TABLE statements in the lane, because a schema restated here that
+    # drifted from the one the lane creates would make the resolution check below pass against
+    # a table that does not exist in that shape.
+    "close_verification": (
+        "job_run_id STRING, task_run_id STRING, checked_at TIMESTAMP, check_name STRING, "
+        "accounting_month STRING, close_version INT, ok BOOLEAN, detail STRING"
+    ),
 }
 
 # Statements this check cannot reach, and the reason has to be IN THE STATEMENT.

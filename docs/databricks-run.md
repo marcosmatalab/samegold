@@ -461,7 +461,7 @@ What it must print, and what `tests/fast/test_late_arrivals.py` fails on if it d
 
 ```
 573 late events in 269 batch directories (269 files)
-  from 761 generated, of which 185 were already in the base population of 755 and 3 carried no event_id
+  from 761 generated, of which 185 had already been delivered by the 755 events before them, and 3 carried no event_id
   by type : customer_upserted 21, order_line_amended 63, order_placed 420, return_registered 69
   by month: 2026-01 553, 2026-02 16, 2026-03 4
 ```
@@ -807,7 +807,7 @@ and in `docs/limits.md` rather than papered over.
 | quota exhaustion stops compute for the day | an unattended nightly schedule can take the account down | the schedule is deployed `PAUSED`; runs are started by hand |
 | Default Storage, and therefore no metastore storage root | `databricks catalogs create` fails with `Metastore storage root URL does not exist` ([databricks/cli#4513](https://github.com/databricks/cli/issues/4513)) | the catalog is created with `CREATE CATALOG IF NOT EXISTS` through `POST /api/2.0/sql/statements` on the one 2X-Small warehouse, which resolves its location through Default Storage. The script waits 30s, cancels on timeout, and refuses to continue unless the statement reports `SUCCEEDED` |
 
-Two consequences worth stating plainly, because they are the ones that would otherwise be read
+Three consequences worth stating plainly, because they are the ones that would otherwise be read
 as achievements:
 
 - **The row filter and the column mask are not enforced here.** `databricks/sql/policies.sql`
@@ -818,12 +818,32 @@ as achievements:
 - **Cost is not measured on this lane at all.** The numbers above are rows and events. The
   cost work lives in the OSS lane, where files and bytes come out of the Delta log and are
   labelled as a proxy for DBUs rather than converted into one.
+- **No job health rule is declared, and that is a refusal rather than an omission.** A
+  `health:` block on a job or a task pairs a metric threshold - `RUN_DURATION_SECONDS` is the
+  one this lane would have used - with a NOTIFICATION, and notifying is the only thing it does.
+  This account has no notification destination: no Slack app, no webhook, no on-call rota. The
+  rule would therefore fire into nothing, or into a personal email address committed to a
+  public repository, and the second is worse than the first. It would also have been
+  indistinguishable, in a bundle, from a rule that works.
+
+  A construct whose only effect is an announcement nobody receives is the decorative case this
+  round set out to remove, and it is the same argument that deleted `taskValues.set("evidence",
+  ...)` from `publish_evidence.py`: a value written for a reader that cannot exist. What the
+  rule would have watched is watched by something that ACTS instead - `timeout_seconds: 1800`
+  on the job and `600`/`900` on every task, which kills a stuck run rather than describing one,
+  and does so on an account where a stuck run spends the day's compute. When a destination
+  exists, the rule becomes worth declaring; until then this paragraph is the honest version of
+  it. `docs/milestones.md` M16 is where the alerting work lives.
 
 ## The prediction, scored
 
 The section below was written before the lane had ever been deployed, as a list of the fields
 most likely to break first, "so that the list is a prediction and can be scored". It has now
 been scored, and it lost.
+
+The three runs that follow this round are predicted the same way and field by field, before
+they are launched, in `docs/predictions-2026-09-05.md` - including the figures the OSS lane can
+compute in advance, which is most of them.
 
 **What actually broke was not on the list.** `resources.pipelines.samegold_pipeline` carried no
 `name`. The key a resource is declared under is the bundle's id for it, not the pipeline's
