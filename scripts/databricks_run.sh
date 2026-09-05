@@ -49,6 +49,23 @@ SUBCOMMAND="${1:-all}"
 # convenient enough to reach for. A selection is now something this script does, so the
 # guard covers it.
 ONLY_TASKS="${2:-}"
+# `fetch` takes the same second argument, and it means something else there: a LABEL, which
+# puts the run's files under names of their own instead of over the canonical ones.
+#
+# The reason is the run this is being written for. A deliberately failed run produces a record
+# whose whole value is that it says the run failed, and `step_fetch` writes to one path - so
+# fetching it REPLACES the record every document in this repository renders from. An artefact
+# of a failed run cannot be the canonical record of a repository whose pages are generated from
+# it; that is the same argument as the dirty-tree guard a few functions below, one step later
+# in the same pipeline.
+#
+# `evidence/databricks/README.md` says which file is canonical and why. This is the switch that
+# makes it possible to obey.
+FETCH_LABEL=""
+if [ "$SUBCOMMAND" = "fetch" ] && [ -n "$ONLY_TASKS" ]; then
+    FETCH_LABEL="$ONLY_TASKS"
+    ONLY_TASKS=""
+fi
 CATALOG="${SAMEGOLD_CATALOG:-samegold}"
 BIN="${SAMEGOLD_BIN:-$REPO/.venv/bin}"
 # Overridable so that `step_fetch` can be RUN in a test instead of read. Everything this
@@ -668,9 +685,9 @@ code_changes() {
 #
 # This is the part that tells you now, so you find out here rather than from a red gate.
 report_uncommittable_provenance() {
-    local py verdict
+    local py verdict record="${1:-$OUT/SG-DBX-01.json}"
     py="$(python_bin)" || return 0
-    verdict="$("$py" - "$OUT/SG-DBX-01.json" <<'PY'
+    verdict="$("$py" - "$record" <<'PY'
 import json, sys
 
 try:
@@ -727,13 +744,30 @@ PY
 step_fetch() {
     say "fetch the evidence"
     mkdir -p "$OUT"
+    # The three names this fetch writes. Unlabelled they are the canonical ones; labelled, they
+    # are a run kept beside them under a name that says what it is, and nothing this repository
+    # renders or compares reads them.
+    local record="SG-DBX-01.json" capture="dim_customer_scd2.json" fetched="fetch.json"
+    if [ -n "$FETCH_LABEL" ]; then
+        case "$FETCH_LABEL" in
+            *[!a-z0-9-]* | -* | "")
+                die \
+"\`fetch\` takes a label made of lower-case letters, digits and hyphens, and got '$FETCH_LABEL'.
+
+The label becomes part of a filename: scripts/databricks_run.sh fetch run-2-failed" ;;
+        esac
+        record="SG-DBX-01.$FETCH_LABEL.json"
+        capture="dim_customer_scd2.$FETCH_LABEL.json"
+        fetched="fetch.$FETCH_LABEL.json"
+        echo "  LABELLED: writing $record, and leaving the canonical record alone."
+    fi
     # A failed copy is not the same fact as a missing file, and the previous version of this
     # message asserted the second from the first: "the run produced no SG-DBX-01.json ... its
     # absence means the task did not reach the end". A `cp` can fail because the token expired,
     # because the volume is not readable, or because the network dropped. Same defect as the
     # catalog step's CANCELED, one function away: turning "the call failed" into a claim about
     # the world without looking. So it LOOKS, and reports what it found either way.
-    if ! databricks fs cp --overwrite "$EVIDENCE_VOLUME/SG-DBX-01.json" "$OUT/SG-DBX-01.json"; then
+    if ! databricks fs cp --overwrite "$EVIDENCE_VOLUME/SG-DBX-01.json" "$OUT/$record"; then
         if databricks fs ls "$EVIDENCE_VOLUME/SG-DBX-01.json" >/dev/null 2>&1; then
             die \
 "the record EXISTS at $EVIDENCE_VOLUME/SG-DBX-01.json and could not be copied down.
@@ -752,7 +786,7 @@ reaching the end. The run's output is in the workspace under Jobs -> samegold mo
     # Written HERE, by this machine, about this deploy - and kept in a separate file from the
     # record the workspace produced, so that nothing this laptop asserts can be mistaken for
     # something the workspace measured.
-    cat > "$OUT/fetch.json" <<JSON
+    cat > "$OUT/$fetched" <<JSON
 {
   "fetched_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "bundle_target": "$TARGET",
@@ -772,8 +806,8 @@ JSON
     # record beside it - and `tests/fast/test_databricks_dimension_parity.py` says so by
     # comparing the two update ids.
     if databricks fs cp --overwrite \
-        "$EVIDENCE_VOLUME/dim_customer_scd2.json" "$OUT/dim_customer_scd2.json"; then
-        echo "  evidence/databricks/dim_customer_scd2.json"
+        "$EVIDENCE_VOLUME/dim_customer_scd2.json" "$OUT/$capture"; then
+        echo "  evidence/databricks/$capture"
     else
         echo
         echo "  WARNING: no dim_customer_scd2.json at $EVIDENCE_VOLUME."
@@ -784,9 +818,9 @@ JSON
         echo "  publish_evidence.py that writes it."
         echo
     fi
-    echo "  evidence/databricks/SG-DBX-01.json"
-    echo "  evidence/databricks/fetch.json"
-    report_uncommittable_provenance
+    echo "  evidence/databricks/$record"
+    echo "  evidence/databricks/$fetched"
+    report_uncommittable_provenance "$OUT/$record"
     # The two per-rule tables, rendered ready to paste into the anchored blocks in
     # docs/databricks-run.md. The scalars there are filled in by hand from the record; these
     # two are tables, and a table typed out by hand is a table with a transcription error in
@@ -795,7 +829,7 @@ JSON
     command -v python3 >/dev/null 2>&1 && py=python3
     [ -z "$py" ] && command -v python >/dev/null 2>&1 && py=python
     [ -z "$py" ] && { echo "  (no python on PATH: read the JSON yourself)"; return; }
-    "$py" - "$OUT/SG-DBX-01.json" <<'PY'
+    "$py" - "$OUT/$record" <<'PY'
 import json, sys
 
 record = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -846,6 +880,9 @@ usage() {
     echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|seed|run|run-full-refresh|fetch]" >&2
     echo "       run and run-full-refresh take an optional comma-separated list of task keys:" >&2
     echo "         scripts/databricks_run.sh run publish_evidence" >&2
+    echo "       fetch takes an optional label, which keeps the run beside the canonical" >&2
+    echo "       record instead of over it:" >&2
+    echo "         scripts/databricks_run.sh fetch run-2-failed" >&2
     exit 2
 }
 
@@ -853,7 +890,7 @@ usage() {
 # a second one, and the rest reject it rather than ignoring it - `deploy publish_evidence`
 # should not deploy everything and say nothing about the word it was handed.
 case "$SUBCOMMAND" in
-    run | run-full-refresh) ;;
+    run | run-full-refresh | fetch) ;;
     *)
         [ -z "$ONLY_TASKS" ] || die \
 "\`$SUBCOMMAND\` takes no task selection, and one was given: '$ONLY_TASKS'.

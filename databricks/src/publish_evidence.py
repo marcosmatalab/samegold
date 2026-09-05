@@ -50,6 +50,12 @@ for _widget in (
     "close_decision",
     "close_months_written",
     "close_versions_written",
+    # What the runtime says each upstream task DID, as `{{tasks.<key>.result_state}}`. The
+    # widget is named after the task it reports, so the correspondence with resources/jobs.yml
+    # is mechanical rather than remembered. See `TASK_STATE_WIDGETS` below.
+    "state_close_month",
+    "state_verify_each_restated_month",
+    "state_verify_no_restatement",
     "fail_task",
 ):
     dbutils.widgets.text(_widget, "")
@@ -367,23 +373,102 @@ population = _read(
 close_months = _task_value("close_months_written")
 close_versions = _task_value("close_versions_written")
 close_decision = _task_value("close_decision")
-orchestration = [
-    {
-        "decision": close_decision,
-        "months_written": close_months if isinstance(close_months, list) else None,
-        "versions_written": close_versions if isinstance(close_versions, int) else None,
-        # Which side of the condition ran. Derived from the decision rather than from a fourth
-        # task value, because two names for one fact is how they come to disagree.
-        "branch": {
-            "restated": "verify_each_restated_month",
-            "no_op": "verify_no_restatement",
-        }.get(str(close_decision), "unknown"),
-        # Task values that did not resolve, by name. Non-empty means an upstream task did not
-        # publish them - which under `run_if: ALL_DONE` is exactly the case this record exists
-        # to describe rather than to hide.
-        "unresolved_task_values": sorted(unresolved),
-    }
-]
+# Which side of the condition ran. Derived from the decision rather than from a fourth task
+# value, because two names for one fact is how they come to disagree.
+branch = {
+    "restated": "verify_each_restated_month",
+    "no_op": "verify_no_restatement",
+}.get(str(close_decision), "unknown")
+
+# THE UPSTREAM TASKS' OWN OUTCOMES, and why they are read at all.
+#
+# `{{tasks.<key>.result_state}}` is a documented dynamic value reference. Its vocabulary is
+# success, failed, excluded, canceled, evicted, timedout, upstream_canceled, upstream_evicted
+# and upstream_failed, and `excluded` is what the side of the condition that did not run
+# reports. Same pass-through rule as every other reference: one the runtime does not recognise
+# arrives as its own text, so this cannot invent a state it was not told.
+#
+# RECORDED, AND NEVER USED TO SUPPRESS A HOLE. A state this record could not learn is `None`,
+# and a `None` must not read as "the task was fine" - which is the exact shape of the defect
+# below. The hole is derived from the branch, which the record already knows; these states only
+# let a reader say WHY it is there without opening the run page.
+TASK_STATE_WIDGETS = {
+    "close_month": "state_close_month",
+    "verify_each_restated_month": "state_verify_each_restated_month",
+    "verify_no_restatement": "state_verify_no_restatement",
+}
+
+
+def _state(widget: str) -> Any:
+    """A sibling task's `result_state`, or None when the reference did not resolve."""
+    raw = dbutils.widgets.get(widget).strip()
+    if not raw or (raw.startswith("{{") and raw.endswith("}}")):
+        return None
+    return raw
+
+
+task_states = {task: _state(widget) for task, widget in TASK_STATE_WIDGETS.items()}
+
+# WHICH CHECKS THE BRANCH THAT RAN OWED, so that their ABSENCE is derivable.
+#
+# THE DEFECT THIS CLOSES, which nothing above can see. `unresolved_task_values` catches a failed
+# `close_month`: that task published no values, the references arrive as their own text, and the
+# record says so by name. It does NOT catch a failed VERIFICATION. When `verify_no_restatement`
+# fails, `close_month` succeeded, every task value resolves, the branch is derived correctly -
+# and `close_verification` holds zero rows for this job run, because the task that writes them
+# died before writing any. The record then comes out IDENTICAL to a healthy one but for a
+# section with no rows in it, and zero rows reads as "nothing to report".
+#
+# Same class as the one the fetch guard is written against: an absence carrying the weight of an
+# assertion. In a repository whose documents are RENDERED from this record it is the more
+# expensive half - `orch.checks_run = 0`, `orch.checks_failed = 0` is what a page would then
+# have printed about a run whose verification never executed.
+#
+# So the branch is asked what it owed. The names below are the `check_name` literals the two
+# verification notebooks SELECT, and `tests/fast/test_databricks_bundle.py` fails if this list
+# and those files stop agreeing: a second copy of a fact is only safe while something compares
+# it against the first.
+CHECKS_BY_BRANCH = {
+    "verify_each_restated_month": (
+        "earlier_versions_are_older",
+        "month_was_eligible_to_close",
+        "net_is_gross_minus_returns",
+        "versions_have_no_gaps",
+        "written_equals_the_source_month",
+    ),
+    "verify_no_restatement": (
+        "every_eligible_month_has_a_version",
+        "no_eligible_month_drifted",
+    ),
+}
+
+
+def _verification_holes(branch: str, months: Any, rows: Any) -> Any:
+    """What the branch owed and what of it is not in the table: `(expected, missing)`.
+
+    The true branch is checked PER MONTH, because `months_written` says exactly how many
+    iterations the for_each had and one failed iteration leaves every other month's rows in
+    place - a check on check NAMES alone would read that run as complete. The false branch is
+    one task with one answer, over eligible months this notebook does not know, so it is checked
+    on names.
+
+    An `expected` that comes back empty means the branch itself is unknown, which the caller
+    reports rather than reading as "nothing was owed".
+    """
+    checks = CHECKS_BY_BRANCH.get(str(branch), ())
+    names, pairs = set(), set()
+    if isinstance(rows, list):
+        for row in rows:
+            names.add(str(row.get("check_name")))
+            pairs.add(f"{row.get('check_name')}:{row.get('accounting_month')}")
+    if branch == "verify_each_restated_month" and isinstance(months, list) and months:
+        expected = sorted(f"{check}:{month}" for check in checks for month in months)
+        seen = pairs
+    else:
+        expected = sorted(checks)
+        seen = names
+    return expected, [name for name in expected if name not in seen]
+
 
 # The per-month verdicts the two verification tasks wrote, for THIS run. The job run id filters
 # them: the table accumulates across runs, and a record that published every row ever written
@@ -405,6 +490,40 @@ else:
     # wrote, which returns zero rows and looks like "every check passed".
     incomplete.append("close_verification")
     close_verification = {"error": f"job_run_id is not a run id: {job_run_id_raw!r}"}
+
+expected_checks, missing_checks = _verification_holes(branch, close_months, close_verification)
+if missing_checks:
+    # NAMED BY THE TASK THAT OWED THEM, and not by the section. "close_verification" already
+    # means "the table could not be read"; a verification that never ran is a different fact
+    # from a query that failed, and collapsing two facts into one name is what this file exists
+    # to refuse. `incomplete` is where the record names its holes, so the hole goes there.
+    incomplete.append(branch)
+elif not expected_checks:
+    # The branch is unknown - `close_month` failed, or its decision did not resolve - so this
+    # record cannot say what the verification owed, let alone whether it was paid. Which is
+    # exactly when the section must not be readable as complete.
+    incomplete.append("close_verification")
+
+orchestration = [
+    {
+        "decision": close_decision,
+        "months_written": close_months if isinstance(close_months, list) else None,
+        "versions_written": close_versions if isinstance(close_versions, int) else None,
+        "branch": branch,
+        # Task values that did not resolve, by name. Non-empty means an upstream task did not
+        # publish them - which under `run_if: ALL_DONE` is exactly the case this record exists
+        # to describe rather than to hide.
+        "unresolved_task_values": sorted(unresolved),
+        # What the branch owed, and what of it is missing. `expected_checks` is published as
+        # well as `missing_checks` because "nothing is missing" and "nothing was expected" are
+        # two different sentences, and a reader - `samegold.evidence.databricks_doc` included -
+        # has to be able to tell them apart before quoting a count of checks as a result.
+        "expected_checks": expected_checks,
+        "missing_checks": missing_checks,
+        # What the runtime said each upstream task did. Explanation, never permission.
+        "task_states": task_states,
+    }
+]
 
 # COMMAND ----------
 # One statement rather than one per table: a per-table loop would have to interpolate a table
