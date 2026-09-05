@@ -209,6 +209,37 @@ expectations = _read(
     """),
 )
 
+# HOW MUCH THIS UPDATE ACTUALLY PROCESSED, published beside the expectations rather than left
+# to be inferred from them.
+#
+# MEASURED, run 592180158314216 on 5 September 2026: an update that ingested nothing published
+# `expectations: []`, with `incomplete: []` beside it - which is correct and is ambiguous to
+# anybody holding only the file. "This update processed no rows, so no rule reported" and "no
+# expectations are declared" render as the same empty list, and the second would be a defect.
+#
+# The counts the expectation query returns are PER UPDATE, not per table: the streaming tables
+# are incremental, so a run that ingests 573 events reports 573 passed and a run that ingests
+# nothing reports nothing at all. That is the sentence this section makes checkable - with
+# `rows_written` beside it, an empty `expectations` is readable as arithmetic instead of as an
+# absence somebody has to interpret.
+update_output = _read(
+    "update_output_rows",
+    lambda: _rows(f"""
+        WITH last_update AS (
+            SELECT origin.update_id AS update_id
+            FROM event_log('{pipeline_id}')
+            WHERE origin.update_id IS NOT NULL
+            ORDER BY timestamp DESC LIMIT 1
+        )
+        SELECT SUM(CAST(get_json_object(details, '$.flow_progress.metrics.num_output_rows')
+                        AS BIGINT))                    AS rows_written,
+               COUNT(*)                                AS flow_progress_events
+        FROM event_log('{pipeline_id}')
+        WHERE event_type = 'flow_progress'
+          AND origin.update_id = (SELECT update_id FROM last_update)
+    """),
+)
+
 update_state = _read(
     "update_state",
     lambda: _rows(f"""
@@ -740,6 +771,10 @@ record = {
     # is invisible in a record that describes one update.
     "update_history": update_history,
     "expectations": expectations,
+    # What the update processed, so that an empty `expectations` is legible. The counts above
+    # are per UPDATE - the tables are incremental - and an update that ingested nothing
+    # produces no data-quality event at all.
+    "update_output_rows": update_output,
     "quarantine_by_reason": quarantine,
     "undecided_rules": undecided,
     "column_types": column_types,

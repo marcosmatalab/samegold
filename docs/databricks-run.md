@@ -705,6 +705,16 @@ runtime's per-rule accounting turns out to differ from evaluating the same predi
 (these were produced the second way, over the same bytes). A rule reporting 0 failed is the one
 to distrust: every one of these seven has records planted against it on purpose.
 
+**The total is the update's, not the table's**, and reading it the other way is the easiest
+mistake this section invites. The silver tables are incremental, so these counts cover the rows
+THAT UPDATE ingested: 755 on the first close, 573 on the second - the late arrivals, not the
+1328 rows the table then held. An update that ingests nothing therefore reports **no
+expectations at all**, which is what run 592180158314216 published on 5 September 2026: an empty
+`expectations` list with an empty `incomplete` beside it. That is correct and, on its own, it is
+ambiguous - "no rows were processed" and "no rules are declared" render as the same empty list.
+So the record now carries `update_output_rows` next to it, and the pair is readable as
+arithmetic: no rows written, no rule reported.
+
 ### 5. The close, and its size
 
 ```sql
