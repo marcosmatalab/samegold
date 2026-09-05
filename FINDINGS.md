@@ -229,6 +229,17 @@ aggregates could not see. What did appear is the next finding.
 | **Not fixed on purpose** | A `COALESCE` would put those returns in some month, and which month is a contract question nobody has answered: the sale's month does not exist, the return's own month is a different quantity, and inventing one to make a total add up is how a close acquires revenue that no sale supports. It is documented in `CONTRACT.md`'s terms as a known gap, in README's "What is NOT claimed", and here. |
 | **Commits** | this round |
 
+### The prefix that separated two populations could not separate three
+
+| | |
+|---|---|
+| **What** | Late arrivals are written into the landing volume as `batch=late-<stamp>`, and the prefix exists because the base population and a late one bucket their events into the same instants: without it, `batch=202601010000` from the late generation would replace the base's directory of the same name in one volume. That is what it was written for, and it works. It does not separate a late arrival from ANOTHER late arrival - every arrival got the same prefix, and the stamp comes from the generating population, so two late seeds collide with each other exactly as freely as a late seed once collided with the base. **Measured, for the third population: of the 278 batch directories the second late arrival writes, 112 are names the first arrival already occupies.** In the volume those 112 replace files Auto Loader has already ingested. |
+| **How found** | Computing the third close's population before running it, in order to write the run's prediction. Nothing was looking for this. |
+| **Why invisible** | There was no second late arrival. `test_the_late_batches_cannot_collide_with_the_base_ones` asserts that every batch name starts with `late-`, which is exactly the property that CAUSES the second collision, and it passes - correctly - on the only case that existed. Every test of the mechanism was a test of the case that motivated it. |
+| **The class** | **A fix is verified against the case that motivated it and against nothing after it.** While the fix is being written, the instance it is for is the only instance there is, so the check written beside it can only be a check of that instance. The fix is not wrong; its scope is a guess, and nothing records that it was a guess. Two populations do not tell you whether a rule generalises to three. |
+| **Prevented by** | `late_batch_prefix(n)` in `src/samegold/generator/late.py`: `late-` for the first arrival, `late2-`, `late3-` after it - generalised to N rather than special-cased for the third. The first stays unnumbered because its 269 directories are in the workspace's landing volume and `evidence/databricks/SG-DBX-01.json` describes what Auto Loader made of them; a reproduction that renames them reproduces a different population. `tests/fast/test_late_arrivals.py` pins the first arrival's tree by a hash over its PATHS and bytes (which `test_it_is_deterministic` cannot see - it compares one generation against another generation of the same code), asserts that no two arrivals write the same directory, and measures the 112 that would have collided. `population_for` takes a SEQUENCE of late seeds, so the composition has one definition instead of one per caller. |
+| **Commits** | this round |
+
 ---
 
 ## The expensive specifics
@@ -272,6 +283,7 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **Evidence a reader cannot regenerate is not evidence.** | the late population produced in `/tmp` (this round) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
+| **A fix is verified against the case that motivated it and against nothing after it.** The instance it was written for is the only one that exists while it is being written, so the check beside it can only cover that instance. | the late-arrival prefix that separated two populations and not three (this round) |
 
 ---
 

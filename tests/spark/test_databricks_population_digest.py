@@ -81,7 +81,7 @@ def _statement() -> str:
 def bronze() -> Path:
     """The population the second close read, generated here."""
     root = Path(tempfile.mkdtemp(prefix="digestprobe-"))
-    return population_for(root / "full", base_seed=BASE_SEED, late_seed=LATE_SEED, profile=FAST)
+    return population_for(root / "full", base_seed=BASE_SEED, late_seeds=(LATE_SEED,), profile=FAST)
 
 
 @pytest.fixture(scope="module")
