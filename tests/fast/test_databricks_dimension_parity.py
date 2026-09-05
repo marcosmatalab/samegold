@@ -59,15 +59,20 @@ from samegold.oracle.duckdb_gold import scd2_as_of
 REPO = Path(__file__).resolve().parents[2]
 # What the seed step writes: `samegold generate --profile fast --seed 20260901`, and then, for
 # the second close, `samegold generate-late --seed 20260901 --late-seed 20260904`.
-SEED, LATE_SEED, PROFILE = 20260901, 20260904, FAST
+SEED, LATE_SEED, THIRD_SEED, PROFILE = 20260901, 20260904, 20260905, FAST
 TRACKED = ("segment", "country")
-# The two populations this repository documents, as the bronze line count each produces. They
-# are CANDIDATES, not answers: the fixture builds each one and counts it, because a key here
-# that no longer matches what the generator emits is exactly the drift this file exists to
-# catch.
+# The populations this repository documents, each as the SEQUENCE of late arrivals that makes
+# it. They are CANDIDATES, not answers: the fixture builds each one and counts it, because a
+# key here that no longer matches what the generator emits is exactly the drift this file
+# exists to catch.
+#
+# The third is declared before the run that reads it, and that costs nothing: the fixture stops
+# at the first population whose line count matches the record, so a record from the second
+# close never builds the third.
 DOCUMENTED_POPULATIONS = {
-    "the base seed alone, which is the first close": None,
-    "the base seed plus the late arrivals, which is the second": LATE_SEED,
+    "the base seed alone, which is the first close": (),
+    "the base seed plus one late arrival, which is the second": (LATE_SEED,),
+    "the base seed plus two late arrivals, which is the third": (LATE_SEED, THIRD_SEED),
 }
 # What each population is, measured. The numbers are not the point - the arithmetic is:
 # versions + heartbeats = upserts, in both, which is what "a Type 2 dimension records changes,
@@ -85,6 +90,21 @@ POPULATION_FACTS = {
         "heartbeats": 4,
         "versions": 92,
         "closed_rows": 32,
+        "heartbeat_ids": [
+            "cu-C000028-1",
+            "cu-C000038-1",
+            "cu-C000039-1",
+            "cu-C000043-1",
+        ],
+    },
+    # The third population, computed here before the workspace has read it. The ten upserts the
+    # second arrival adds all change a tracked attribute, so the heartbeat ids are the SAME
+    # four - which is the arithmetic being a claim rather than a coincidence: 102 + 4 = 106.
+    1883: {
+        "upserts": 106,
+        "heartbeats": 4,
+        "versions": 102,
+        "closed_rows": 42,
         "heartbeat_ids": [
             "cu-C000028-1",
             "cu-C000038-1",
@@ -160,9 +180,12 @@ def selection(ingested: int) -> tuple[Path, list[dict], list[dict], int]:
     root = Path(tempfile.mkdtemp(prefix="dimparity-"))
     tried: dict[str, int] = {}
     bronze: Path | None = None
-    for description, late_seed in DOCUMENTED_POPULATIONS.items():
+    for description, late_seeds in DOCUMENTED_POPULATIONS.items():
         candidate = population_for(
-            root / str(late_seed), base_seed=SEED, late_seed=late_seed, profile=PROFILE
+            root / "-".join(str(seed) for seed in late_seeds or ("base",)),
+            base_seed=SEED,
+            late_seeds=late_seeds,
+            profile=PROFILE,
         )
         tried[description] = _bronze_lines(candidate)
         if tried[description] == ingested:

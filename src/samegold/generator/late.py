@@ -45,10 +45,41 @@ from pathlib import Path
 
 from samegold.generator.events import FAST, Profile, generate
 
-# The prefix that keeps the two arrivals apart in one landing volume. Auto Loader lists the
-# directory; two `batch=202601010000` directories from two generations would be one directory
-# with one file in it, and the second upload would silently replace the first.
+# The prefix that keeps arrivals apart in one landing volume. Auto Loader lists the directory;
+# two `batch=202601010000` directories from two generations would be one directory with one file
+# in it, and the second upload would silently replace the first.
 LATE_PREFIX = "late-"
+
+
+def late_batch_prefix(arrival: int) -> str:
+    """The batch-directory prefix for the nth late arrival, counting from 1.
+
+    THE DEFECT THIS EXISTS FOR, because the prefix above already claimed to have fixed it.
+    `late-` separates a late arrival from the BASE population, and it was checked against
+    exactly that: `test_the_late_batches_cannot_collide_with_the_base_ones`. It does not
+    separate a late arrival from ANOTHER late arrival, and could not - every arrival got the
+    same prefix and the stamp comes from the generating population, so two late seeds collide
+    with each other exactly as freely as a late seed once collided with the base.
+
+    Measured, for the third population this repository is about to read: of the 278 batch
+    directories the second late arrival writes, 112 are names the first arrival already
+    occupies. Uploaded into the volume as they are, those 112 replace files Auto Loader has
+    already ingested.
+
+    Nothing could see it, because a second late arrival did not exist. That is the whole shape
+    of the finding, and `FINDINGS.md` carries it: a fix verified against the case that
+    motivated it and never against the case after that.
+
+    THE FIRST ARRIVAL KEEPS THE UNNUMBERED NAME, and that is a compatibility constraint rather
+    than a special case. Those directories are in the workspace's landing volume and were
+    ingested on 4 September 2026; the population this repository regenerates has to be the
+    population the workspace read, directory names included, or the reproduction reproduces
+    something else. So the numbering starts at the second arrival, which is the first one whose
+    name nothing has committed to yet.
+    """
+    if arrival < 1:
+        raise ValueError(f"arrivals are counted from 1, got {arrival}")
+    return LATE_PREFIX if arrival == 1 else f"late{arrival}-"
 
 
 @dataclass(frozen=True)
@@ -103,13 +134,19 @@ def late_arrivals(
     late_seed: int,
     profile: Profile = FAST,
     base_bronze: Path | None = None,
+    arrival: int = 1,
 ) -> LateArrivalResult:
     """Write the late batches under ``out_dir/bronze`` and return what they contain.
 
     `base_bronze` is an optimisation with a correctness condition attached: pass the bronze
     tree the base seed already produced and this does not regenerate it. Pass one produced by a
     DIFFERENT seed and the answer is silently a different population, so callers that cannot
-    prove which seed made a tree should pass nothing and let it be generated here.
+    prove which seed made a tree should pass nothing and let it be generated here. It is also
+    how arrivals compose: an arrival after the first is filtered against the base PLUS every
+    arrival before it, which is a tree that already contains them.
+
+    `arrival` is this arrival's ordinal, and all it decides is the batch prefix - see
+    `late_batch_prefix`. It defaults to 1, which is the population already in the workspace.
 
     No ledger is written. The generator's ledger is the by-construction answer for the
     population it generated, and this is a filtered subset of a second one: composing the two
@@ -146,7 +183,8 @@ def late_arrivals(
 
         written: list[Path] = []
         for batch, batch_lines in sorted(kept.items()):
-            target = out_dir / "bronze" / f"batch={LATE_PREFIX}{batch.split('=', 1)[-1]}"
+            prefix = late_batch_prefix(arrival)
+            target = out_dir / "bronze" / f"batch={prefix}{batch.split('=', 1)[-1]}"
             target.mkdir(parents=True, exist_ok=True)
             destination = target / "part-00000.json"
             destination.write_text("\n".join(batch_lines) + "\n", encoding="utf-8", newline="\n")
@@ -170,23 +208,32 @@ def population_for(
     out_dir: Path,
     *,
     base_seed: int,
-    late_seed: int | None,
+    late_seeds: Sequence[int] = (),
     profile: Profile = FAST,
 ) -> Path:
-    """The whole bronze tree a lane ingested: the base population, plus the late one if any.
+    """The whole bronze tree a lane ingested: the base population, plus every late arrival.
 
-    One function, because the alternative is every caller composing the two by hand and one of
-    them getting it wrong. `late_seed=None` is the first close; a seed is the second.
+    One function, because the alternative is every caller composing the arrivals by hand and
+    one of them getting it wrong. `late_seeds=()` is the first close, one seed is the second,
+    two is the third - and the parameter is a SEQUENCE rather than an optional seed because a
+    third close is where "the late population" stopped being a single thing.
+
+    Each arrival is filtered against the tree as it stands, which by then holds the base and
+    every earlier arrival: an event already delivered is not delivered again, whichever arrival
+    delivered it. And each is written under its own prefix, so no arrival can land on the files
+    of another - which is what `late_batch_prefix` is for and what nothing checked while there
+    were only two populations.
     """
     out_dir = Path(out_dir)
     generate(out_dir, seed=base_seed, profile=profile)
-    if late_seed is not None:
+    for arrival, late_seed in enumerate(late_seeds, start=1):
         late_arrivals(
             out_dir,
             base_seed=base_seed,
             late_seed=late_seed,
             profile=profile,
             base_bronze=out_dir / "bronze",
+            arrival=arrival,
         )
     return out_dir / "bronze"
 
@@ -421,9 +468,13 @@ def describe(result: LateArrivalResult) -> str:
     return (
         f"{result.events} late events in {result.batches} batch directories "
         f"({len(result.files)} files), written {stamp}\n"
-        f"  from {result.late_events} generated, of which {result.already_present} were already "
-        f"in the base population of {result.base_events} and {result.dropped_without_id} "
-        f"carried no event_id\n"
+        # "already delivered", not "already in the base population": after the first
+        # arrival the tree an arrival is filtered against is the base PLUS every arrival
+        # before it, and calling that "the base population" would misname the 1328 events
+        # the second arrival is measured against.
+        f"  from {result.late_events} generated, of which {result.already_present} had "
+        f"already been delivered by the {result.base_events} events before them, and "
+        f"{result.dropped_without_id} carried no event_id\n"
         f"  by type : {types}\n"
         f"  by month: {months}"
     )

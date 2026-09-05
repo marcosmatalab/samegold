@@ -7,17 +7,30 @@ afterwards, and a second close restated it to 25 582 615 without touching the fi
 The check is not that the numbers are plausible. It is that a lane with no shared code
 recomputes each version to the cent from the same events:
 
-  version 0  the base population,          755 events
-  version 1  base plus the late arrivals,  1328 events
+  version 0  the base population,             755 events
+  version 1  base plus one late arrival,      1328 events
+  version 2  base plus two late arrivals,     1883 events
 
 MEASURED, over the population `samegold generate-late` reproduces:
 
-  2026-01 v0  gross 14 198 046  net 12 911 212  425 lines  71 returns  22 rejected
-  2026-01 v1  gross 25 582 615  net 23 268 535  793 lines  126 returns  32 rejected
-  2026-02 v0  gross    199 379  net    199 379    3 lines   0 returns   0 rejected
+  2026-01 v0  gross 14 198 046  net 12 911 212   425 lines   71 returns  22 rejected
+  2026-01 v1  gross 25 582 615  net 23 268 535   793 lines  126 returns  32 rejected
+  2026-02 v0  gross    199 379  net    199 379     3 lines    0 returns   0 rejected
 
-February gained no version because its aggregate did not change, which is the MERGE's `<>`
-guard doing what a restatement policy is for: a new version is a CHANGE, not a re-run.
+COMPUTED HERE AND NOT YET PUBLISHED BY ANY RUN, for the third close:
+
+  2026-01 v2  gross 37 622 605  net 33 763 943  1158 lines  191 returns  49 rejected
+
+That row is a prediction until a run writes it - `docs/predictions-2026-09-05.md` says so and
+can be scored - and this file compares only versions the record actually carries, so declaring
+it early asserts nothing. What it does is make the third population a thing this repository
+knows how to build before the workspace is asked to build it.
+
+February gained no version in either close, because its aggregate did not change - the MERGE's
+`<>` guard doing what a restatement policy is for: a new version is a CHANGE, not a re-run. It
+will not gain one in the third either, and the reason is the same rule for the third time: a
+return books into the month of the SALE it refers to, so the 36 February and 8 March returns in
+the third arrival move JANUARY. Every one of the 408 new orders has a January sale timestamp.
 """
 
 from __future__ import annotations
@@ -35,13 +48,21 @@ from samegold.oracle.duckdb_gold import revenue_by_month_as_of
 
 REPO = Path(__file__).resolve().parents[2]
 RECORD = REPO / "evidence" / "databricks" / "SG-DBX-01.json"
-BASE_SEED, LATE_SEED, PROFILE = 20260901, 20260904, FAST
+BASE_SEED, LATE_SEED, THIRD_SEED, PROFILE = 20260901, 20260904, 20260905, FAST
 AS_OF = dt.datetime(2030, 1, 1, tzinfo=dt.UTC)
 
-# Which population each close version was cut over. A third close needs a third seed and this
-# mapping has to gain a row; the test fails by name on a version it does not know rather than
-# comparing against whichever population happens to be last.
-CLOSE_POPULATIONS: dict[int, int | None] = {0: None, 1: LATE_SEED}
+# Which population each close version was cut over, as the SEQUENCE of late arrivals that
+# produced it. A sequence rather than one optional seed because the third close is where "the
+# late population" stopped being a single thing: version 2 rests on both arrivals, in order,
+# and an arrival is filtered against every arrival before it.
+#
+# The test fails by name on a version it does not know rather than comparing against whichever
+# population happens to be last.
+CLOSE_POPULATIONS: dict[int, tuple[int, ...]] = {
+    0: (),
+    1: (LATE_SEED,),
+    2: (LATE_SEED, THIRD_SEED),
+}
 
 # The record's column names against the reference row's attributes.
 FIELDS = (
@@ -64,9 +85,9 @@ def reference() -> dict[int, dict[str, object]]:
     """The OSS close over each documented population, keyed by close version."""
     root = Path(tempfile.mkdtemp(prefix="closeparity-"))
     out: dict[int, dict[str, object]] = {}
-    for version, late_seed in CLOSE_POPULATIONS.items():
+    for version, late_seeds in CLOSE_POPULATIONS.items():
         bronze = population_for(
-            root / str(version), base_seed=BASE_SEED, late_seed=late_seed, profile=PROFILE
+            root / str(version), base_seed=BASE_SEED, late_seeds=late_seeds, profile=PROFILE
         )
         out[version] = {row.accounting_month: row for row in revenue_by_month_as_of(bronze, AS_OF)}
     return out
