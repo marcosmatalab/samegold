@@ -367,13 +367,13 @@ FAILED update is what tests it.
 
 | table | rows |
 |---|---|
-| `bronze_events` | <!--dbx:rows.bronze_events-->1328<!--/dbx--> |
-| `silver_classified` | <!--dbx:rows.silver_classified-->1328<!--/dbx--> |
-| `silver_events` | <!--dbx:rows.silver_events-->1300<!--/dbx--> |
-| `silver_quarantine` | <!--dbx:rows.silver_quarantine-->28<!--/dbx--> |
-| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->92<!--/dbx--> |
+| `bronze_events` | <!--dbx:rows.bronze_events-->1883<!--/dbx--> |
+| `silver_classified` | <!--dbx:rows.silver_classified-->1883<!--/dbx--> |
+| `silver_events` | <!--dbx:rows.silver_events-->1853<!--/dbx--> |
+| `silver_quarantine` | <!--dbx:rows.silver_quarantine-->30<!--/dbx--> |
+| `dim_customer_scd2` | <!--dbx:rows.dim_customer_scd2-->102<!--/dbx--> |
 | `revenue_by_month` | <!--dbx:rows.revenue_by_month-->2<!--/dbx--> |
-| `revenue_closed` | <!--dbx:rows.revenue_closed-->3<!--/dbx--> |
+| `revenue_closed` | <!--dbx:rows.revenue_closed-->4<!--/dbx--> |
 
 `silver_events` is the expectation-filtered table and `silver_classified` is every row with a
 reason attached, so `silver_classified = silver_events + silver_quarantine` is the conservation
@@ -392,13 +392,13 @@ drift, and `tests/spark/test_adversarial_records.py` compares these predicates a
 
 <!--dbx:expectations.table-->| rule | dataset | passed | failed |
 |---|---|---|---|
-| amount_out_of_range | samegold.main.silver_events | 573 | 0 |
-| missing_required_field | samegold.main.silver_events | 573 | 0 |
-| negative_price | samegold.main.silver_events | 573 | 0 |
-| non_positive_quantity | samegold.main.silver_events | 573 | 0 |
-| unknown_currency | samegold.main.silver_events | 573 | 0 |
-| unknown_event_type | samegold.main.silver_events | 573 | 0 |
-| unparseable_json | samegold.main.silver_events | 573 | 0 |<!--/dbx-->
+| amount_out_of_range | samegold.main.silver_events | 554 | 1 |
+| missing_required_field | samegold.main.silver_events | 555 | 0 |
+| negative_price | samegold.main.silver_events | 555 | 0 |
+| non_positive_quantity | samegold.main.silver_events | 555 | 0 |
+| unknown_currency | samegold.main.silver_events | 554 | 1 |
+| unknown_event_type | samegold.main.silver_events | 555 | 0 |
+| unparseable_json | samegold.main.silver_events | 555 | 0 |<!--/dbx-->
 
 ### Quarantine reasons, from the classified table
 
@@ -408,12 +408,12 @@ never reached.
 
 <!--dbx:quarantine.table-->| quarantine reason | rows |
 |---|---|
-| accepted | 1300 |
-| amount_out_of_range | 6 |
+| accepted | 1853 |
+| amount_out_of_range | 7 |
 | missing_required_field | 5 |
 | negative_price | 3 |
 | non_positive_quantity | 6 |
-| unknown_currency | 2 |
+| unknown_currency | 3 |
 | unknown_event_type | 3 |
 | unparseable_json | 3 |<!--/dbx-->
 
@@ -426,10 +426,10 @@ that the two agree is the point of having both.
 
 | | |
 |---|---|
-| version rows | <!--dbx:dim.versions-->92<!--/dbx--> |
+| version rows | <!--dbx:dim.versions-->102<!--/dbx--> |
 | distinct customers | <!--dbx:dim.customers-->60<!--/dbx--> |
 | open rows (`__END_AT IS NULL`) | <!--dbx:dim.open_rows-->60<!--/dbx--> |
-| closed rows | <!--dbx:dim.closed_rows-->32<!--/dbx--> |
+| closed rows | <!--dbx:dim.closed_rows-->42<!--/dbx--> |
 
 Open rows must equal distinct customers: one current version per key is what Type 2 means, and
 a dimension with two open rows for one customer is the defect the hand-written `MERGE` on the
@@ -549,6 +549,98 @@ eighteen distinct customer upserts; seventeen change a tracked attribute and one
 `cu-C000039-1`, repeats what the customer already had. So 75 + 17 = 92 versions and
 15 + 17 = 32 closed rows, and the heartbeat that changed nothing produced no version, which is
 what `track_history_column_list` is for.
+
+## The third close, and the three runs that made the job a graph
+
+Three runs on 5 September 2026, in a fixed order, each one buying something the others could
+not. All three were deployed from `b131010` with a clean tree, and the record each produced
+says so from inside the workspace.
+
+| run | job run id | what it was for | what it left |
+|---|---|---|---|
+| 1 | `592180158314216` | the false branch, on data nothing had added to | `evidence/databricks/SG-DBX-01.run-1-no-op.json` |
+| 2 | `44869473800771` | a deliberate failure, and its repair | `evidence/databricks/SG-DBX-01.run-2-failed.json` |
+| 3 | `517089489320521` | the third close, and the true branch | `evidence/databricks/SG-DBX-01.json` - the canonical record |
+
+Runs 1 and 2 do not replace the canonical record and are not rendered from. Why that is a rule
+rather than a preference is in `evidence/databricks/README.md`; the short version is that run 1
+ingested nothing, so it reported no expectations at all, and committing it would have turned a
+measured table on this page into `NOT RUN`.
+
+### What the job decided, from the record
+
+| | |
+|---|---|
+| the close's decision | <!--dbx:orch.decision-->restated<!--/dbx--> |
+| the branch it took | <!--dbx:orch.branch-->verify_each_restated_month<!--/dbx--> |
+| versions written | <!--dbx:orch.versions_written-->1<!--/dbx--> |
+| months restated | <!--dbx:orch.months_written-->1<!--/dbx--> |
+| verification checks run | <!--dbx:orch.checks_run-->5<!--/dbx--> |
+| of which failed | <!--dbx:orch.checks_failed-->0<!--/dbx--> |
+
+Those six are rendered from `orchestration` and `close_verification` in the record, and the last
+two are only offered at all when the record positively shows that the branch wrote what it owed.
+A run whose verification never reported renders them as `NOT RUN` rather than as two zeros -
+which is the trap run 2 was built to spring, and did.
+
+### One month, not two, and the reason is a rule deciding for the third time
+
+The third close restated **one** month, so the `for_each` ran one iteration. That is the data's
+answer and not a weaker demonstration: the width comes from
+`{{tasks.close_month.values.months_written}}`, and a fan-out that ran two iterations because two
+were written into the bundle would be the decoration this job was rebuilt to remove. No seed was
+looked for that would have restated two - choosing a population by the shape of the close it
+produces is fitting the data to the demonstration.
+
+Why one: **a return books into the month of the sale it refers to.** The third arrival carries
+408 new orders, every one with a January sale timestamp, plus 36 February and 8 March returns
+against January sales. February's aggregate is therefore unchanged for the third close running,
+and the MERGE's `<>` guard does what a restatement policy is for. Nothing in this repository has
+yet fanned out over two months, and a reader should not have to infer breadth from the presence
+of a construct.
+
+### What run 2 proved, and what it cost
+
+`verify_no_restatement` was failed on purpose with `--params fail_task=verify_no_restatement`.
+The evidence task ran anyway - that is what `run_if: ALL_DONE` is for - and the record it wrote
+names the hole in the two fields built for it in the round before: `missing_checks` listing both
+checks that were owed and never written, and `incomplete` naming the task that owed them. The
+fetch printed `SECTIONS THAT COULD NOT BE READ: ['verify_no_restatement']`. Without that
+derivation the record would have been indistinguishable from run 1's but for a
+`close_verification` with zero rows in it, and zero rows reads as nothing to report.
+
+Two things it cost, both measured and both now written where they are read:
+
+- **the job reported `SUCCESS_WITH_FAILURES`, not `FAILED`**, because the last task in the graph
+  runs whatever happened and succeeded. Alerting on this job's terminal state is unsafe; the
+  failure signal is in the record. `docs/limits.md` carries both faces of that trade.
+- **the task that was made to fail ran twice**, 6s then 12s, 57 seconds apart, inside the
+  original run - with `max_retries: 0` declared on it. That declaration never reached the API,
+  and would not have helped if it had: serverless auto-optimization is what retried it.
+  `FINDINGS.md` carries the finding and `docs/limits.md` the measurement.
+
+The repair re-ran that task alone; `publish_evidence` stayed at `attempt_number: 0` and did not
+overwrite the record in the volume, which is the opposite of what `docs/predictions-2026-09-05.md`
+predicted and is scored there.
+
+### The durations, which turn the ceilings into measurements
+
+Read off the run page rather than out of the record - the Jobs API knows them and the notebook
+does not:
+
+| task | measured | ceiling | margin |
+|---|---|---|---|
+| `ingest_and_transform` | 81 s | 600 s | 7.4x |
+| `close_month` | 51 s | 600 s | 11.8x |
+| `did_the_close_restate` | 0 s | none (starts no compute) | |
+| `verify_no_restatement` | 6 s | 600 s | 100x |
+| `publish_evidence` | 34 s | 900 s | 26.5x |
+
+`databricks/resources/jobs.yml` now carries each of these beside the timeout it justifies, with
+the date and with the margin it chose and why. They stay loose on purpose: what a ceiling has to
+do on this account is end a hang before it spends the day's compute, and what it must never do
+is kill a healthy run on a cold allocation - and a serverless cold start alone is one to two
+minutes.
 
 ## The checklist: what to run afterwards, and what each answer has to be
 
