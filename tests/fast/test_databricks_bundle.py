@@ -975,6 +975,15 @@ REQUIRED_ANCHORS = {
     "dim.closed_rows",
     "expectations.table",
     "quarantine.table",
+    # What the JOB did, which the round that made it a graph is the reason for. These landed
+    # with the three runs of 5 September 2026; before that no record could answer them, and the
+    # renderer would have written NOT RUN into all six.
+    "orch.decision",
+    "orch.branch",
+    "orch.versions_written",
+    "orch.months_written",
+    "orch.checks_run",
+    "orch.checks_failed",
 }
 # Documents that may quote the record. The run document must carry the whole closed list above;
 # any other may carry a SUBSET, and every anchor it does carry has to agree.

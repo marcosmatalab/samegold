@@ -132,13 +132,25 @@ ran against the published one.
 | what happened | January closed at 14 198 046 cents from 425 lines. 573 events the first close never saw were then uploaded, 553 of them for January. The pipeline ran an incremental update and `close_month` ran again |
 | what it produced | a SECOND version of January - 25 582 615 gross, 23 268 535 net, 793 lines, 126 returns, 32 rejected - with `restatement_reason` "late arrivals after close" |
 | what it did not touch | version 0, neither its figures nor its `restated_at`. February gained no version at all: 16 of the late returns fall in February and 4 in March, but they are returns against JANUARY sales, and `gold_close.py` groups by the month of the sale. February's aggregate did not move, and the MERGE's `<>` guard is what stops a close from restating a month that did not change |
-| how it is checked | `tests/fast/test_databricks_close_parity.py` recomputes every published version with the DuckDB reference over the population that version was cut on - 755 events for v0, 1328 for v1 - and compares five columns. Not "the numbers look plausible": a lane sharing no code with `gold_close.py` arrives at the same cents |
+| and then a third time | On 5 September 2026, run `517089489320521`: a second late arrival of 555 events, of which 408 are orders with a January sale timestamp. January gained a THIRD version - 37 622 605 gross, 33 763 943 net, 1158 lines, 191 returns, 49 rejected - and versions 0 and 1 did not move by a cent. February gained no version for the third close running, for the same reason as the second: its late events are returns against January sales |
+| how it is checked | `tests/fast/test_databricks_close_parity.py` recomputes every published version with the DuckDB reference over the population that version was cut on - 755 events for v0, 1328 for v1, 1883 for v2 - and compares five columns. Not "the numbers look plausible": a lane sharing no code with `gold_close.py` arrives at the same cents. Which population belongs to which version is a declaration in that file, and a version it does not know fails by name rather than being compared against whichever population happens to be last |
 
 **Does not show** that the restatement policy is right, only that two implementations agree on
 what it produces. And the population is what makes that checkable at all:
 `samegold generate-late --seed 20260901 --late-seed 20260904` reproduces the 573 events
 exactly, which it did not until this round - they were made once by a script in `/tmp`, and
-`FINDINGS.md` carries what that cost.
+`FINDINGS.md` carries what that cost. The third close needed a second late arrival, and that
+found the next thing wrong with the same mechanism: the prefix that keeps a late arrival off
+the base population does not keep one late arrival off another. 112 of the 278 directories the
+second arrival writes are names the first already occupies, and `FINDINGS.md` carries that too.
+
+**What the third close also demonstrates, and the second could not.** The job is a graph now: a
+condition task reads the close's own decision, a `for_each` fans out over the months it wrote,
+and the other branch checks the claim that writing nothing implies. Run `517089489320521` took
+the true branch and its five per-month checks passed; run `592180158314216` took the false one
+and its four passed; run `44869473800771` was made to fail its verification and the record says
+so by name rather than publishing a section with zero rows in it. `docs/databricks-run.md`
+carries the three, with what each cost.
 
 ## SG-05: invariants hold with no oracle involved
 
