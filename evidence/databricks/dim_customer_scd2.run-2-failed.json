@@ -1,15 +1,15 @@
 {
   "capture": "dim_customer_scd2",
   "provenance": {
-    "captured_at": "2026-09-05 12:59:39.037916",
+    "captured_at": "2026-09-05 11:48:01.993894",
     "catalog": "samegold",
     "commit": "b131010988bd6552453501e697e3ad71ad1d08de",
-    "job_run_id": "517089489320521",
+    "job_run_id": "44869473800771",
     "measured_in_the_workspace": true,
     "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
-    "task_run_id": "451890332619879",
+    "task_run_id": "1081967272681699",
     "tree_dirty": false,
-    "update_id": "0566092c-af8d-4126-967e-d014569442d1"
+    "update_id": "804d865e-53be-4678-bfcb-e761d1fc3f97"
   },
   "query": "SELECT customer_id, segment, country, __START_AT, __END_AT FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT",
   "rows": [
@@ -119,16 +119,9 @@
       "segment": "vip"
     },
     {
-      "__END_AT": "2026-01-11T12:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "FR",
-      "customer_id": "C000009",
-      "segment": "pro"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-11T12:00:00+00:00",
-      "country": "IT",
       "customer_id": "C000009",
       "segment": "pro"
     },
@@ -224,16 +217,9 @@
       "segment": "pro"
     },
     {
-      "__END_AT": "2026-01-14T00:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "PT",
-      "customer_id": "C000018",
-      "segment": "vip"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-14T00:00:00+00:00",
-      "country": "IT",
       "customer_id": "C000018",
       "segment": "vip"
     },
@@ -385,23 +371,9 @@
       "segment": "vip"
     },
     {
-      "__END_AT": "2026-01-06T22:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "PT",
-      "customer_id": "C000031",
-      "segment": "pro"
-    },
-    {
-      "__END_AT": "2026-01-08T14:00:00+00:00",
-      "__START_AT": "2026-01-06T22:00:00+00:00",
-      "country": "IT",
-      "customer_id": "C000031",
-      "segment": "retail"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-08T14:00:00+00:00",
-      "country": "IT",
       "customer_id": "C000031",
       "segment": "pro"
     },
@@ -448,16 +420,9 @@
       "segment": "retail"
     },
     {
-      "__END_AT": "2026-01-12T10:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "ES",
-      "customer_id": "C000036",
-      "segment": "vip"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-12T10:00:00+00:00",
-      "country": "PT",
       "customer_id": "C000036",
       "segment": "vip"
     },
@@ -476,16 +441,9 @@
       "segment": "retail"
     },
     {
-      "__END_AT": "2026-01-13T16:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "IT",
-      "customer_id": "C000038",
-      "segment": "vip"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-13T16:00:00+00:00",
-      "country": "ES",
       "customer_id": "C000038",
       "segment": "vip"
     },
@@ -630,7 +588,7 @@
       "segment": "retail"
     },
     {
-      "__END_AT": "2026-01-14T21:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "PT",
       "customer_id": "C000052",
@@ -638,22 +596,8 @@
     },
     {
       "__END_AT": null,
-      "__START_AT": "2026-01-14T21:00:00+00:00",
-      "country": "ES",
-      "customer_id": "C000052",
-      "segment": "vip"
-    },
-    {
-      "__END_AT": "2026-01-14T14:00:00+00:00",
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "FR",
-      "customer_id": "C000053",
-      "segment": "retail"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-14T14:00:00+00:00",
-      "country": "ES",
       "customer_id": "C000053",
       "segment": "retail"
     },
@@ -679,23 +623,9 @@
       "segment": "retail"
     },
     {
-      "__END_AT": "2026-01-09T10:00:00+00:00",
+      "__END_AT": null,
       "__START_AT": "2026-01-01T00:00:00+00:00",
       "country": "ES",
-      "customer_id": "C000056",
-      "segment": "retail"
-    },
-    {
-      "__END_AT": "2026-01-10T19:00:00+00:00",
-      "__START_AT": "2026-01-09T10:00:00+00:00",
-      "country": "PT",
-      "customer_id": "C000056",
-      "segment": "retail"
-    },
-    {
-      "__END_AT": null,
-      "__START_AT": "2026-01-10T19:00:00+00:00",
-      "country": "IT",
       "customer_id": "C000056",
       "segment": "retail"
     },

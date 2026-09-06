@@ -17,6 +17,93 @@ interesting case.
 
 ---
 
+## SCORED, 5 September 2026
+
+The three runs are done: **592180158314216** (run 1), **44869473800771** (run 2, with its
+repair), **517089489320521** (run 3). What follows is what this document got wrong, first,
+before anything it got right.
+
+### Falsified: the state a failed run reports
+
+> the job's own state | `FAILED`
+
+**Measured: `SUCCESS_WITH_FAILURES`.** Run 2 failed `verify_no_restatement` on purpose and did
+not finish as FAILED, because the last task in the graph runs under `run_if: ALL_DONE`, runs
+whatever happened, and succeeds. The state is neither SUCCESS nor FAILED, and the prediction
+had no third option in it.
+
+This is the price of the trade rather than a defect in it: what was bought is that a failure
+leaves evidence, and what was paid is that the job's terminal state stops being a failure
+signal. **Anyone watching this job by its terminal state does not learn that the close failed.**
+The signal moves into the record - `incomplete` naming the task that owed rows, `missing_checks`
+non-empty - which is exactly what the fetch prints and what the round before this one built.
+Both faces are now written where they are read: in `databricks/resources/jobs.yml` beside the
+`run_if`, and in `docs/limits.md` for an operator deciding what to alert on.
+
+The comment in the bundle asserted the opposite - "the job's own state is failed if a task
+failed" - which makes it the second declaration this round to claim what does not happen.
+
+### Falsified reason: "the repair overwrites the record"
+
+> **Fetch before repairing, and fetch it under a label.** The record is written to one path in
+> the volume and the repair overwrites it there
+
+**Measured: it does not.** `databricks jobs repair-run --rerun-tasks verify_no_restatement`
+re-ran that task and only that task; `publish_evidence` stayed at `attempt_number: 0` and never
+ran again, so nothing rewrote the record in the volume. The advice was right and the reason was
+false, which is worse than being wrong out loud: a reader who checks the reason and finds it
+untrue discards the advice with it.
+
+The advice stands on a different footing. A repair that re-runs `publish_evidence` - which is
+what `--rerun-all-failed-tasks` would do once the evidence task itself has failed, and what a
+second full run would do - does overwrite it, because the notebook writes to one path. So:
+fetch the failed record before repairing because you may not get another chance, not because
+the repair takes it away.
+
+### Wrong by two rows: the quarantine
+
+> `rows.silver_quarantine` | **28, unchanged** | 28
+> `quarantine_by_reason` | accepted **1853**; every other reason unchanged (6, 5, 3, 6, 2, 3, 3)
+
+**Measured: 30, and two of the reasons moved** - `amount_out_of_range` 6 to 7 and
+`unknown_currency` 2 to 3. `silver_events` came back 1853 where this document said 1855, which
+is the same two rows counted from the other side, and the identity still closes: 1883 = 1853 +
+30.
+
+The reasoning behind the prediction was that the late-arrival filter drops the deliberately
+corrupt lines, so an arrival carries nothing that can be quarantined. That is true of lines with
+no `event_id` and false of everything else: an event can parse, carry an id, be genuinely late,
+and still break a rule. The first late arrival happened to contain none - which is what made the
+wrong generalisation look confirmed - and the second contains two. The expectations reported
+them as they arrived: 554 passed and 1 failed on `amount_out_of_range`, 554 and 1 on
+`unknown_currency`, 555 and 0 on the other five.
+
+Nothing was wrong with the machinery; the prediction had a rule in it that was never true.
+
+### Right, field by field
+
+Everything else in this document matched the record at
+`evidence/databricks/SG-DBX-01.json`, including every figure it claimed could not move:
+
+- `rows.bronze_events` 1883, `rows.silver_classified` 1883, `rows.dim_customer_scd2` 102,
+  `rows.revenue_by_month` 2, `rows.revenue_closed` 4;
+- `population.digest` `f5415ee2f90c77a88a7e3a0e185ef458e20932bfee226a207419bbc16deeebac` over
+  1880 rows with 3 outside it - the digest computed by the OSS lane the day before the run;
+- the dimension at 102 versions, 60 customers, 60 open rows, 42 closed;
+- `revenue_closed` with four rows, January v2 at 37 622 605 / 3 858 662 / 33 763 943 / 1158 /
+  191 / 49, and **v0, v1 and February v0 unchanged to the cent**;
+- one month restated, `for_each` one iteration wide, five checks, none missing;
+- the orchestration of all three runs: `no_op` and `excluded` and four checks for run 1,
+  `failed` with both checks missing and `incomplete: ["verify_no_restatement"]` for run 2,
+  `restated` and five checks for run 3.
+
+The two parity tests recompute the third close and the third dimension from two seeds and agree
+with the workspace, which is the check that matters more than any of the above: the numbers were
+not compared against a prediction, they were recomputed by a lane that shares no code with the
+one that produced them.
+
+---
+
 ## What all three share
 
 These come out of the deploy rather than out of the data, and a deviation in any of them means
