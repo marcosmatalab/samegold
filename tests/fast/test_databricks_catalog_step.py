@@ -417,6 +417,52 @@ def test_the_banner_governs_the_command_rather_than_describing_it(tmp_path: Path
     assert "Refusing to spend a Free Edition run" in body
 
 
+def test_job_parameters_reach_the_cli_through_the_guarded_path(tmp_path: Path) -> None:
+    """The second hole of the shape `--only` was the first instance of.
+
+    `require_fresh_deployment` guards the run by being inside `step_run`, so every option this
+    script does not wrap is a reason to type `databricks bundle run` by hand - and a hand-typed
+    run goes straight past the guard. That is not hypothetical: this repository's own record
+    was produced by a hand-typed run with `--only`, which is the finding that put the selection
+    into the script. `--params` was the next one, and the three runs of 5 September 2026 needed
+    it: `fail_task=verify_no_restatement` is how the failed run was made to fail.
+    """
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="run",
+        extra_env={"SAMEGOLD_PARAMS": "fail_task=verify_no_restatement"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "--params" in calls and "fail_task=verify_no_restatement" in calls, calls
+    assert "PARAMS: fail_task=verify_no_restatement" in result.stdout, result.stdout
+    # Through the guard, not around it: the freshness check ran before the run did.
+    assert "bundle run samegold_close" in calls, calls
+
+
+def test_a_plain_run_passes_no_parameters(tmp_path: Path) -> None:
+    """`fail_task` defaults to empty for a reason; a run that carries it by accident fails a
+    task on purpose and spends the quota doing it."""
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--params" not in _captured_calls(tmp_path)
+    assert "PARAMS:" not in result.stdout
+
+
+def test_the_guard_says_what_it_does_not_cover(tmp_path: Path) -> None:
+    """A guard people believe covers more than it does is worse than a smaller one.
+
+    Wrapping `--only` and `--params` makes the convenient path the guarded path. It does not
+    and cannot cover a `databricks bundle run` typed into a terminal, an API call, or Run now
+    in the workspace - the workspace has no way to know which commit a laptop is sitting on -
+    and the script says so where the wrapping is done rather than leaving a reader to assume.
+    """
+    source = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    assert "WRAPS the CLI, it does not replace it" in source
+    assert "Run now button" in source
+
+
 # ------------------------------------------------- the run that executed code nobody deployed
 #
 # `databricks bundle run` runs what was DEPLOYED. On 4 September 2026 a run of this lane

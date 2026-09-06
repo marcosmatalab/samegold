@@ -35,43 +35,7 @@
     "why": "produced inside a Databricks workspace by a deploy, not by `samegold evidence` on a commit of this repository. It derives no seed from a commit sha and nobody with a clone can recompute it, so appending it to evidence/history.jsonl would put an unverifiable link in a chain whose only value is that every link is verifiable."
   },
   "claim_id": "SG-DBX-01",
-  "close_verification": [
-    {
-      "accounting_month": "2026-01",
-      "check_name": "earlier_versions_are_older",
-      "close_version": 2,
-      "detail": "newest 2026-09-05 12:55:34, latest earlier 2026-09-04 09:04:41",
-      "ok": true
-    },
-    {
-      "accounting_month": "2026-01",
-      "check_name": "month_was_eligible_to_close",
-      "close_version": 2,
-      "detail": "recorded close instant 2026-09-05 12:55:34 against month 2026-01",
-      "ok": true
-    },
-    {
-      "accounting_month": "2026-01",
-      "check_name": "net_is_gross_minus_returns",
-      "close_version": 2,
-      "detail": "gross 37622605 - returns 3858662 = 33763943, net says 33763943",
-      "ok": true
-    },
-    {
-      "accounting_month": "2026-01",
-      "check_name": "versions_have_no_gaps",
-      "close_version": 2,
-      "detail": "3 rows for versions 0..2",
-      "ok": true
-    },
-    {
-      "accounting_month": "2026-01",
-      "check_name": "written_equals_the_source_month",
-      "close_version": 2,
-      "detail": "written gross 37622605 lines 1158 / source gross 37622605 lines 1158",
-      "ok": true
-    }
-  ],
+  "close_verification": [],
   "column_types": [
     {
       "new_qty": "bigint",
@@ -85,64 +49,21 @@
   },
   "dim_customer_scd2": [
     {
-      "closed_rows": 42,
+      "closed_rows": 32,
       "customers": 60,
       "first_start": "2026-01-01T00:00:00+00:00",
       "last_start": "2026-01-14T22:00:00+00:00",
       "open_rows": 60,
-      "versions": 102
+      "versions": 92
     }
   ],
-  "expectations": [
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 1,
-      "passed": 554,
-      "rule": "amount_out_of_range"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 0,
-      "passed": 555,
-      "rule": "missing_required_field"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 0,
-      "passed": 555,
-      "rule": "negative_price"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 0,
-      "passed": 555,
-      "rule": "non_positive_quantity"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 1,
-      "passed": 554,
-      "rule": "unknown_currency"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 0,
-      "passed": 555,
-      "rule": "unknown_event_type"
-    },
-    {
-      "dataset": "samegold.main.silver_events",
-      "failed": 0,
-      "passed": 555,
-      "rule": "unparseable_json"
-    }
-  ],
+  "expectations": [],
   "gross_within_contract_bounds": [
     {
       "above_contract_ceiling": false,
       "accounting_month": "2026-01",
-      "gross_cents": 37622605,
-      "line_count": 1158
+      "gross_cents": 25582615,
+      "line_count": 793
     },
     {
       "above_contract_ceiling": false,
@@ -151,8 +72,10 @@
       "line_count": 3
     }
   ],
-  "incomplete": [],
-  "job_run_id": "517089489320521",
+  "incomplete": [
+    "verify_no_restatement"
+  ],
+  "job_run_id": "44869473800771",
   "money_types": [
     {
       "gross_cents": "bigint",
@@ -162,44 +85,42 @@
   ],
   "orchestration": [
     {
-      "branch": "verify_each_restated_month",
-      "decision": "restated",
+      "branch": "verify_no_restatement",
+      "decision": "no_op",
       "expected_checks": [
-        "earlier_versions_are_older:2026-01",
-        "month_was_eligible_to_close:2026-01",
-        "net_is_gross_minus_returns:2026-01",
-        "versions_have_no_gaps:2026-01",
-        "written_equals_the_source_month:2026-01"
+        "every_eligible_month_has_a_version",
+        "no_eligible_month_drifted"
       ],
-      "missing_checks": [],
-      "months_written": [
-        "2026-01"
+      "missing_checks": [
+        "every_eligible_month_has_a_version",
+        "no_eligible_month_drifted"
       ],
+      "months_written": [],
       "task_states": {
         "close_month": "success",
-        "verify_each_restated_month": "success",
-        "verify_no_restatement": "excluded"
+        "verify_each_restated_month": "excluded",
+        "verify_no_restatement": "failed"
       },
       "unresolved_task_values": [],
-      "versions_written": 1
+      "versions_written": 0
     }
   ],
   "pipeline_id": "f640de65-59ba-4dfc-838d-c6a569dad44c",
   "population": [
     {
       "columns": "event_id,event_type,event_ts,arrival_ts,order_id,customer_id,sku,qty,new_qty,unit_price_cents,currency,return_id,reason,segment,country,boundary",
-      "digest": "f5415ee2f90c77a88a7e3a0e185ef458e20932bfee226a207419bbc16deeebac",
-      "digest_rows": 1880,
+      "digest": "03a7b4b0d5251eedabdc58f8a13ba1a8377ea63f94713274db8516785f3a410d",
+      "digest_rows": 1325,
       "rows_outside_the_digest": 3
     }
   ],
   "quarantine_by_reason": [
     {
-      "n": 1853,
+      "n": 1300,
       "reason": "accepted"
     },
     {
-      "n": 7,
+      "n": 6,
       "reason": "amount_out_of_range"
     },
     {
@@ -215,7 +136,7 @@
       "reason": "non_positive_quantity"
     },
     {
-      "n": 3,
+      "n": 2,
       "reason": "unknown_currency"
     },
     {
@@ -256,17 +177,6 @@
       "returns_rejected_count": 32
     },
     {
-      "accounting_month": "2026-01",
-      "close_version": 2,
-      "gross_cents": 37622605,
-      "line_count": 1158,
-      "net_cents": 33763943,
-      "restatement_reason": "late arrivals after close",
-      "return_count": 191,
-      "returns_cents": 3858662,
-      "returns_rejected_count": 49
-    },
-    {
       "accounting_month": "2026-02",
       "close_version": 0,
       "gross_cents": 199379,
@@ -279,33 +189,28 @@
     }
   ],
   "rows": {
-    "bronze_events": 1883,
-    "dim_customer_scd2": 102,
+    "bronze_events": 1328,
+    "dim_customer_scd2": 92,
     "revenue_by_month": 2,
-    "revenue_closed": 4,
-    "silver_classified": 1883,
-    "silver_events": 1853,
-    "silver_quarantine": 30
+    "revenue_closed": 3,
+    "silver_classified": 1328,
+    "silver_events": 1300,
+    "silver_quarantine": 28
   },
   "runtime": "databricks-free",
-  "task_run_id": "451890332619879",
+  "task_run_id": "1081967272681699",
   "title": "the Databricks lane ran and its expectations reported",
   "undecided_rules": [],
   "update": [
     {
-      "ended_at": "2026-09-05 12:57:16.315000",
+      "ended_at": "2026-09-05 11:45:03.154000",
       "error_events": 0,
       "last_state": "COMPLETED",
-      "started_at": "2026-09-05 12:55:35.254000",
-      "update_id": "0566092c-af8d-4126-967e-d014569442d1"
+      "started_at": "2026-09-05 11:43:46.420000",
+      "update_id": "804d865e-53be-4678-bfcb-e761d1fc3f97"
     }
   ],
   "update_history": [
-    {
-      "ended_at": "2026-09-05 12:57:16.315000",
-      "final_state": "COMPLETED",
-      "update_id": "0566092c-af8d-4126-967e-d014569442d1"
-    },
     {
       "ended_at": "2026-09-05 11:45:03.154000",
       "final_state": "COMPLETED",
@@ -350,6 +255,11 @@
       "ended_at": "2026-09-03 12:46:26.553000",
       "final_state": "FAILED",
       "update_id": "c0322e9d-e2d7-4a2f-9932-6f193b258fdd"
+    },
+    {
+      "ended_at": "2026-09-03 12:44:50.177000",
+      "final_state": "FAILED",
+      "update_id": "f3e72640-9edd-4ab3-bdef-4f45fdf92d34"
     }
   ]
 }

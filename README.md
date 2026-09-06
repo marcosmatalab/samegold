@@ -222,9 +222,9 @@ that produced it is reproducible from two seeds by `samegold generate-late`.
 
 | | |
 |---|---|
-| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->25 582 615<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->793<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->**, to the cent against the OSS lane, which computes it without a workspace |
-| the population | **<!--dbx:rows.bronze_events-->1328<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->1300<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->28<!--/dbx-->** quarantined across seven reasons; conservation closed |
-| the dimension | Type 2, **<!--dbx:dim.versions-->92<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row** - same customers, same intervals, same instants - against the workspace's own rows, committed to this repository |
+| the close | 2026-01 gross **<!--dbx:revenue.2026_01.gross_cents-->37 622 605<!--/dbx-->** cents from **<!--dbx:revenue.2026_01.line_count-->1158<!--/dbx-->** lines; 2026-02 gross **<!--dbx:revenue.2026_02.gross_cents-->199 379<!--/dbx-->** from **<!--dbx:revenue.2026_02.line_count-->3<!--/dbx-->**, to the cent against the OSS lane, which computes it without a workspace |
+| the population | **<!--dbx:rows.bronze_events-->1883<!--/dbx-->** ingested = **<!--dbx:rows.silver_events-->1853<!--/dbx-->** accepted + **<!--dbx:rows.silver_quarantine-->30<!--/dbx-->** quarantined across seven reasons; conservation closed |
+| the dimension | Type 2, **<!--dbx:dim.versions-->102<!--/dbx-->** versions over **<!--dbx:dim.customers-->60<!--/dbx-->** customers, equal to the hand-written MERGE's **row by row** - same customers, same intervals, same instants - against the workspace's own rows, committed to this repository |
 | what it cost | 0 € |
 
 Those figures are anchored, not typed: they are checked against

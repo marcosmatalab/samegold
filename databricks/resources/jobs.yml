@@ -37,6 +37,13 @@ resources:
       # successful run exists yet to size it from". Successful runs exist now, so the sentence
       # and the omission both go.
       #
+      # MEASURED end to end, 5 September 2026: the full job with the false branch is 81 + 51 + 6
+      # + 34 seconds of task time plus a condition that costs 0, so under four minutes of work
+      # and about six with the gaps between tasks. 1800 is roughly 5x that, and it is the number
+      # that has to hold for the SLOWEST shape of the job - the true branch runs a for_each
+      # whose width is the data's, so a close over twelve months queues twelve iterations behind
+      # a concurrency of 1.
+      #
       # AND NOT A `health:` RULE, which is the other way to bound a run and was considered and
       # refused. A health rule pairs a threshold with a NOTIFICATION and notifying is all it
       # does; this account has no destination, so it would fire into nothing or into a personal
@@ -51,30 +58,61 @@ resources:
       max_concurrent_runs: 1
       tasks:
         - task_key: ingest_and_transform
-          # Declared, not left to a default, and it is worth being explicit about what it
-          # does NOT cover: this stops the JOB retrying the task. It does not stop the
-          # pipeline system retrying the UPDATE, which is what actually happened - six failed
-          # updates from one launch. The setting for THAT is
-          # `pipelines.numUpdateRetryAttempts`, in the pipeline's `configuration:` block in
-          # databricks.yml; an earlier version of this comment said the reference exposed
-          # none, which was wrong and is the kind of wrong that stops people looking.
+          # THE TWO RETRY LEVERS, and the comment that used to be here claimed the first one
+          # did the second one's job.
+          #
+          # It said "Declared, not left to a default", and on 5 September 2026 `databricks jobs
+          # get` on the deployed job reported max_retries NOT DECLARED on all six tasks while
+          # `timeout_seconds` survived as 600 and 900. So the comment asserted exactly what was
+          # not happening. Whether the bundle's serializer drops a field whose value equals its
+          # default is a HYPOTHESIS and is not settled here; the falsification costs no compute
+          # and is written out in docs/limits.md.
+          #
+          # And it would not have mattered, which is the part worth reading twice. `max_retries`
+          # has a documented default of 0 - never retry - so declaring 0 asks for the behaviour
+          # that already applies. In run 44869473800771 `verify_no_restatement` still ran TWICE
+          # inside the original run: attempt 0 failed in 6s, attempt 1 started 57s later and
+          # failed in 12s. The retry this line was supposed to prevent happened with this line
+          # present, and it would have happened with the line absent, because the thing that
+          # retried it is not this setting.
+          #
+          # SERVERLESS AUTO-OPTIMIZATION is. It is ON by default, the UI calls it "Enable
+          # serverless auto-optimization (may include additional retries)", and the API field is
+          # `disable_auto_optimization`. That is the lever, and it is set below. Note that it is
+          # a `true` rather than a zero, so it survives the serializer hypothesis either way.
+          #
+          # Both are declared: `max_retries: 0` says what this lane wants of the job scheduler,
+          # `disable_auto_optimization: true` says it to the part that was actually retrying.
+          # Neither has been exercised against a workspace yet - the next deploy is what tests
+          # them, and `scripts/databricks_run.sh deploy` now reports which declared task
+          # settings the deployed job came back with, so nobody has to remember to look.
+          #
+          # Neither stops the PIPELINE system retrying an UPDATE, which is a third mechanism
+          # again: that is `pipelines.numUpdateRetryAttempts` in databricks.yml.
           max_retries: 0
-          # Ten minutes against a MEASURED update of 115 seconds (08:41:54 to 08:43:49 on
-          # 4 September 2026, from `update` in the record). Five times the measurement, and
-          # chosen against the incident rather than round: one launch once produced six failed
-          # updates over fourteen minutes, and this would have ended that at ten. The retry
-          # loop itself is supposed to be off now, and this is what bounds it if it is not.
+          disable_auto_optimization: true
+          # MEASURED, 5 September 2026, run 592180158314216: this task took 81 seconds. The
+          # ceiling is 600, which is 7.4x the measurement - the tightest margin in the job, and
+          # deliberately so: it is the only task that starts a pipeline update, an update is
+          # where a retry loop once cost fourteen minutes of quota, and the previous measured
+          # update was 115s. A ceiling under two minutes would kill a healthy run on a slow
+          # allocation; ten minutes cannot fire on a slow day and does fire on a stuck one.
           timeout_seconds: 600
           pipeline_task:
             pipeline_id: ${resources.pipelines.samegold_pipeline.id}
         - task_key: close_month
+          # Both levers, for the reason written out on ingest_and_transform above.
           max_retries: 0
-          # No per-task duration has been measured for any notebook in this lane, so this is a
-          # CEILING and not an estimate, and saying which it is matters more than the number: a
-          # serverless cold start alone can be one to two minutes, so a tight bound would kill
-          # a healthy run. Ten minutes for a task that runs two statements is a hang detector.
-          # The run this round is about will produce per-task durations; that is when these get
-          # tightened, and until then they are honest about being loose.
+          disable_auto_optimization: true
+          # MEASURED, 5 September 2026, run 592180158314216: 51 seconds, which includes the
+          # serverless cold start. 600 is 11.8x that.
+          #
+          # The margin is deliberate and it is not an estimate of anything. What a timeout can
+          # do on this account is end a HANG before it spends the day's compute; what it must
+          # never do is kill a healthy run on a cold allocation, and a cold start alone can be
+          # one to two minutes. Ten times the measurement is the smallest number that is
+          # comfortably clear of the second failure mode, and it is still 8.5 minutes short of
+          # the job ceiling.
           timeout_seconds: 600
           depends_on:
             - task_key: ingest_and_transform
@@ -144,6 +182,12 @@ resources:
             task:
               task_key: verify_month
               max_retries: 0
+              disable_auto_optimization: true
+              # No iteration of this task has run yet - the third close restated one month and
+              # the run took the OTHER branch's shape (one iteration, `verify_month` for
+              # 2026-01, 5 checks). Its sibling `verify_no_restatement` measured 6s, and this
+              # runs the same shape of query, so 600 is the same ceiling for the same reason.
+              # It is a ceiling and not a measurement, and this sentence is what says so.
               timeout_seconds: 600
               notebook_task:
                 notebook_path: ../src/verify_month.py
@@ -171,6 +215,13 @@ resources:
             - task_key: did_the_close_restate
               outcome: "false"
           max_retries: 0
+          disable_auto_optimization: true
+          # MEASURED, 5 September 2026: 6s on the run that passed (592180158314216), and 6s and
+          # 12s on the two attempts of the run that was made to fail (44869473800771). 600 is
+          # 50x the fast case, and that is the largest margin in the job on the shortest task -
+          # which is the honest shape: a task that does one SELECT has no interesting slow case
+          # to size against, only a cold start, so the ceiling is a hang detector and nothing
+          # else. Tightening it would buy nothing and would start killing cold allocations.
           timeout_seconds: 600
           notebook_task:
             notebook_path: ../src/verify_no_restatement.py
@@ -187,6 +238,12 @@ resources:
         # ---------------------------------------------------------------- the evidence
         - task_key: publish_evidence
           max_retries: 0
+          disable_auto_optimization: true
+          # MEASURED, 5 September 2026, run 592180158314216: 34 seconds for roughly twenty
+          # queries and two files written to a volume. 900 is 26.5x, the loosest margin here,
+          # and it stays loose on purpose: this is the task that must produce a record when
+          # everything else has gone wrong, so it is the last one that should be killed by a
+          # bound. A record that was never written is the only outcome this lane cannot report.
           timeout_seconds: 900
           depends_on:
             - task_key: verify_each_restated_month
@@ -203,8 +260,27 @@ resources:
           #     for its worst outcome. `_read` already records unreadable sections by name in
           #     `incomplete`, so a record written after a failure says which parts are holes.
           #
-          # It does NOT make the run green: the job's own state is failed if a task failed.
-          # This decides what is recorded, not what is reported.
+          # WHAT IT COSTS, measured rather than assumed. This comment used to say "It does NOT
+          # make the run green: the job's own state is failed if a task failed." Run
+          # 44869473800771 on 5 September 2026 was made to fail `verify_no_restatement` and
+          # finished as SUCCESS_WITH_FAILURES, not FAILED - because the last task in the graph
+          # runs whatever happened and succeeds. So the sentence was wrong in the direction
+          # that matters: anyone watching this job by its terminal state does not learn that
+          # the close failed.
+          #
+          # The trade is still worth making and it is a trade, not a free win:
+          #
+          #   * bought: a failure leaves evidence. The record is written, `incomplete` names
+          #     the task that owed rows, and the run is diagnosable from a file instead of from
+          #     somebody's memory of a red tick.
+          #   * paid: the job's terminal state stops being a failure signal. SUCCESS_WITH
+          #     FAILURES is not SUCCESS and not FAILED, and a monitor that treats "not FAILED"
+          #     as healthy will read this job as healthy while the close is broken.
+          #
+          # What restores the signal is the record, not the state: `incomplete` non-empty and
+          # `missing_checks` non-empty are the two fields that say so, and the fetch prints
+          # them. Alerting on the job state is the thing this shape makes unsafe, and
+          # docs/limits.md says so where an operator will read it.
           run_if: ALL_DONE
           notebook_task:
             notebook_path: ../src/publish_evidence.py
