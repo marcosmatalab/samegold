@@ -41,7 +41,10 @@ jobs:
           path: ~/.cache/pip/wheels
           key: ${{ runner.os }}-pysparkwheel-4.2.0
       - run: pip install -e ".[spark,rust,dev]"
-      - run: pytest tests/spark -q -m spark
+      # No `-m spark`: a test in tests/spark without the marker was deselected by every
+      # command in this repository, which is how three of them had never run. See the comment
+      # in scripts/preflight.sh, which this line has to match.
+      - run: pytest tests/spark -q
 
   delta:
     runs-on: ubuntu-latest
@@ -73,5 +76,8 @@ jobs:
         # generated data fits, but not with the preinstalled toolchains sitting there.
         run: sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/share/dotnet /usr/local/lib/android || true
       # Separate processes: a Spark session is a per-process singleton.
-      - run: pytest tests/spark -q -m spark
+      # No `-m spark`: a test in tests/spark without the marker was deselected by every
+      # command in this repository, which is how three of them had never run. See the comment
+      # in scripts/preflight.sh, which this line has to match.
+      - run: pytest tests/spark -q
       - run: pytest tests/delta -q
