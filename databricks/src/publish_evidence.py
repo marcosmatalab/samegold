@@ -32,6 +32,7 @@ because nothing had ever deployed it:
 # mypy: disable-error-code="name-defined"
 
 # COMMAND ----------
+import datetime as dt
 import json
 import re
 from collections.abc import Callable
@@ -796,6 +797,139 @@ record = {
 }
 payload = json.dumps(record, indent=2, sort_keys=True, default=str)
 print(payload)
+
+# COMMAND ----------
+# WHAT THE RUN DID, AS TWO TABLES, so that something other than a person can read it.
+#
+# THE PROBLEM THESE SOLVE. Free Edition has no account console, so there is no `system.lakeflow`
+# and no `system.billing`: nothing in SQL can answer "how did the last run of this job end?".
+# And the run of 5 September 2026 taught this lane that the job's own terminal state cannot
+# answer it either - a run whose close failed reported SUCCESS_WITH_FAILURES, because the
+# evidence task runs under `run_if: ALL_DONE`, is last in the graph, and succeeded.
+#
+# So the failure signal lives in the record, and a record is a file in a volume. A file cannot
+# be charted and cannot be alerted on. These two tables are the same facts where a dashboard and
+# a SQL alert can reach them, written by the task that already knows them, once per run:
+#
+#   job_run_status       one row per run: the decision, the branch, the task states, the holes,
+#                        and one BOOLEAN that says whether this run is sound.
+#   job_run_expectations one row per rule per run: what the expectations reported for the update
+#                        this run drove.
+#
+# `ok` is DERIVED here and not typed by anyone: a run is sound when no section is incomplete, no
+# expected check is missing, and no upstream task reported a state outside the two this graph
+# produces on a healthy run. A state this record could not learn is `None`, and `None` is not
+# success - that is the same rule the rest of this notebook follows, applied to the one field
+# an alert will read.
+HEALTHY_TASK_STATES = ("success", "excluded")
+
+# ONE DECLARATION EACH, used by the CREATE TABLE and by the frame that is appended to it.
+# `saveAsTable(mode="append")` matches BY POSITION, and a frame built from dicts is ordered by
+# whatever the inference did - so a schema written twice is a schema that will one day write
+# `decision` into `branch` and be green about it. `tests/spark/test_databricks_lane_parses.py`
+# resolves the dashboard's queries against these same column lists.
+JOB_RUN_STATUS_COLUMNS = (
+    "job_run_id STRING, task_run_id STRING, deploy_commit STRING, decision STRING, "
+    "branch STRING, versions_written INT, months_written STRING, checks_run INT, "
+    "checks_failed INT, missing_checks STRING, incomplete STRING, task_states STRING, "
+    "ok BOOLEAN, written_at TIMESTAMP"
+)
+JOB_RUN_EXPECTATIONS_COLUMNS = (
+    "job_run_id STRING, rule STRING, dataset STRING, passed BIGINT, failed BIGINT, "
+    "written_at TIMESTAMP"
+)
+# The WORKSPACE's clock: this notebook runs on workspace compute, so the driver's clock is the
+# one the tables above are timestamped with, the same clock `current_timestamp()` reads.
+written_at = dt.datetime.now(tz=dt.UTC)
+
+status_rows = [
+    (
+        dbutils.widgets.get("job_run_id"),
+        dbutils.widgets.get("task_run_id"),
+        deploy_commit,
+        str(close_decision),
+        branch,
+        close_versions if isinstance(close_versions, int) else None,
+        ",".join(close_months) if isinstance(close_months, list) else None,
+        len(close_verification) if isinstance(close_verification, list) else None,
+        (
+            sum(1 for row in close_verification if not row.get("ok"))
+            if isinstance(close_verification, list)
+            else None
+        ),
+        ",".join(missing_checks),
+        ",".join(sorted(set(incomplete))),
+        json.dumps(task_states, sort_keys=True),
+        (
+            not sorted(set(incomplete))
+            and not missing_checks
+            and all(state in HEALTHY_TASK_STATES for state in task_states.values())
+        ),
+        written_at,
+    )
+]
+
+expectation_rows = [
+    (
+        dbutils.widgets.get("job_run_id"),
+        str(row.get("rule")),
+        str(row.get("dataset")),
+        int(row.get("passed") or 0),
+        int(row.get("failed") or 0),
+        written_at,
+    )
+    for row in (expectations if isinstance(expectations, list) else [])
+]
+
+# The tables are CREATEd with their columns spelled out rather than inferred from the frame,
+# for the reason `close_verification` is: a schema that comes from whatever the writer happened
+# to build is a schema that changes when the writer does, and `tests/spark/`
+# `test_databricks_lane_parses.py` resolves the dashboard's queries against these declarations.
+_read(
+    "job_run_status_table",
+    lambda: spark.sql(
+        f"CREATE TABLE IF NOT EXISTS {catalog}.main.job_run_status "
+        f"({JOB_RUN_STATUS_COLUMNS}) USING DELTA"
+    ),
+)
+_read(
+    "job_run_expectations_table",
+    lambda: spark.sql(
+        f"CREATE TABLE IF NOT EXISTS {catalog}.main.job_run_expectations "
+        f"({JOB_RUN_EXPECTATIONS_COLUMNS}) USING DELTA"
+    ),
+)
+
+
+def _append(table: str, columns: str, rows: Any) -> Any:
+    """Append rows under an EXPLICIT schema, or record the failure as a value.
+
+    The schema is passed rather than inferred, and that is the point of it: `saveAsTable` in
+    append mode matches by POSITION, and inference over dicts orders columns by whatever it
+    feels like - which would one day write `decision` into `branch` and report success.
+
+    Wrapped in `_read` by the caller for the reason every other section is: a table this
+    notebook could not write must appear in `incomplete` by name rather than as a stack trace
+    that loses the record. The record is already written by the time these run.
+    """
+    spark.createDataFrame(rows, columns).write.mode("append").saveAsTable(table)
+    return len(rows)
+
+
+if status_rows:
+    _read(
+        "job_run_status",
+        lambda: _append(f"{catalog}.main.job_run_status", JOB_RUN_STATUS_COLUMNS, status_rows),
+    )
+if expectation_rows:
+    _read(
+        "job_run_expectations",
+        lambda: _append(
+            f"{catalog}.main.job_run_expectations",
+            JOB_RUN_EXPECTATIONS_COLUMNS,
+            expectation_rows,
+        ),
+    )
 
 # COMMAND ----------
 # THE TASK VALUE THAT USED TO BE SET HERE IS GONE.

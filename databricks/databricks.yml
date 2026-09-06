@@ -40,6 +40,19 @@ variables:
   deploy_tree_dirty:
     description: Whether that tree had uncommitted changes outside evidence/, or "unknown".
     default: unknown
+  # THE ONE THING A BUNDLE CANNOT LEARN ON THIS ACCOUNT. A dashboard and an alert both need a
+  # SQL warehouse id, and Free Edition gives exactly one 2X-Small that a bundle can neither
+  # create nor look up - which is why `databricks/sql/policies.sql` has been declared and never
+  # applied since the lane existed.
+  #
+  # It is resolvable one layer out: `scripts/databricks_run.sh` already asks `warehouses list`
+  # for the catalog step, and it passes the answer here at deploy time. The default is empty so
+  # that `databricks bundle validate` still runs with no workspace - which is what CI does -
+  # and a deploy with an empty value fails on the resource that needs it rather than silently
+  # deploying half a dashboard.
+  warehouse_id:
+    description: The SQL warehouse the dashboard and the alert attach to. Resolved by scripts/databricks_run.sh at deploy time.
+    default: ""
 
 targets:
   free:

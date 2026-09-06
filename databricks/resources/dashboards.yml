@@ -1,0 +1,112 @@
+resources:
+  # ------------------------------------------------------------------ the dashboard
+  #
+  # WHY THIS EXISTS AT ALL. Every figure this lane produces is already in a JSON record, and a
+  # record is not a thing anybody looks at twice. The dashboard is the same facts where a
+  # person sees them without being told to, and the choice of what to put on it is the whole
+  # decision: it shows what the project CLAIMS, and nothing decorative.
+  #
+  #   * every version of every closed month, with what moved between them. This is the claim -
+  #     a signed-off figure changed and the earlier one did not - and it is the reason the
+  #     repository exists;
+  #   * the doors rows left by, which is the quality gate reporting on itself;
+  #   * what the expectations said about the update the last run drove;
+  #   * whether that run was SOUND, which is not the same question as whether it succeeded.
+  #
+  # `file_path` and not `serialized_dashboard`: the dashboard is reviewable as a file in this
+  # repository, and a JSON blob folded into YAML is neither reviewable nor diffable. What it
+  # costs is that bundle variables are NOT substituted inside that file - so every table it
+  # names is spelled out, and `tests/fast/test_databricks_bundle.py` holds those spellings to
+  # the catalog the bundle deploys to.
+  dashboards:
+    samegold_close_dashboard:
+      display_name: samegold close
+      file_path: ../dashboards/samegold_close.lvdash.json
+      # The one 2X-Small warehouse Free Edition gives you. A bundle cannot create one and
+      # cannot learn its id, which is why `databricks/sql/policies.sql` is declared and never
+      # applied - so the id is resolved by `scripts/databricks_run.sh` at deploy time, from
+      # the same `warehouses list` call the catalog step already makes, and passed in.
+      warehouse_id: ${var.warehouse_id}
+
+  # ------------------------------------------------------------------ the alert
+  #
+  # THE ALERT IS THE ANSWER TO A FINDING, which is the only reason to build one.
+  #
+  # On 5 September 2026 run 44869473800771 was made to fail its verification. The job finished
+  # SUCCESS_WITH_FAILURES, not FAILED, because `publish_evidence` runs under `run_if: ALL_DONE`,
+  # is the last task in the graph, and succeeded. Anybody watching this job by its terminal
+  # state would not have learned that the close failed. docs/limits.md carries both faces of
+  # that trade.
+  #
+  # So the alert does not watch the job state. It watches what the run itself concluded:
+  # `job_run_status.ok`, written by `publish_evidence` from the task states it was handed and
+  # the holes it found - no section incomplete, no expected check missing, no upstream task in
+  # a state this graph does not produce on a healthy run. A run that fails and still reports
+  # SUCCESS_WITH_FAILURES has `ok = false`, and that is the row this fires on.
+  #
+  # WHY `not_ok` AND NOT `ok`. An alert compares one value against a threshold, and the
+  # condition wanted is "the last run was not sound". Counting the not-sound rows in the last
+  # run gives 1 when it fired and 0 when it did not, which is a `> 0` comparison rather than a
+  # boolean equality the evaluator would have to interpret. `empty_result_state: TRIGGERED`
+  # covers the other absence: a `job_run_status` with no rows at all means the evidence task
+  # never wrote one, which is not a healthy silence.
+  alerts:
+    samegold_close_not_sound:
+      display_name: samegold close - last run not sound
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT SUM(CASE WHEN ok THEN 0 ELSE 1 END) AS not_ok
+        FROM (
+            SELECT ok
+            FROM ${var.catalog}.main.job_run_status
+            ORDER BY written_at DESC
+            LIMIT 1
+        )
+      evaluation:
+        comparison_operator: GREATER_THAN
+        source:
+          name: not_ok
+        threshold:
+          value:
+            double_value: 0
+        # No rows is not silence. The table is written by the last task of every run, so an
+        # empty answer means no run has ever finished writing one - which is exactly the
+        # outcome an alert on the job state would also have missed.
+        empty_result_state: TRIGGERED
+      schedule:
+        # ONCE A DAY, AT THE LOWEST FREQUENCY THE ALERT SUPPORTS THAT IS STILL USEFUL, and
+        # PAUSED - for the same reason the job's own schedule is paused, and the reason is
+        # arithmetic rather than caution.
+        #
+        # THE COST, calculated rather than felt. Free Edition gives one 2X-Small warehouse that
+        # stops itself after 10 minutes idle, so every evaluation is a cold start plus a
+        # 10-minute idle window before it stops again. A 2X-Small is 4 DBU/hour at the
+        # published rate, so one evaluation costs about 4 x (10/60) = 0.67 DBU of warehouse
+        # time for a query that reads one row. Hourly would be ~16 DBU a day of warehouse time
+        # spent to read one row 24 times; daily is ~0.67.
+        #
+        # That number is DERIVED, not measured: Free Edition exposes no `system.billing`, so
+        # nothing here can read a DBU. It is the published 2X-Small rate times the auto-stop
+        # window, and it is stated that way rather than as a measurement.
+        #
+        # PAUSED because on this account the quota is a hard daily stop shared with the lane
+        # itself: an alert that wakes the warehouse every day competes with the compute the
+        # close needs. It is DECLARED so the shape is in the bundle and a reader can see what
+        # would fire and when; unpausing it is one edit and a deploy.
+        quartz_cron_schedule: "0 30 6 * * ?"
+        timezone_id: Europe/Madrid
+        pause_status: PAUSED
+      # WHAT IT SAYS WHEN IT FIRES. A notification with no destination is the decorative case
+      # this repository refused for job health rules, and the same argument applies here - so
+      # no `notification:` block is declared, and the alert's state in the workspace is what
+      # carries it. The difference from a health rule is that an alert HAS a state a person or
+      # a query can read afterwards; a health rule only had the notification.
+      custom_summary: "samegold close: the last run was not sound"
+      custom_description: |
+        `job_run_status.ok` is false for the most recent run of the samegold close, or no run
+        has written a row at all.
+
+        This is not the job's terminal state, and that is deliberate: a run whose verification
+        fails reports SUCCESS_WITH_FAILURES, because the evidence task runs under ALL_DONE and
+        succeeds. Read `missing_checks` and `incomplete` on that row for which task owed rows
+        it never wrote.

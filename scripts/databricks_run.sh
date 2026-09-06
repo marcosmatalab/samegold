@@ -376,15 +376,111 @@ for job in jobs or []:
             inner.get("max_retries", "ABSENT"),
             inner.get("disable_auto_optimization", "ABSENT"),
             inner.get("timeout_seconds", "ABSENT"),
+            "pipeline" if "pipeline_task" in inner else "notebook",
         ))
 if not rows:
     print("NOTASKS"); raise SystemExit(0)
-for key, retries, auto, timeout in rows:
-    print(f"ROW {key} max_retries={retries} disable_auto_optimization={auto} timeout_seconds={timeout}")
-missing = [key for key, _, auto, _ in rows if auto == "ABSENT"]
+for key, retries, auto, timeout, kind in rows:
+    print(f"ROW {key} ({kind}) max_retries={retries} disable_auto_optimization={auto} timeout_seconds={timeout}")
+# A PIPELINE TASK IS EXCLUDED FROM THIS WARNING, and that is a measurement rather than an
+# assumption. On 6 September 2026 the deployed job came back with disable_auto_optimization on
+# all four notebook tasks and NOT on ingest_and_transform, which is the pipeline task - the
+# field is a serverless-workflows task setting, and a pipeline task runs on the compute of the
+# pipeline itself. Those retries are governed one level down, in the configuration block of the
+# pipeline, which is what the pipeline reader below prints.
+missing = [key for key, _, auto, _, kind in rows if auto == "ABSENT" and kind != "pipeline"]
 if missing:
     print("MISSING_AUTO " + " ".join(missing))
+pipeline_tasks = [key for key, _, auto, _, kind in rows if kind == "pipeline" and auto == "ABSENT"]
+if pipeline_tasks:
+    print("PIPELINE_TASK " + " ".join(pipeline_tasks))
 '
+
+# THE PIPELINE'S OWN RETRY SETTINGS, which no reader in this repository had ever looked at.
+#
+# `pipelines.numUpdateRetryAttempts` was named as the fix in a comment on 3 September 2026, set
+# to "0" in the pipeline's `configuration:` block the same day, and never verified: every update
+# since has succeeded, and an update that succeeds does not exercise a retry setting. The
+# incident it answers is the one that cost the most so far - six failed updates from one launch,
+# fourteen minutes of Free Edition quota on 2 September 2026.
+#
+# It is read back here for the same reason the task settings are: a declaration nobody reads
+# back is a hope. And it matters more for this one, because the task that starts the update is
+# the ONLY task in the job that `disable_auto_optimization` does not reach.
+DEPLOYED_PIPELINE_SETTINGS='
+import json, sys
+
+WANTED = ("pipelines.numUpdateRetryAttempts", "pipelines.maxFlowRetryAttempts")
+try:
+    spec = json.load(sys.stdin)
+except Exception:
+    print("UNREADABLE"); raise SystemExit(0)
+if isinstance(spec, dict) and isinstance(spec.get("spec"), dict):
+    spec = spec["spec"]
+if not isinstance(spec, dict):
+    print("UNREADABLE"); raise SystemExit(0)
+configuration = spec.get("configuration") or {}
+development = spec.get("development", "ABSENT")
+serverless = spec.get("serverless", "ABSENT")
+continuous = spec.get("continuous", "ABSENT")
+print(f"ROW development={development} serverless={serverless} continuous={continuous}")
+for name in WANTED:
+    value = configuration.get(name, "ABSENT")
+    print(f"ROW {name}={value}")
+missing = [name for name in WANTED if name not in configuration]
+if missing:
+    print("MISSING_RETRY " + " ".join(missing))
+'
+
+report_deployed_pipeline_settings() {
+    local py listing identifier spec answer
+    py="$(python_bin)" || return 0
+    listing="$(databricks pipelines list-pipelines -o json 2>/dev/null || true)"
+    identifier="$(printf '%s' "$listing" | "$py" -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+if isinstance(rows, dict):
+    rows = rows.get("statuses") or rows.get("pipelines") or []
+for row in rows or []:
+    if row.get("name") == sys.argv[1]:
+        print(row.get("pipeline_id", ""))
+        break
+' "$PIPELINE_NAME")"
+    if [ -z "$identifier" ]; then
+        echo "  (no pipeline named \"$PIPELINE_NAME\" came back, so its retry settings were"
+        echo "   not read. Check by hand: databricks pipelines list-pipelines -o json)"
+        return 0
+    fi
+    spec="$(databricks pipelines get "$identifier" -o json 2>/dev/null || true)"
+    answer="$(printf '%s' "$spec" | "$py" -c "$DEPLOYED_PIPELINE_SETTINGS")"
+    case "$answer" in
+        UNREADABLE* | "")
+            echo "  (could not read the deployed pipeline spec back; check by hand with"
+            echo "   databricks pipelines get $identifier -o json)"
+            return 0 ;;
+    esac
+    echo "  what the deployed pipeline came back with ($identifier):"
+    printf '%s\n' "$answer" | while IFS= read -r line; do
+        case "$line" in
+            ROW*) echo "    ${line#ROW }" ;;
+        esac
+    done
+    case "$answer" in
+        *MISSING_RETRY*)
+            echo
+            echo "  WARNING: the pipeline's retry configuration did not arrive:"
+            echo "    $(printf '%s\n' "$answer" | sed -n 's/^MISSING_RETRY //p')"
+            echo
+            echo "  This is the ONLY thing standing between a failed update and the retry loop"
+            echo "  that cost six updates and fourteen minutes of quota on 2 September 2026."
+            echo "  disable_auto_optimization does not reach a pipeline task, and the default"
+            echo "  the missing setting overrides is five retries for a triggered pipeline."
+            echo ;;
+    esac
+}
 
 report_deployed_task_settings() {
     local py answer
@@ -404,6 +500,17 @@ report_deployed_task_settings() {
         esac
     done
     case "$answer" in
+        *PIPELINE_TASK*)
+            echo
+            echo "  note: disable_auto_optimization is absent on"
+            echo "    $(printf '%s\n' "$answer" | sed -n 's/^PIPELINE_TASK //p')"
+            echo "  and that is expected: it is a serverless-workflows TASK setting, and a"
+            echo "  pipeline task runs on the pipeline's own compute. Its retries are governed"
+            echo "  by the pipeline configuration printed below, which is the setting that"
+            echo "  answers the six-updates-from-one-launch incident."
+            echo ;;
+    esac
+    case "$answer" in
         *MISSING_AUTO*)
             echo
             echo "  WARNING: disable_auto_optimization did not arrive on:"
@@ -420,16 +527,36 @@ report_deployed_task_settings() {
 
 step_deploy() {
     say "bundle deploy -t $TARGET"
-    local commit dirty
+    local commit dirty warehouse py
     commit="$(deploy_commit)"
     dirty=$(test -n "$(code_changes)" && echo true || echo false)
+    # THE WAREHOUSE ID, resolved here because a bundle cannot resolve it. The dashboard and the
+    # alert both attach to one, Free Edition gives exactly one 2X-Small, and `warehouses list`
+    # is the same call the catalog step makes. Empty is not fatal here: the deploy will fail on
+    # the resource that needs it, with the API saying so, which is a better message than one
+    # invented in this script.
+    warehouse=""
+    if py="$(python_bin)"; then
+        warehouse="$(databricks warehouses list -o json 2>/dev/null \
+            | "$py" -c "$WAREHOUSE_FIELDS" | awk '{print $1}')"
+    fi
+    if [ -n "$warehouse" ]; then
+        echo "  warehouse for the dashboard and the alert: $warehouse"
+    else
+        echo "  WARNING: no SQL warehouse came back from \`warehouses list\`, so the dashboard"
+        echo "  and the alert have no id to attach to and the deploy will fail on them."
+    fi
     echo "  deploying $commit (tree_dirty=$dirty)"
     (cd "$BUNDLE" && databricks bundle deploy -t "$TARGET" \
         --var="catalog=$CATALOG" \
         --var="deploy_commit=$commit" \
-        --var="deploy_tree_dirty=$dirty")
+        --var="deploy_tree_dirty=$dirty" \
+        --var="warehouse_id=$warehouse")
     # Read back, because a deploy that succeeds is not a deploy that sent what was written.
+    # BOTH resources: the job's tasks, and the pipeline whose own configuration is the only
+    # retry lever the task that starts an update has.
     report_deployed_task_settings
+    report_deployed_pipeline_settings
 }
 
 step_seed() {
@@ -480,6 +607,10 @@ script at whichever directory holds them."
 # exact name, so a renamed job simply stops being found and the guard below would say "nothing
 # is deployed" about a job sitting right there.
 JOB_NAME="samegold monthly close"
+# The pipeline's own name, from `resources.pipelines.samegold_pipeline.name` in
+# databricks.yml. A test holds the two together, the same way it does for the job: a name this
+# script looks up and a name the bundle deploys are two spellings of one fact.
+PIPELINE_NAME="samegold"
 
 # Reads the deployed job and prints what it was DEPLOYED FROM. One call.
 #

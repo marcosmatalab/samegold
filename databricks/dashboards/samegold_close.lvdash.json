@@ -1,0 +1,315 @@
+{
+  "datasets": [
+    {
+      "name": "close_versions",
+      "displayName": "every version of every closed month, and what moved between them",
+      "queryLines": [
+        "SELECT accounting_month,",
+        "       close_version,",
+        "       gross_cents,",
+        "       returns_cents,",
+        "       net_cents,",
+        "       line_count,",
+        "       return_count,",
+        "       returns_rejected_count,",
+        "       restatement_reason,",
+        "       gross_cents - LAG(gross_cents) OVER (",
+        "           PARTITION BY accounting_month ORDER BY close_version) AS gross_moved,",
+        "       line_count - LAG(line_count) OVER (",
+        "           PARTITION BY accounting_month ORDER BY close_version) AS lines_moved",
+        "FROM samegold.main.revenue_closed",
+        "ORDER BY accounting_month, close_version"
+      ]
+    },
+    {
+      "name": "quarantine_by_rule",
+      "displayName": "rows that did not reach silver, by the door they left through",
+      "queryLines": [
+        "SELECT quarantine_reason AS reason,",
+        "       COUNT(*) AS n",
+        "FROM samegold.main.silver_classified",
+        "WHERE quarantine_reason <> 'accepted'",
+        "GROUP BY quarantine_reason",
+        "ORDER BY n DESC"
+      ]
+    },
+    {
+      "name": "classified_split",
+      "displayName": "accepted against quarantined, over the whole classified table",
+      "queryLines": [
+        "SELECT SUM(CASE WHEN quarantine_reason = 'accepted' THEN 1 ELSE 0 END) AS accepted,",
+        "       SUM(CASE WHEN quarantine_reason <> 'accepted' THEN 1 ELSE 0 END) AS quarantined",
+        "FROM samegold.main.silver_classified"
+      ]
+    },
+    {
+      "name": "expectations_last_run",
+      "displayName": "what the expectations reported for the update the last run drove",
+      "queryLines": [
+        "SELECT e.rule,",
+        "       e.passed,",
+        "       e.failed",
+        "FROM samegold.main.job_run_expectations e",
+        "JOIN (",
+        "    SELECT job_run_id",
+        "    FROM samegold.main.job_run_status",
+        "    ORDER BY written_at DESC",
+        "    LIMIT 1",
+        ") latest ON e.job_run_id = latest.job_run_id",
+        "ORDER BY e.failed DESC, e.rule"
+      ]
+    },
+    {
+      "name": "last_run",
+      "displayName": "the last run of the job, as the record saw it",
+      "queryLines": [
+        "SELECT job_run_id,",
+        "       ok,",
+        "       decision,",
+        "       branch,",
+        "       versions_written,",
+        "       months_written,",
+        "       checks_run,",
+        "       checks_failed,",
+        "       missing_checks,",
+        "       incomplete,",
+        "       written_at",
+        "FROM samegold.main.job_run_status",
+        "ORDER BY written_at DESC",
+        "LIMIT 1"
+      ]
+    },
+    {
+      "name": "runs_not_ok",
+      "displayName": "how the last run ended, as one number",
+      "queryLines": [
+        "SELECT SUM(CASE WHEN ok THEN 0 ELSE 1 END) AS not_ok",
+        "FROM (",
+        "    SELECT ok",
+        "    FROM samegold.main.job_run_status",
+        "    ORDER BY written_at DESC",
+        "    LIMIT 1",
+        ")"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "close",
+      "displayName": "samegold close",
+      "layout": [
+        {
+          "widget": {
+            "name": "heading",
+            "textbox_spec": "# The close, and whether the run that produced it was sound\n\nEvery number on this page is read from the workspace, not from a file. What the repository keeps in `evidence/databricks/SG-DBX-01.json` is the same run seen from outside; this is the same run seen from inside, and the two are compared by `tests/fast/test_databricks_close_parity.py`."
+          },
+          "position": { "x": 0, "y": 0, "width": 6, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "last_run_ok",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "runs_not_ok",
+                  "fields": [{ "name": "not_ok", "expression": "`not_ok`" }],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "not_ok", "displayName": "last run NOT sound (1 = look at it)" }
+              }
+            }
+          },
+          "position": { "x": 0, "y": 3, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "last_run_detail",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "last_run",
+                  "fields": [
+                    { "name": "job_run_id", "expression": "`job_run_id`" },
+                    { "name": "ok", "expression": "`ok`" },
+                    { "name": "decision", "expression": "`decision`" },
+                    { "name": "branch", "expression": "`branch`" },
+                    { "name": "versions_written", "expression": "`versions_written`" },
+                    { "name": "months_written", "expression": "`months_written`" },
+                    { "name": "checks_run", "expression": "`checks_run`" },
+                    { "name": "checks_failed", "expression": "`checks_failed`" },
+                    { "name": "missing_checks", "expression": "`missing_checks`" },
+                    { "name": "incomplete", "expression": "`incomplete`" },
+                    { "name": "written_at", "expression": "`written_at`" }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "job_run_id", "displayName": "job run" },
+                  { "fieldName": "ok", "displayName": "sound" },
+                  { "fieldName": "decision", "displayName": "decision" },
+                  { "fieldName": "branch", "displayName": "branch" },
+                  { "fieldName": "versions_written", "displayName": "versions" },
+                  { "fieldName": "months_written", "displayName": "months" },
+                  { "fieldName": "checks_run", "displayName": "checks" },
+                  { "fieldName": "checks_failed", "displayName": "failed" },
+                  { "fieldName": "missing_checks", "displayName": "missing" },
+                  { "fieldName": "incomplete", "displayName": "holes" },
+                  { "fieldName": "written_at", "displayName": "written" }
+                ]
+              }
+            }
+          },
+          "position": { "x": 2, "y": 3, "width": 4, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "versions",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "close_versions",
+                  "fields": [
+                    { "name": "accounting_month", "expression": "`accounting_month`" },
+                    { "name": "close_version", "expression": "`close_version`" },
+                    { "name": "gross_cents", "expression": "`gross_cents`" },
+                    { "name": "returns_cents", "expression": "`returns_cents`" },
+                    { "name": "net_cents", "expression": "`net_cents`" },
+                    { "name": "line_count", "expression": "`line_count`" },
+                    { "name": "return_count", "expression": "`return_count`" },
+                    { "name": "returns_rejected_count", "expression": "`returns_rejected_count`" },
+                    { "name": "gross_moved", "expression": "`gross_moved`" },
+                    { "name": "lines_moved", "expression": "`lines_moved`" },
+                    { "name": "restatement_reason", "expression": "`restatement_reason`" }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "accounting_month", "displayName": "month" },
+                  { "fieldName": "close_version", "displayName": "version" },
+                  { "fieldName": "gross_cents", "displayName": "gross" },
+                  { "fieldName": "returns_cents", "displayName": "returns" },
+                  { "fieldName": "net_cents", "displayName": "net" },
+                  { "fieldName": "line_count", "displayName": "lines" },
+                  { "fieldName": "return_count", "displayName": "return count" },
+                  { "fieldName": "returns_rejected_count", "displayName": "rejected" },
+                  { "fieldName": "gross_moved", "displayName": "gross moved" },
+                  { "fieldName": "lines_moved", "displayName": "lines moved" },
+                  { "fieldName": "restatement_reason", "displayName": "why" }
+                ]
+              }
+            }
+          },
+          "position": { "x": 0, "y": 6, "width": 6, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "quarantine",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "quarantine_by_rule",
+                  "fields": [
+                    { "name": "reason", "expression": "`reason`" },
+                    { "name": "n", "expression": "`n`" }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": { "fieldName": "n", "scale": { "type": "quantitative" }, "displayName": "rows" },
+                "y": { "fieldName": "reason", "scale": { "type": "categorical" }, "displayName": "quarantine reason" }
+              }
+            }
+          },
+          "position": { "x": 0, "y": 11, "width": 3, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "expectations",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "expectations_last_run",
+                  "fields": [
+                    { "name": "rule", "expression": "`rule`" },
+                    { "name": "passed", "expression": "`passed`" },
+                    { "name": "failed", "expression": "`failed`" }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "rule", "displayName": "expectation" },
+                  { "fieldName": "passed", "displayName": "passed" },
+                  { "fieldName": "failed", "displayName": "failed" }
+                ]
+              }
+            }
+          },
+          "position": { "x": 3, "y": 11, "width": 3, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "split",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "classified_split",
+                  "fields": [
+                    { "name": "accepted", "expression": "`accepted`" },
+                    { "name": "quarantined", "expression": "`quarantined`" }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "accepted", "displayName": "accepted" },
+                  { "fieldName": "quarantined", "displayName": "quarantined" }
+                ]
+              }
+            }
+          },
+          "position": { "x": 0, "y": 16, "width": 6, "height": 2 }
+        }
+      ]
+    }
+  ]
+}

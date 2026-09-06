@@ -16,6 +16,7 @@ statement. Those are different guarantees and the README says which one this is.
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -125,12 +126,27 @@ def _literal(node: ast.expr, constants: dict[str, ast.expr] | None = None) -> st
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.JoinedStr):
-        # An interpolation is a bundle identifier or a timestamp; both are replaced by the
-        # substitutions below, so the placeholder is written back in its `{name}` form.
-        return "".join(
-            part.value if isinstance(part, ast.Constant) else "{" + ast.unparse(part.value) + "}"  # type: ignore[union-attr]
-            for part in node.values
-        )
+        # An interpolation is a bundle identifier, a timestamp, or a MODULE CONSTANT.
+        #
+        # The first two are replaced by the substitutions below, so the placeholder is written
+        # back in its `{name}` form. The third is spliced in, and that is not a convenience: a
+        # column list declared once and interpolated into both a CREATE TABLE and the frame
+        # appended to it is how `publish_evidence.py` stops a schema from being written twice -
+        # and a `saveAsTable` in append mode matches by position, so two spellings of one
+        # schema is a table that will eventually be written into the wrong columns. Left as a
+        # placeholder, the statement handed to the parser would be `({NAME})`, which is not the
+        # statement that runs and does not parse.
+        parts: list[str] = []
+        for part in node.values:
+            if isinstance(part, ast.Constant):
+                parts.append(part.value)
+                continue
+            inner = part.value  # type: ignore[union-attr]
+            if isinstance(inner, ast.Name) and inner.id in constants:
+                parts.append(_literal(constants[inner.id], constants))
+                continue
+            parts.append("{" + ast.unparse(inner) + "}")
+        return "".join(parts)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         return _literal(node.left, constants) + _literal(node.right, constants)
     if isinstance(node, ast.Name) and node.id in constants:
@@ -170,6 +186,38 @@ def _statements() -> list[tuple[str, str]]:
     for path in sorted((LANE / "sql").rglob("*.sql")):
         out.append((path.relative_to(REPO).as_posix(), _resolve(path.read_text(encoding="utf-8"))))
     out.extend(_expectations())
+    out.extend(_dashboard_queries())
+    return out
+
+
+def _dashboard_queries() -> list[tuple[str, str]]:
+    """Every dataset query in every dashboard, because a dashboard is SQL nothing compiles.
+
+    The rest of this lane's SQL lives in a notebook or a `.sql` file and has been going through
+    a parser since the round that found a missing comma in `gold_close.py`. A dashboard's
+    queries live in a JSON blob, are executed by a warehouse and not by this repository, and
+    fail by rendering an empty widget rather than by raising - which is the same class as the
+    statement that was never parsed, with a worse failure mode, because an empty chart looks
+    like an answer.
+
+    A dashboard with no datasets raises here rather than contributing nothing: a collector that
+    silently finds zero statements is how the first version of `_sql_calls` reported four of
+    six.
+    """
+    out: list[tuple[str, str]] = []
+    for path in sorted((LANE / "dashboards").rglob("*.lvdash.json")):
+        dashboard = json.loads(path.read_text(encoding="utf-8"))
+        datasets = dashboard.get("datasets") or []
+        assert datasets, f"{path.name} declares no datasets, so this collector found no SQL"
+        for dataset in datasets:
+            lines = dataset.get("queryLines")
+            assert lines, f"{path.name}: dataset {dataset.get('name')!r} has no queryLines"
+            out.append(
+                (
+                    f"{path.relative_to(REPO).as_posix()}::{dataset['name']}",
+                    _resolve("\n".join(lines)),
+                )
+            )
     return out
 
 
@@ -417,6 +465,19 @@ LANE_TABLES = {
         "accounting_month STRING, close_version INT, gross_cents BIGINT, returns_cents BIGINT, "
         "net_cents BIGINT, line_count BIGINT, return_count BIGINT, "
         "returns_rejected_count BIGINT, restated_at TIMESTAMP, restatement_reason STRING"
+    ),
+    # Written by `publish_evidence.py`, once per run, so that a dashboard and a SQL alert have
+    # something in SQL to read: Free Edition has no `system.lakeflow`, so nothing else in this
+    # workspace can answer "how did the last run end?". `ok` is the column the alert fires on.
+    "job_run_status": (
+        "job_run_id STRING, task_run_id STRING, deploy_commit STRING, decision STRING, "
+        "branch STRING, versions_written INT, months_written STRING, checks_run INT, "
+        "checks_failed INT, missing_checks STRING, incomplete STRING, task_states STRING, "
+        "ok BOOLEAN, written_at TIMESTAMP"
+    ),
+    "job_run_expectations": (
+        "job_run_id STRING, rule STRING, dataset STRING, passed BIGINT, failed BIGINT, "
+        "written_at TIMESTAMP"
     ),
     # Written by the two verification tasks. `tests/fast/test_databricks_bundle.py` ties this
     # spelling to the CREATE TABLE statements in the lane, because a schema restated here that
