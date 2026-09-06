@@ -498,7 +498,11 @@ def test_validate_needs_no_warehouse_and_says_what_it_did_not_check(tmp_path: Pa
     assert "warehouses list" not in calls, calls
     assert "warehouse_id=" not in calls, calls
     assert WAREHOUSE_PLACEHOLDER in result.stdout, result.stdout
-    assert "checked for shape" in result.stdout, result.stdout
+    # Whitespace-normalised, because the sentence is wrapped across two echo lines and an
+    # assertion that depends on where a line breaks is an assertion about the formatting.
+    said = " ".join(result.stdout.split())
+    assert "are checked for shape" in said, result.stdout
+    assert "resolved by `deploy` and not by this step" in said, result.stdout
 
 
 def test_run_needs_no_warehouse_either(tmp_path: Path) -> None:
