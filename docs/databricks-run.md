@@ -642,6 +642,111 @@ do on this account is end a hang before it spends the day's compute, and what it
 is kill a healthy run on a cold allocation - and a serverless cold start alone is one to two
 minutes.
 
+## The dashboard, and the one alert
+
+Declared in `databricks/resources/dashboards.yml`, with the page itself in
+`databricks/dashboards/samegold_close.lvdash.json` - a file, not a blob folded into YAML, so it
+is reviewable and diffable like the rest of the lane.
+
+### What it shows, and why each one has that shape
+
+A dashboard is the one artefact here that somebody reads without being asked to, which makes it
+the easiest place to put something decorative. Every widget on this page answers a question the
+project actually makes a claim about, and the form follows the question rather than the other
+way round.
+
+| widget | the question | why that form |
+|---|---|---|
+| every version of every closed month, with `gross_moved` and `lines_moved` | did a signed-off figure move, and did the earlier version stay put? | a **table**. This is the project's central claim and it is six numbers per version compared row-wise; a bar chart of gross by version would show the growth and hide the thing that matters, which is that v0 and v1 are unchanged to the cent. The deltas are computed in SQL with `LAG`, so the movement is a column rather than a subtraction the reader does |
+| quarantine by reason | which door did rows leave by? | a **bar**, horizontal, sorted descending, and **`accepted` excluded**. One categorical dimension against one count is what a bar is for. `accepted` is three orders of magnitude larger than the rest, so leaving it in flattens the seven bars that carry the information; it is shown beside them as a plain count instead. A pie was rejected for the same reason plus a worse one: it invites reading proportions of a whole, and these categories are not exclusive shares of anything a reader cares about |
+| accepted against quarantined | does the conservation identity hold? | a **two-cell table**. It exists so the bar above cannot be read as the whole population, and because `accepted + quarantined = silver_classified` is checkable by eye |
+| the expectations of the update the last run drove | did any rule fail on the rows that arrived? | a **table** of rule, passed, failed. Seven rows, two measures, and the interesting cell is a non-zero `failed`. A chart of `passed` would be seven near-identical bars saying nothing; the question is binary per rule and a table answers it by inspection |
+| whether the last run was SOUND | is there something to look at right now? | a **counter** showing `1` when the last run was not sound, beside a one-row table saying why. The question is binary and has to be readable at a glance from across a room; the table beside it carries `missing_checks` and `incomplete`, which is what a person needs before opening anything else |
+
+### Where the numbers come from, and why two new tables exist
+
+Free Edition has no account console, so there is no `system.lakeflow`: **nothing in SQL can
+answer "how did the last run of this job end?"**. And the job's own terminal state cannot answer
+it either, which is the finding run 2 produced - a run whose close failed reported
+`SUCCESS_WITH_FAILURES`, because the evidence task runs under `run_if: ALL_DONE`, is last in the
+graph, and succeeded.
+
+So `publish_evidence.py` now writes what it already knows into two tables, once per run:
+
+- `job_run_status` - one row per run: the decision, the branch, the task states, the holes, and
+  one BOOLEAN `ok` derived from them (no section incomplete, no expected check missing, no
+  upstream task in a state this graph does not produce on a healthy run);
+- `job_run_expectations` - one row per rule per run.
+
+A file in a volume cannot be charted and cannot be alerted on. These two are the same facts
+where a dashboard and an alert can reach them, and they carry history across runs, which the
+event log's own retention does not promise.
+
+### The alert, which is the answer to a finding
+
+`samegold_close_not_sound` fires when the most recent row of `job_run_status` has `ok = false`,
+or when there is no row at all.
+
+It deliberately does **not** watch the job's terminal state. That is the whole point: a run
+whose verification fails reports `SUCCESS_WITH_FAILURES`, and an alert on "not SUCCESS" would
+have stayed quiet through exactly the failure this lane was built to make visible. An empty
+result is treated as a trigger for the same reason - the table is written by the last task of
+every run, so no rows means no run ever finished writing one.
+
+**What it costs, calculated.** Free Edition gives one 2X-Small warehouse that stops itself after
+ten minutes idle, so each evaluation is a cold start plus a ten-minute idle window. A 2X-Small
+is 4 DBU/hour at the published rate, so one evaluation is about `4 x (10/60) = 0.67 DBU` of
+warehouse time to read one row. A daily schedule costs that once; hourly would cost about 16 DBU
+a day to read one row twenty-four times. **That figure is derived, not measured**: Free Edition
+exposes no `system.billing`, so nothing here can read a DBU. It is the published rate times the
+auto-stop window, and it is stated as such.
+
+**It is deployed `PAUSED`**, for the same reason the job's schedule is: the warehouse it wakes is
+the same compute the close needs, and the quota is a hard daily stop shared between them. The
+alert is declared so its shape, its query and its schedule are in the bundle and reviewable;
+unpausing it is one edit and a deploy.
+
+**It declares no notification destination**, and that is the same refusal as the job health
+rules: a notification with nowhere to go is decoration, and an email address in a public
+repository is worse. The difference from a health rule is that an alert has a STATE - the
+workspace records whether it is triggered, and that state can be read afterwards by a person or
+by a query. A health rule only had the notification.
+
+### What is checked here, and what only a deploy can check
+
+Checked in this repository, on every push:
+
+- the bundle declares the dashboard and the alert with every field their create APIs require;
+- the dashboard file exists, and every widget reads a dataset the file declares - a widget
+  pointing at a missing dataset renders as an empty box rather than as an error, which is the
+  failure mode that matters on a page people trust;
+- every dataset is read by some widget, so no query burns warehouse time to be shown nowhere;
+- every field a widget encodes is one its query selects;
+- the tables the dashboard names use the catalog the bundle deploys to. Bundle variables are
+  **not** substituted inside the dashboard file, so that spelling is held to the variable by a
+  test rather than by hope;
+- **the six dataset queries go through Spark's parser and are resolved against views with the
+  real column names**, in `tests/spark/test_databricks_lane_parses.py`, exactly like the rest of
+  the lane's SQL. A dashboard is SQL nothing compiles, and its failure mode is an empty widget
+  that looks like an answer.
+
+Not checked here, and only a deploy can:
+
+- **whether the `.lvdash.json` is the shape Lakeview accepts.** The serialised dashboard format
+  is not published as a schema this repository can validate against; the structure here was
+  written by hand. The deploy is what tests it, and if it is rejected the message will name the
+  key. This is the irreproducible part, and it is the reason the file is small and regular;
+- whether the alert's evaluation binds to the `not_ok` column as written;
+- **what it looks like.** There are no screenshots in `docs/` yet, and this section says so
+  rather than implying otherwise: a screenshot has to be taken from a browser signed in to the
+  workspace, which is not something this repository can produce for itself. When they land they
+  carry the date and the commit, like every other measured thing here;
+- the warehouse id, which no bundle on this account can learn. `scripts/databricks_run.sh
+  deploy` resolves it from `warehouses list` - the same call the catalog step makes - and passes
+  it as a variable. The bundle carries a variable, never an id: a 16-character workspace-local
+  identifier committed to a repository is configuration that is wrong the first time somebody
+  else deploys it.
+
 ## The checklist: what to run afterwards, and what each answer has to be
 
 Six queries. Every expected value on the right was **measured** on the same generator the seed
@@ -902,7 +1007,7 @@ and in `docs/limits.md` rather than papered over.
 |---|---|---|
 | one active pipeline per type | no separate dev and prod pipelines | one pipeline, `development: true` so a failed update does not retry into the quota |
 | 5 concurrent job tasks | no fan-out | three tasks in a chain, `max_concurrent_runs: 1` |
-| one SQL warehouse, 2X-Small | no warehouse id at bundle time | no `sql_task` anywhere; `databricks/sql/policies.sql` is therefore **declared and not applied** |
+| one SQL warehouse, 2X-Small | a bundle can neither create one nor learn its id | no `sql_task` anywhere - that is a JOB task and would need an id at run time, on the one thing that must deploy and run from a clean account. The dashboard and the alert do need one, and the id is resolved one layer out: `scripts/databricks_run.sh deploy` asks `warehouses list` - the same call the catalog step makes - and passes it as a bundle variable. The bundle carries a variable, never an id. **`databricks/sql/policies.sql` is still declared and not applied**, and it is worth being exact about why now that the id is reachable: applying it means EXECUTING SQL against a warehouse, which is a different act from attaching a resource to one, and nothing in this lane does it yet |
 | no account console, no account APIs | no `system.billing`, no `system.lakeflow`, no DBUs | pipeline-level counts from the event log, labelled as counts and never as cost |
 | no SSO, no SCIM | no service principals, no account groups | a PAT for authentication; `account users` is the only principal a grant can name, and it contains exactly one person - the deployer |
 | no external locations | nowhere to put files but a volume | two managed volumes; Auto Loader runs in directory-listing mode, not file notification |

@@ -182,16 +182,44 @@ def test_no_job_can_exceed_the_concurrent_task_ceiling() -> None:
         assert job.get("max_concurrent_runs", 1) == 1, name
 
 
-def test_nothing_needs_a_sql_warehouse() -> None:
-    """One 2X-Small warehouse exists, but the bundle cannot create it or learn its id.
+def test_no_warehouse_id_is_written_down_and_none_is_needed_by_a_task() -> None:
+    """One 2X-Small warehouse exists, the bundle cannot create it, and it CAN be handed one.
 
-    A `sql_task` needs `warehouse_id`, which is not a bundle resource here, so a task that
-    used one could not be deployed from a clean account. That is why
-    `databricks/sql/policies.sql` is declared and not applied, and docs/limits.md says so.
+    This test used to assert that the string `warehouse_id` appeared nowhere in the bundle at
+    all, on the reasoning that a bundle can neither create a warehouse nor learn its id - which
+    is true, and which is why `databricks/sql/policies.sql` is declared and never applied.
+
+    The reasoning had a hole in it that the dashboard found: the bundle cannot LEARN the id,
+    and `scripts/databricks_run.sh` can. It already asks `warehouses list` for the catalog
+    step. So the id arrives as a bundle VARIABLE at deploy time, and the two resources that
+    need one - the dashboard and the alert - reference the variable.
+
+    What must still hold, and is what this checks now:
+
+      * no `sql_task` anywhere. That is a JOB task, it would need an id at run time, and the
+        job is the thing that must deploy and run from a clean account;
+      * no LITERAL warehouse id anywhere in the bundle. A 16-hex-character id committed here
+        would be a workspace-specific value pretending to be configuration, and it would be
+        wrong the first time somebody deployed to another workspace;
+      * the variable exists and defaults to empty, so `bundle validate` still runs with no
+        workspace - which is what CI does.
     """
     text = json.dumps({"bundle": BUNDLE, "resources": RESOURCES})
     assert "sql_task" not in text
-    assert "warehouse_id" not in text
+    literal = re.findall(r'"warehouse_id":\s*"([^"]*)"', text)
+    for value in literal:
+        assert value.startswith("${var."), (
+            f"a warehouse id is written into the bundle as {value!r}. Free Edition gives one "
+            f"warehouse per workspace and its id is not portable; it is resolved by "
+            f"scripts/databricks_run.sh and passed as a variable."
+        )
+    variables = (BUNDLE.get("variables") or {}).get("warehouse_id")
+    assert variables is not None, "the bundle declares no warehouse_id variable"
+    assert variables.get("default") == "", (
+        f"warehouse_id defaults to {variables.get('default')!r}. It must default to empty so "
+        f"that `bundle validate` runs with no workspace, and so that a deploy without one "
+        f"fails on the resource that needs it rather than deploying against somebody else's."
+    )
 
 
 def test_no_volume_asks_for_an_external_location() -> None:
@@ -603,12 +631,70 @@ def test_no_task_relies_on_max_retries_to_stop_a_serverless_retry() -> None:
                 continue
             key = f"{job_name}/{task['task_key']}"
             assert task.get("max_retries") == 0, f"{key} does not declare max_retries: 0"
+            if "pipeline_task" in task:
+                # A PIPELINE TASK CANNOT TAKE IT, measured on 6 September 2026: the deploy
+                # read-back showed `disable_auto_optimization` arriving on all four notebook
+                # tasks and not on this one. It is a serverless-workflows task setting and a
+                # pipeline task runs on the compute of the pipeline. Declaring it here would be
+                # a field that never arrives, which is the defect this test is named for, one
+                # level along. What governs this task is checked below.
+                assert "disable_auto_optimization" not in task, (
+                    f"{key} is a pipeline task and declares disable_auto_optimization. That "
+                    f"field does not reach a pipeline task - measured, 6 September 2026 - so "
+                    f"declaring it is a setting that looks applied and is not. The lever for "
+                    f"this task is pipelines.numUpdateRetryAttempts in databricks.yml."
+                )
+                continue
             assert task.get("disable_auto_optimization") is True, (
                 f"{key} declares max_retries: 0 and not `disable_auto_optimization: true`. "
                 f"max_retries 0 is the API's default, so on its own it decides nothing; "
                 f"serverless auto-optimization is what retried a failed task on 5 September "
                 f"2026, and this is the field that turns it off."
             )
+
+
+def test_the_pipeline_declares_the_retry_lever_its_task_cannot() -> None:
+    """The other half of the task test, and the setting with the most expensive incident.
+
+    `disable_auto_optimization` does not reach a pipeline task, so the task that STARTS an
+    update - the one whose retry loop cost six updates and fourteen minutes of Free Edition
+    quota on 2 September 2026 - is governed by nothing in resources/jobs.yml. It is governed by
+    `pipelines.numUpdateRetryAttempts`, a pipeline configuration property whose default is five
+    for a triggered pipeline: exactly the number of retries that was measured.
+
+    That setting was named in a comment on 3 September and declared the same day, and until
+    6 September nothing had ever read it back off the deployed pipeline. This test is the
+    declaration half; `scripts/databricks_run.sh deploy` is the arrival half.
+    """
+    assert PIPELINES, "the bundle declares no pipeline"
+    for name, pipeline in PIPELINES.items():
+        configuration = pipeline.get("configuration") or {}
+        for setting in ("pipelines.numUpdateRetryAttempts", "pipelines.maxFlowRetryAttempts"):
+            assert configuration.get(setting) == "0", (
+                f"pipeline {name} sets {setting}={configuration.get(setting)!r}. A pipeline "
+                f"configuration is a map of STRINGS, and the default this overrides is five "
+                f"retries for a triggered pipeline - which is what one launch actually cost."
+            )
+
+
+def test_the_name_the_deploy_reads_the_pipeline_back_by_is_the_one_the_bundle_deploys() -> None:
+    """The same tie as the job's name, for the resource whose settings nobody had read back.
+
+    `report_deployed_pipeline_settings` finds the pipeline by name and then asks for its spec.
+    A rename here and the read-back reports "no pipeline came back" about a pipeline sitting in
+    the workspace - a guard whose failure mode is a confident wrong diagnosis.
+    """
+    script = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    declared = {pipeline.get("name") for pipeline in PIPELINES.values() if pipeline.get("name")}
+    assert declared, "no pipeline in the bundle declares a name"
+    looked_up = re.findall(r'^PIPELINE_NAME="([^"]*)"', script, flags=re.MULTILINE)
+    assert len(looked_up) == 1, (
+        f"expected exactly one PIPELINE_NAME in scripts/databricks_run.sh, found {looked_up}"
+    )
+    assert looked_up[0] in declared, (
+        f'scripts/databricks_run.sh reads the pipeline back as "{looked_up[0]}" and the '
+        f"bundle deploys {sorted(declared)}."
+    )
 
 
 def test_the_evidence_is_written_whatever_the_rest_of_the_job_did() -> None:
@@ -821,6 +907,47 @@ def test_every_task_state_the_record_reports_is_a_reference_the_job_passes() -> 
             f"{parameters.get(widget)!r}. A state nobody passes is a state the record cannot "
             f"learn, and it is written down as `None` rather than as 'fine'."
         )
+
+
+def test_the_tables_the_dashboard_reads_are_declared_the_same_way_in_both_places() -> None:
+    """The lane CREATEs them; the spark resolution harness restates them. Two spellings drift.
+
+    Same check as `close_verification` above, for the two tables the dashboard and the alert
+    read. It matters more here: `saveAsTable` in append mode matches BY POSITION, so a column
+    list that has drifted between the writer and the declaration is a table quietly written into
+    the wrong columns - and the only reader that would notice is a dashboard, which renders
+    whatever it is given.
+    """
+    source = (LANE / "src" / "publish_evidence.py").read_text(encoding="utf-8")
+    harness = (REPO / "tests" / "spark" / "test_databricks_lane_parses.py").read_text(
+        encoding="utf-8"
+    )
+    for constant, table in (
+        ("JOB_RUN_STATUS_COLUMNS", "job_run_status"),
+        ("JOB_RUN_EXPECTATIONS_COLUMNS", "job_run_expectations"),
+    ):
+        declared = _joined_string(source, constant)
+        restated = _joined_string(harness, f'"{table}"', assignment=False)
+        assert declared and restated, f"{constant} or the harness entry for {table} is missing"
+        assert _columns(declared) == _columns(restated), (
+            f"{table} is declared as {_columns(declared)} in publish_evidence.py and resolved "
+            f"against {_columns(restated)} in the spark harness. The resolution check would be "
+            f"reporting the scope of its own fixture."
+        )
+
+
+def _joined_string(text: str, marker: str, *, assignment: bool = True) -> str:
+    """The implicitly-concatenated string literal that follows `marker`, joined."""
+    if assignment:
+        pattern = rf"{re.escape(marker)}\s*=\s*\((.*?)\)\n"
+    else:
+        pattern = rf"{re.escape(marker)}: \((.*?)\),\n"
+    found = re.search(pattern, text, re.DOTALL)
+    return "".join(re.findall(r'"([^"]*)"', found.group(1))) if found else ""
+
+
+def _columns(declaration: str) -> list[tuple[str, ...]]:
+    return [tuple(part.split()) for part in (p.strip() for p in declaration.split(",")) if part]
 
 
 # ---------------------------------------------- pipeline configuration versus job parameters
@@ -1231,6 +1358,135 @@ def test_the_run_document_agrees_with_the_record() -> None:
             assert str(row["passed"]) in block and str(row["failed"]) in block, row
 
 
+# ------------------------------------------------------------------ the dashboard
+#
+# A dashboard is the one artefact in this lane that a person reads without being asked to, and
+# it is the easiest to let rot: it is a JSON blob nothing compiles, its queries are SQL nothing
+# parses, and a widget pointing at a dataset that no longer exists renders as an empty box
+# rather than as an error. All three of those are checked here or in the spark lane.
+
+
+def _dashboard() -> dict[str, Any]:
+    path = LANE / "dashboards" / "samegold_close.lvdash.json"
+    assert path.is_file(), f"no dashboard at {path.relative_to(REPO)}"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _dashboard_widgets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        entry["widget"]
+        for page in dashboard.get("pages", [])
+        for entry in page.get("layout", [])
+        if isinstance(entry, dict) and isinstance(entry.get("widget"), dict)
+    ]
+
+
+def test_the_dashboard_is_declared_by_the_bundle_and_points_at_the_file_that_exists() -> None:
+    """A dashboard resource whose `file_path` misses is a dashboard that deploys empty."""
+    dashboards = MERGED.get("dashboards", {})
+    assert dashboards, "the bundle declares no dashboard"
+    for name, dashboard in dashboards.items():
+        source = (LANE / "resources" / dashboard["file_path"]).resolve()
+        assert source.is_file(), f"{name} points at {dashboard['file_path']}, which does not exist"
+        assert source.name.endswith(".lvdash.json"), (
+            f"{name} points at {source.name}; the Lakeview format is `.lvdash.json` and the "
+            f"suffix is what the CLI dispatches on"
+        )
+
+
+def test_every_widget_reads_a_dataset_the_dashboard_declares() -> None:
+    """The failure this catches renders as an empty box, not as an error.
+
+    A widget names its dataset by string. Rename a dataset, or delete one, and the widget goes
+    on existing and shows nothing - on a page whose whole job is that somebody looks at it and
+    believes what they see.
+    """
+    dashboard = _dashboard()
+    declared = {dataset["name"] for dataset in dashboard.get("datasets", [])}
+    assert declared, "the dashboard declares no datasets"
+    used = set()
+    for widget in _dashboard_widgets(dashboard):
+        for query in widget.get("queries", []):
+            name = (query.get("query") or {}).get("datasetName")
+            assert name in declared, (
+                f"widget {widget.get('name')!r} reads dataset {name!r}, which the dashboard "
+                f"does not declare. It would render as an empty box."
+            )
+            used.add(name)
+    unused = sorted(declared - used)
+    assert not unused, (
+        f"these datasets are declared and no widget reads them: {unused}. A query that runs on "
+        f"every refresh and is shown nowhere is warehouse time spent on nothing, which on this "
+        f"account is the quota."
+    )
+
+
+def test_every_field_a_widget_encodes_is_one_its_dataset_selects() -> None:
+    """The other half: a widget can name a COLUMN that its query does not return.
+
+    Checked against the field list the widget declares rather than by parsing the SQL - the SQL
+    itself is parsed in the spark lane, against views with the real column names.
+    """
+    dashboard = _dashboard()
+    for widget in _dashboard_widgets(dashboard):
+        selected = {
+            field["name"]
+            for query in widget.get("queries", [])
+            for field in (query.get("query") or {}).get("fields", [])
+        }
+        if not selected:
+            continue  # a text box declares no query at all
+        encodings = (widget.get("spec") or {}).get("encodings") or {}
+        named = [
+            encoding.get("fieldName")
+            for key, value in encodings.items()
+            for encoding in (value if isinstance(value, list) else [value])
+            if isinstance(encoding, dict)
+        ]
+        unknown = sorted({name for name in named if name and name not in selected})
+        assert not unknown, (
+            f"widget {widget.get('name')!r} encodes {unknown}, which its query does not select"
+        )
+
+
+def test_the_dashboard_reads_the_catalog_the_bundle_deploys_to() -> None:
+    """Bundle variables are NOT substituted inside the dashboard file, so the catalog is
+    spelled out in it - and a spelling nothing checks is a spelling that drifts the day the
+    catalog variable changes. The two are tied here instead."""
+    catalog = ((BUNDLE.get("variables") or {}).get("catalog") or {}).get("default")
+    assert catalog, "the bundle declares no default catalog"
+    text = (LANE / "dashboards" / "samegold_close.lvdash.json").read_text(encoding="utf-8")
+    tables = set(re.findall(r"([A-Za-z_][\w]*)\.main\.([A-Za-z_]\w*)", text))
+    assert tables, "the dashboard names no tables at all"
+    wrong = sorted({name for name, _ in tables if name != catalog})
+    assert not wrong, (
+        f"the dashboard reads from {wrong} and the bundle deploys to {catalog!r}. The file is "
+        f"not variable-substituted, so this is the only thing holding the two together."
+    )
+
+
+def test_the_alert_is_deployed_paused_and_says_what_it_costs() -> None:
+    """Same rule as the job's schedule, and the same reason: quota is a hard daily stop.
+
+    An unpaused alert wakes the one 2X-Small warehouse on a schedule, and that warehouse is
+    shared with the lane that produces the evidence. The alert is DECLARED so its shape is in
+    the bundle and a reader can see what would fire and when; unpausing it is one edit.
+    """
+    alerts = MERGED.get("alerts", {})
+    assert alerts, "the bundle declares no alert"
+    for name, alert in alerts.items():
+        schedule = alert.get("schedule") or {}
+        assert schedule.get("pause_status") == "PAUSED", (
+            f"alert {name} is deployed with pause_status={schedule.get('pause_status')!r}. On "
+            f"Free Edition an unpaused alert spends the same daily quota the close needs."
+        )
+        assert alert.get("evaluation", {}).get("empty_result_state") == "TRIGGERED", (
+            f"alert {name} does not treat an empty result as a trigger. The table it reads is "
+            f"written by the last task of every run, so no rows means no run ever finished - "
+            f"which is not a healthy silence."
+        )
+
+
 # ------------------------------------------ the fields the API requires and validate does not
 #
 # `databricks bundle validate -t free` answered `Validation OK!` on a bundle whose very first
@@ -1254,6 +1510,15 @@ REQUIRED_FIELDS = {
     "schemas": ("name", "catalog_name"),
     # POST /api/2.1/unity-catalog/volumes
     "volumes": ("name", "catalog_name", "schema_name"),
+    # POST /api/2.0/lakeview/dashboards. `display_name` is the required one; `warehouse_id`
+    # and `file_path` are what a BUNDLE additionally needs to have something to deploy - a
+    # dashboard with no source file is an empty dashboard, and one with no warehouse cannot
+    # run a query.
+    "dashboards": ("display_name", "warehouse_id", "file_path"),
+    # POST /api/2.0/alerts. The reference lists display_name, query_text, warehouse_id,
+    # evaluation and schedule as required; a bundle that omits any of them deploys an alert
+    # that never evaluates, which is the decorative case with a state attached.
+    "alerts": ("display_name", "query_text", "warehouse_id", "evaluation", "schedule"),
 }
 
 
