@@ -229,6 +229,17 @@ aggregates could not see. What did appear is the next finding.
 | **Not fixed on purpose** | A `COALESCE` would put those returns in some month, and which month is a contract question nobody has answered: the sale's month does not exist, the return's own month is a different quantity, and inventing one to make a total add up is how a close acquires revenue that no sale supports. It is documented in `CONTRACT.md`'s terms as a known gap, in README's "What is NOT claimed", and here. |
 | **Commits** | this round |
 
+### Three checks that had never been selected, and one of them was red
+
+| | |
+|---|---|
+| **What** | Every command in this repository that runs `tests/spark` runs it as `pytest tests/spark -q -m spark` - preflight twice, the `spark` workflow twice. A test in that directory WITHOUT the marker is deselected by all four. Three were: `test_there_is_something_to_parse`, `test_the_exclusions_are_the_ones_claimed` and `test_almost_every_statement_is_analysable` - the guards on the guards, the ones that stop a statement disappearing from the parse check by being renamed or excluded. **One of them was failing when it was found**, and had been since `update_output_rows` was inserted ahead of `update_state` and moved every positional id below it by one. |
+| **How found** | By adding a statement to the same file and going to check the exclusion list by hand - which is not how it should have been found. Every run had been printing `3 deselected` for as long as the marker existed, in CI and locally, and nobody read the number. |
+| **Why invisible** | A deselected test is not a failure, not a skip, and not a warning: it is a count in a line people read as a total. `-m spark` reads like a description of what lives in that directory rather than a filter over it, and it was one line away from being right for every test in there. |
+| **The class** | **A check that is well defined, correct, and never selected.** The repository already had "a comparison a file declares as its reason for existing, and nobody runs". This is the same shape one level up: not a comparison nobody wrote, but a comparison nobody ran because the command that was supposed to run it silently narrowed. |
+| **Prevented by** | The filter is gone. Both preflight commands and both `spark` workflow steps now run `pytest tests/spark -q`, so the DIRECTORY is the selection and a missing marker cannot hide a test. `tests/fast/test_preflight.py` already holds the preflight commands to the workflow ones literally, so the two cannot drift apart again. The positional exclusion list now names all four `event_log` statements and says in the comment that the ids are positional and move when a statement is inserted ahead of another. |
+| **Commits** | this round |
+
 ### The right setting, named in a comment, declared, and never once read back
 
 | | |
@@ -302,7 +313,7 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **"It works on my machine" and "it works in the repository" are different claims.** | the red Delta job (`faaab88`); pyspark in the fast lane (`845bc7a`); the CRLF that only one git could see (`16af667`) |
 | **A message that announces an action is a second implementation of it, and two implementations that are never compared will differ.** | the full-refresh banner that governed nothing (`e002f29`); `development: true` predicting a risk it did not prevent (`e002f29`); `max_retries: 0` declared, not deployed, and the wrong lever anyway - with the comment beside it asserting the opposite (this round); `run_if: ALL_DONE` commented as leaving the run red, measured as SUCCESS_WITH_FAILURES (this round) |
 | **An aggregate that is well defined and answers the wrong question.** `MAX` on a state string is the alphabetical maximum, and it looks like an answer. | the field reporting whether the lane worked (`8c9faa7`) |
-| **A comparison a file declares as its reason for existing, and nobody runs.** | the two Type 2 dimensions, 78 against 75 on the first run that compared them (`8c9faa7`) |
+| **A comparison a file declares as its reason for existing, and nobody runs.** | the two Type 2 dimensions, 78 against 75 on the first run that compared them (`8c9faa7`); three guards in tests/spark deselected by `-m spark` in every command, one of them red (this round) |
 | **A comparison is only as current as the captured half it reads.** Without provenance a snapshot expires in silence, and the test stays green. | the dimension capture that could not name its run (`02adf05`) |
 | **Provenance of the RUN is not provenance of the DATA.** Two files from one update can still describe two populations. | the parity comparison reporting 92 against 75 (this round) |
 | **Evidence a reader cannot regenerate is not evidence.** | the late population produced in `/tmp` (this round) |

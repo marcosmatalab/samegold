@@ -557,14 +557,25 @@ def test_almost_every_statement_is_analysable() -> None:
     about its contents, and that is how an id kept excluding a statement it no longer named.
     """
     assert [name for name, _ in NOT_ANALYSABLE] == [
+        # THE IDS ARE POSITIONAL, and this list has to be re-read whenever a statement is added
+        # to `publish_evidence.py` before another one - which is what happened on 6 September
+        # 2026, when `update_output_rows` was inserted ahead of `update_state` and every id
+        # below it moved by one. All four read `event_log()`, which is a Databricks-only table
+        # function with no local analogue.
+        #
+        #   #0 the per-rule expectation counts for the last update
+        #   #1 update_output_rows - how many rows that update actually wrote
+        #   #2 update_state       - the state the last terminal update ended in
+        #   #3 update_history     - the ten most recent terminal updates, so a retry loop is
+        #                           visible; added after one launch produced six failed updates
+        #                           and a record that described one of them
+        #
+        # They are listed by id rather than let through by a predicate, because a predicate
+        # would also let through the next statement nobody looked at.
         "databricks/src/publish_evidence.py#0::0",
         "databricks/src/publish_evidence.py#1::0",
-        # #2 is `update_history`, added after one `bundle run` produced six failed updates and
-        # a record that described one of them. Like the two above it, it reads `event_log()`,
-        # which is a Databricks-only table function with no local analogue - so it is listed
-        # here by id rather than let through by a predicate that would also let through the
-        # next statement nobody looked at.
         "databricks/src/publish_evidence.py#2::0",
+        "databricks/src/publish_evidence.py#3::0",
         "databricks/sql/policies.sql::0",
         "databricks/sql/policies.sql::1",
     ], [name for name, _ in NOT_ANALYSABLE]
