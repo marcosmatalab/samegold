@@ -215,10 +215,83 @@ def test_no_warehouse_id_is_written_down_and_none_is_needed_by_a_task() -> None:
         )
     variables = (BUNDLE.get("variables") or {}).get("warehouse_id")
     assert variables is not None, "the bundle declares no warehouse_id variable"
-    assert variables.get("default") == "", (
-        f"warehouse_id defaults to {variables.get('default')!r}. It must default to empty so "
-        f"that `bundle validate` runs with no workspace, and so that a deploy without one "
-        f"fails on the resource that needs it rather than deploying against somebody else's."
+    assert variables.get("default") == WAREHOUSE_PLACEHOLDER, (
+        f"warehouse_id defaults to {variables.get('default')!r}. It must default to the "
+        f"placeholder, for the two reasons in test_the_placeholder_lets_the_bundle_load_and_"
+        f"cannot_be_deployed below."
+    )
+
+
+# The placeholder the bundle gives `warehouse_id`, spelled once here and tied to the two files
+# that use it. A real warehouse id is 16 hexadecimal characters.
+WAREHOUSE_PLACEHOLDER = "PLACEHOLDER-NOT-A-WAREHOUSE-ID"
+
+
+def test_the_placeholder_lets_the_bundle_load_and_cannot_be_deployed() -> None:
+    """Both halves of the decision, because either alone is a defect.
+
+    IT HAS TO LOAD. `warehouse_id` is REQUIRED on a dashboard, so an empty default does not
+    validate - and measured on 6 September 2026, `bundle validate` AND `bundle run` both died
+    with `dashboard warehouse_id is required`. Every command that reads the bundle failed;
+    only `deploy` worked, because `deploy` is the one command that passed the variable. A lane
+    where the job cannot be launched is a worse outcome than a lane with no dashboard.
+
+    IT MUST NOT BE DEPLOYABLE. The obvious repair - a plausible-looking id so validate goes
+    green - is a check that supplies its own input: `validate` would report OK about a
+    warehouse that does not exist, which is the class this repository has already found in a
+    fixture, a document and a spark harness. So the placeholder is deliberately not the shape
+    of an id (a real one is 16 hex characters), the API would refuse it, and
+    `scripts/databricks_run.sh` refuses it before the API is asked.
+    """
+    declared = ((BUNDLE.get("variables") or {}).get("warehouse_id") or {}).get("default")
+    assert declared == WAREHOUSE_PLACEHOLDER, declared
+    assert not re.fullmatch(r"[0-9a-f]{16}", str(declared)), (
+        f"{declared!r} has the shape of a real warehouse id. The placeholder must be "
+        f"unmistakable, or a deploy that used it would look like a deploy that worked."
+    )
+    script = (REPO / "scripts" / "databricks_run.sh").read_text(encoding="utf-8")
+    spelled = re.findall(r'^WAREHOUSE_PLACEHOLDER="([^"]*)"', script, flags=re.MULTILINE)
+    assert spelled == [WAREHOUSE_PLACEHOLDER], (
+        f"the bundle defaults to {declared!r} and the script refuses {spelled}. Two spellings "
+        f"of one literal is how the refusal stops refusing."
+    )
+
+
+def test_every_required_field_resolves_to_something_at_deploy_time() -> None:
+    """THE PROPERTY CI NEVER HAD, recovered here where it costs nothing.
+
+    `databricks bundle validate` is what would have caught `warehouse_id: ""` against a field
+    the API requires - and the `databricks` workflow that runs it has **never executed**: it is
+    `workflow_dispatch` only, the API reports `total_count: 0` for its whole history, and the
+    repository has no DATABRICKS_HOST/DATABRICKS_TOKEN secrets, so a dispatch would fail at
+    authentication before parsing anything. The comment in databricks.yml justified an empty
+    default by what "CI does". CI had never done it.
+
+    So the check moves to the lane that does run, on every push, with no credentials and no
+    CLI: a required field whose value is `${var.X}` is only as present as the default behind
+    it, and an empty default is a field that is not there.
+    """
+    variables = BUNDLE.get("variables") or {}
+    empty = []
+    for kind, fields in REQUIRED_FIELDS.items():
+        for resource_id, resource in (MERGED.get(kind, {}) or {}).items():
+            for field in fields:
+                value = resource.get(field)
+                reference = re.fullmatch(r"\$\{var\.(\w+)\}", str(value))
+                if not reference:
+                    continue
+                name = reference.group(1)
+                assert name in variables, (
+                    f"{kind}.{resource_id}.{field} reads ${{var.{name}}} and the bundle "
+                    f"declares no such variable"
+                )
+                if str(variables[name].get("default", "")).strip() == "":
+                    empty.append(f"{kind}.{resource_id}.{field} -> var.{name}")
+    assert not empty, (
+        f"these required fields resolve to an empty default, so every command that loads the "
+        f"bundle fails until something passes the variable: {empty}. That is measured, not "
+        f"theoretical: it is what `dashboard warehouse_id is required` was on 6 September 2026, "
+        f"and it broke `validate` and `run` while leaving `deploy` working."
     )
 
 

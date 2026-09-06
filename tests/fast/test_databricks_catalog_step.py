@@ -463,6 +463,82 @@ def test_the_guard_says_what_it_does_not_cover(tmp_path: Path) -> None:
     assert "Run now button" in source
 
 
+# ------------------------------------------- the variable that made every command but one fail
+#
+# `warehouse_id` is REQUIRED on a dashboard. It defaulted to the empty string, with a comment
+# saying that was so `bundle validate` could run with no workspace, "which is what CI does".
+#
+# Measured on 6 September 2026: `bundle validate` died with `dashboard warehouse_id is
+# required`, and so did `bundle run`. Every command that loads the bundle failed. Only `deploy`
+# worked, because `deploy` is the one command that passed the variable - so the lane could be
+# deployed and could not be launched.
+#
+# And CI had never done the thing the comment named: the `databricks` workflow is
+# `workflow_dispatch` only, has never been run once, and the repository has no credentials for
+# it. The path the comment promised had no executions at all.
+#
+# These three tests are that path, executed, with no credentials and no workspace.
+
+WAREHOUSE_PLACEHOLDER = "PLACEHOLDER-NOT-A-WAREHOUSE-ID"
+
+
+def test_validate_needs_no_warehouse_and_says_what_it_did_not_check(tmp_path: Path) -> None:
+    """The command CI runs, run here, without resolving anything.
+
+    Two properties, and the second is why this is not just "validate passes": a step that
+    validates a dashboard against a placeholder has checked its SHAPE and not the warehouse it
+    attaches to, and a reader of the output has to be told that rather than left to infer it
+    from a green line.
+    """
+    result = _run(tmp_path, [], subcommand="validate")
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "bundle validate" in calls, calls
+    # It resolves NOTHING: no warehouse lookup, no variable passed.
+    assert "warehouses list" not in calls, calls
+    assert "warehouse_id=" not in calls, calls
+    assert WAREHOUSE_PLACEHOLDER in result.stdout, result.stdout
+    assert "checked for shape" in result.stdout, result.stdout
+
+
+def test_run_needs_no_warehouse_either(tmp_path: Path) -> None:
+    """The half that was missed the first time round.
+
+    The fix as it was first described was "make validate resolve the warehouse". That would
+    have left `bundle run` broken, which is the command anybody launching the close types -
+    and which also loads the bundle, and also died on the required field.
+    """
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="run",
+        extra_env={"SAMEGOLD_RUN_STALE": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _captured_calls(tmp_path)
+    assert "bundle run samegold_close" in calls, calls
+    assert "warehouses list" not in calls, calls
+    assert "warehouse_id=" not in calls, calls
+
+
+def test_a_deploy_refuses_the_placeholder_rather_than_attaching_to_nothing(
+    tmp_path: Path,
+) -> None:
+    """The other side of the placeholder, and the reason it is safe to have one.
+
+    A placeholder that lets the bundle load is only safe while nothing can deploy it. With no
+    warehouse in the workspace the deploy stops here, with a message naming the placeholder,
+    instead of creating a dashboard and an alert pointed at a warehouse that does not exist.
+    """
+    result = _run(tmp_path, [_state("SUCCEEDED")], subcommand="deploy", warehouses="[]")
+    assert result.returncode != 0, result.stdout + result.stderr
+    output = result.stdout + result.stderr
+    assert "no SQL warehouse came back" in output, output
+    assert WAREHOUSE_PLACEHOLDER in output, output
+    # And it stopped BEFORE the deploy, not after it.
+    assert "bundle deploy" not in _captured_calls(tmp_path), _captured_calls(tmp_path)
+
+
 # ------------------------------------------------- the run that executed code nobody deployed
 #
 # `databricks bundle run` runs what was DEPLOYED. On 4 September 2026 a run of this lane

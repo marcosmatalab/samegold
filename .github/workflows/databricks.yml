@@ -13,6 +13,17 @@ name: databricks
 # runs. Two definitions of what this lane does is how they drift, and a lane that behaves
 # differently in CI from the way it behaves on a laptop is the thing round 12 was about.
 #
+# THIS WORKFLOW HAS NEVER RUN. Measured on 6 September 2026: the API reports `total_count: 0`
+# for its entire history, and the repository has no DATABRICKS_HOST/DATABRICKS_TOKEN secrets,
+# so a dispatch would fail at authentication before it parsed anything. It is written, it is
+# dispatchable, and nothing has ever dispatched it.
+#
+# That is worth knowing before reading anything below as a check this repository performs. It
+# is not one. A comment in databricks.yml justified a bundle default by what "CI does" here,
+# and FINDINGS.md carries what that cost: the property it was supposed to provide - that a
+# required field resolves to something - now lives in tests/fast/test_databricks_bundle.py,
+# which runs on every push with no credentials.
+#
 # READ THIS BEFORE TRUSTING A GREEN TICK ON THIS WORKFLOW. The default action is `validate`,
 # and `databricks bundle validate` is not a deploy. It checks syntax, `include:` resolution
 # and variable substitution, and warns about properties it does not recognise; it does NOT
