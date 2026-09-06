@@ -18,7 +18,7 @@ the ones already done carry their measured cost.
 | M9b | consumption layer and freshness alerting: `samegold report`, `serve/freshness.py`, the post-mortem | done | 4 |
 | M10 | Delta on Spark green: `MERGE` with both branches and a delete by absence, CDF read as a feed, `OPTIMIZE ... ZORDER BY` measured in the transaction log, time travel, the delta CI job | done | 10 |
 | M11 | Spark Declarative Pipelines running locally and on Databricks | next | 10 |
-| M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | **4 of 7 done**, verified against a committed record; deploy-from-CI, dashboard and screenshots not started | 18 |
+| M12 | Databricks Free Edition: bundle deploy from CI, Unity Catalog, expectations, AUTO CDC, event log, AI/BI dashboard, screenshots as evidence | **6 of 7 done**, verified against a committed record. The dashboard and one SQL alert are declared as bundle resources with their queries parsed and their widgets checked; what is left is deploy-from-CI and the screenshots, which need a workspace to be taken from | 18 |
 | M13 | grants and masks deployed, with a drift test comparing deployed to declared | | 8 |
 | M14 | the duplicate-escape measurement: stateful streaming dedup versus the stateless dedup at the gold boundary | | 8 |
 | M15 | a pandas UDF and a Python UDF where they are genuinely the right tool, with the cost measured | | 4 |

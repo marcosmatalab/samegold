@@ -120,8 +120,19 @@ jvm_lanes_can_run() {
 }
 
 if jvm_lanes_can_run; then
-    run "spark-no-delta" "SAMEGOLD_STORAGE=parquet pytest tests/spark -q -m spark"
-    run "delta/spark" "pytest tests/spark -q -m spark"
+    # NO `-m spark` FILTER, and that is a fix rather than a tidy-up. Every command in this
+    # repository that ran tests/spark ran it with `-m spark`, so a test in that directory
+    # WITHOUT the marker was deselected by all of them: `pytest tests/spark -q -m spark`
+    # reported "3 deselected" on every run, in CI and here, and nobody read the number. The
+    # three were `test_there_is_something_to_parse`, `test_the_exclusions_are_the_ones_claimed`
+    # and `test_almost_every_statement_is_analysable` - the guards ON the guards, the ones that
+    # keep a statement from disappearing out of the parse check by being renamed. One of them
+    # was RED when it was found, and had been since a statement was inserted ahead of another.
+    #
+    # A marker that decides what runs is a way to hide a test by forgetting one line. The
+    # directory is the selection now: everything under tests/spark runs in the spark lane.
+    run "spark-no-delta" "SAMEGOLD_STORAGE=parquet pytest tests/spark -q"
+    run "delta/spark" "pytest tests/spark -q"
     run "delta/delta" "pytest tests/delta -q"
 fi
 
