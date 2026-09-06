@@ -76,21 +76,31 @@ resources:
           # present, and it would have happened with the line absent, because the thing that
           # retried it is not this setting.
           #
-          # SERVERLESS AUTO-OPTIMIZATION is. It is ON by default, the UI calls it "Enable
-          # serverless auto-optimization (may include additional retries)", and the API field is
-          # `disable_auto_optimization`. That is the lever, and it is set below. Note that it is
-          # a `true` rather than a zero, so it survives the serializer hypothesis either way.
+          # SERVERLESS AUTO-OPTIMIZATION is, for a NOTEBOOK task. It is ON by default, the UI
+          # calls it "Enable serverless auto-optimization (may include additional retries)", and
+          # the API field is `disable_auto_optimization`. Every notebook task in this job
+          # declares it. THIS TASK DOES NOT, and that is the measurement rather than an
+          # oversight: on 6 September 2026 the deploy read-back showed it arriving on all four
+          # notebook tasks and not on this one. It is a serverless-workflows TASK setting and
+          # this task runs on the compute of the pipeline, so declaring it here would be a
+          # field that never arrives - which is the class this whole comment is about.
           #
-          # Both are declared: `max_retries: 0` says what this lane wants of the job scheduler,
-          # `disable_auto_optimization: true` says it to the part that was actually retrying.
-          # Neither has been exercised against a workspace yet - the next deploy is what tests
-          # them, and `scripts/databricks_run.sh deploy` now reports which declared task
-          # settings the deployed job came back with, so nobody has to remember to look.
+          # WHAT GOVERNS THIS TASK is one level down, in the `configuration:` block of the
+          # pipeline in databricks.yml: `pipelines.numUpdateRetryAttempts`, whose default is
+          # five for a triggered pipeline and which is set to "0" there. That is the setting
+          # that answers the incident this lane measured - six failed updates from one launch,
+          # fourteen minutes of quota, 2 September 2026 - and until 6 September nothing had
+          # ever read it back off the deployed pipeline. `scripts/databricks_run.sh deploy`
+          # now does, and warns by name if it is missing.
           #
-          # Neither stops the PIPELINE system retrying an UPDATE, which is a third mechanism
-          # again: that is `pipelines.numUpdateRetryAttempts` in databricks.yml.
+          # AND THE SERIALIZER HYPOTHESIS IS FALSIFIED. This comment used to say it was open:
+          # that a bundle might drop a field whose value equals its default, which would make
+          # every `max_retries: 0` here decoration. The same read-back reports max_retries=0
+          # arriving on all four notebook tasks. Zeros survive. Why the 5 September read showed
+          # it absent on every task is a separate open question, and the plausible answer is
+          # that this task carried no other retry field then; it is not settled and is not
+          # claimed.
           max_retries: 0
-          disable_auto_optimization: true
           # MEASURED, 5 September 2026, run 592180158314216: this task took 81 seconds. The
           # ceiling is 600, which is 7.4x the measurement - the tightest margin in the job, and
           # deliberately so: it is the only task that starts a pipeline update, an update is

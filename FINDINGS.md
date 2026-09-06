@@ -229,6 +229,18 @@ aggregates could not see. What did appear is the next finding.
 | **Not fixed on purpose** | A `COALESCE` would put those returns in some month, and which month is a contract question nobody has answered: the sale's month does not exist, the return's own month is a different quantity, and inventing one to make a total add up is how a close acquires revenue that no sale supports. It is documented in `CONTRACT.md`'s terms as a known gap, in README's "What is NOT claimed", and here. |
 | **Commits** | this round |
 
+### The right setting, named in a comment, declared, and never once read back
+
+| | |
+|---|---|
+| **What** | `disable_auto_optimization` was added to every task in the job to stop serverless auto-optimization retrying a failed one. It arrives on the four NOTEBOOK tasks and does not arrive on `ingest_and_transform`, the pipeline task - which is the one task in this job whose retries have ever cost anything: six failed updates from one launch and fourteen minutes of Free Edition quota on 2 September 2026. What governs that task is `pipelines.numUpdateRetryAttempts`, a pipeline configuration property whose default is five for a triggered pipeline - exactly the number of retries measured. It was named in a comment on 3 September, declared as `"0"` the same day, and **nothing had ever read it back off the deployed pipeline**. |
+| **How found** | By the deploy read-back written the day before, on its FIRST run against a workspace. It exists because a deploy that succeeds is not a deploy that sent what was written, and the first thing it printed was a field missing from the one task that needed it. That is the argument for building it, and it is worth recording that the argument was made before the evidence arrived rather than after. |
+| **Why invisible** | Two reasons that compound. A retry setting does nothing on every run that succeeds, so it can be wrong for months without a symptom - `docs/limits.md` had said in as many words that the override was "still unverified", and being honest about it is not the same as checking it. And the protection added for the tasks looked uniform: `disable_auto_optimization: true` on all six, one line each, no reason to suspect that the API drops it for one task type. The bundle's own validation says nothing, because the field is legal in the schema. |
+| **Also falsified here** | The serializer hypothesis, which this repository had left open in three places: that a bundle drops a field whose value equals its default, making every `max_retries: 0` decoration. The same read-back reports `max_retries=0` arriving on all four notebook tasks. **Zeros survive.** Why the 5 September read showed it absent on every task is a new open question, and the plausible answer - that the field now travels with a sibling retry field on the same task - is written down as a hypothesis rather than adopted. |
+| **The class** | **A correct diagnosis written down is not a correction applied.** The comment named the right property, quoted its default, and explained the mechanism. All of that was true, and none of it was a check. The gap between "we know what the fix is" and "the fix is in effect" is exactly the width of a read-back nobody had written. |
+| **Prevented by** | The field is REMOVED from the pipeline task rather than left as a declaration that never arrives, and `tests/fast/test_databricks_bundle.py` now refuses it there by name while requiring it on every notebook task. `test_the_pipeline_declares_the_retry_lever_its_task_cannot` holds the pipeline's `configuration:` block to the two retry properties, and `scripts/databricks_run.sh deploy` reads the deployed PIPELINE spec back beside the job's tasks, warning by name when either is missing. The pipeline is looked up by a name a test ties to the bundle, the same way the job already was. |
+| **Commits** | this round |
+
 ### The retry setting did not arrive, and would not have helped if it had
 
 | | |
@@ -296,6 +308,7 @@ These are ADR 0006's entries. The ADR argues them; this is the index.
 | **Evidence a reader cannot regenerate is not evidence.** | the late population produced in `/tmp` (this round) |
 | **A closed enum with a member no run can produce is a branch nobody maintains.** | `return_exceeds_sold_qty` (`253dba9`); and the reason an "undecidable" member was refused (`d687813`) |
 | **A bound is the size of the fixture that tests it.** | bounds nine orders too high, moving a published figure by scaffolding (`7ec0cca`) |
+| **A correct diagnosis written down is not a correction applied.** The comment can name the right setting, quote its default and explain the mechanism, and none of that is a check that it took effect. | `pipelines.numUpdateRetryAttempts`, named and declared on 3 September 2026 and first read back off the deployed pipeline on 6 September (this round) |
 | **A fix is verified against the case that motivated it and against nothing after it.** The instance it was written for is the only one that exists while it is being written, so the check beside it can only cover that instance. | the late-arrival prefix that separated two populations and not three (this round) |
 
 ---
