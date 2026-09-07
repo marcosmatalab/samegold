@@ -16,6 +16,24 @@ derby.log
 # invites refutation should show the refutations it has already survived. It never backs a
 # published number either way.
 
+# Coverage's data file, written by `make fast` on every run. It was COMMITTED on 7 September
+# 2026, in the commit that added the coverage gate, and a tracked file that a lane rewrites is
+# not a small untidiness:
+#
+#   * `git status --porcelain` reported " M .coverage" after the first command in the README,
+#     `_code_changes` in generator/seeds.py excludes only the evidence directory, so every
+#     record written after `make fast` carried `tree_dirty: true` and the front page said "on an
+#     uncommitted tree". That is the same condition the long comment in seeds.py describes as
+#     having emptied that field of meaning once already, nine records out of ten;
+#   * and in a second clone it aborted `git checkout main` outright with "Your local changes
+#     would be overwritten by checkout", which is a tool's scratch space blocking a branch
+#     change in somebody else's checkout.
+#
+# tests/fast/test_seeds.py asserts that nothing the fast lane writes is tracked, so this cannot
+# come back by being added again.
+.coverage
+.coverage.*
+
 # `npm install` in the mermaid step of .github/workflows/fast.yml writes it here. Nothing
 # in this repository is a node package; the directory is a tool's scratch space, and an
 # untracked one is enough to make `git status --porcelain` call the tree dirty.

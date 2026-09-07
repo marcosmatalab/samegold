@@ -25,6 +25,7 @@ from typing import Any
 
 from samegold.domain.bitemporal import accounting_month_of, versions_from_snapshots
 from samegold.domain.money import euros
+from samegold.evidence.lane_split import split as lane_split
 from samegold.evidence.record import EvidenceRecord, artifact_digest
 from samegold.evidence.registry import CLAIM_TITLES
 from samegold.generator.events import CI, FAST, FULL, Profile, generate
@@ -109,6 +110,32 @@ def _versioned_rows(bronze: Path, closes: list[dt.datetime]) -> list[dict[str, A
 # --------------------------------------------------------------------- SG-00
 
 
+def _line_coverage(root: Path) -> float | None:
+    """Line coverage of `src/samegold`, read from the data file the run just wrote.
+
+    ASKED OF COVERAGE, not scraped from pytest's terminal output. The percentage pytest-cov
+    prints depends on `--cov-report` and on whether `--cov-fail-under` was passed, and a figure
+    the documents publish should not depend on how a report was formatted.
+
+    Returns None when the data file is missing or unreadable, and the caller then omits the
+    artifact rather than publishing a zero - a coverage run that did not happen must not be
+    published as a coverage of nothing.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "coverage", "report", "--precision=2", "--format=total"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return None
+
+
 def _pytest_counts(output: str) -> tuple[int, int]:
     """Passed and failed, read off pytest's summary line.
 
@@ -176,6 +203,15 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     # `make preflight` and the fast workflow run the marked tests with nothing deselected, so
     # the comparison does happen - just not inside the thing it is comparing against.
     deselected = "evidence_dependent"
+    # COVERAGE IS MEASURED BY THIS RUN, because the alternative was a number typed into
+    # CLAIMS.md. It said 60% while the lane measured 61.87%, in the same paragraph as a split
+    # that recomputes itself, and it would have drifted again the week after anybody corrected
+    # it by hand. `--cov-report=` asks for no report: the figure is read from the data file
+    # afterwards by `_line_coverage`.
+    #
+    # The data file is `.coverage`, which is IGNORED and no longer tracked. It was committed
+    # once, and a tracked file that this run rewrites made every record after it say
+    # `tree_dirty: true` - see tests/fast/test_seeds.py.
     fast_run = subprocess.run(
         [
             sys.executable,
@@ -186,6 +222,8 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
             "--no-header",
             "-m",
             f"not {deselected}",
+            "--cov=src/samegold",
+            "--cov-report=",
         ],
         capture_output=True,
         text=True,
@@ -213,6 +251,20 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
         "adrs": len(list((root / "docs" / "adr").glob("*.md"))),
         "deselected_in_this_run": f"-m 'not {deselected}'",
     }
+    # THE SPLIT, SUMMED HERE AND CLASSIFIED ELSEWHERE. `lane_split` counts pytest's own
+    # collection per file and adds up the two sides; deciding which side a NEW file belongs to
+    # stays a judgement, and tests/fast/test_prose_gate.py fails until somebody makes it. What
+    # stops being typed is the addition, which is what drifted: CLAIMS.md published 389 while
+    # the lane had 397.
+    repository_tests, domain_tests, unclassified = lane_split(root)
+    facts["fast_lane_repository_tests"] = repository_tests
+    facts["fast_lane_domain_tests"] = domain_tests
+    # Published so a reader can see the classification is complete rather than trusting it. The
+    # test is what fails on a non-empty list; this only records what was true for this run.
+    facts["fast_lane_unclassified_files"] = len(unclassified)
+    coverage_pct = _line_coverage(root)
+    if coverage_pct is not None:
+        facts["line_coverage_pct"] = coverage_pct
     # PASSED over COLLECTED, parsed from pytest's own summary line, not collected over
     # collected. The rate used to be Rate(tests_fast, tests_fast), which reads like a pass
     # rate and is 100% by construction for any suite, however red - and on a failing run the

@@ -80,8 +80,14 @@ filterwarnings = ["ignore::DeprecationWarning"]
 #     resolving every statement they contain against the real column names;
 #   * the tests themselves, which is the usual exclusion and the uninteresting one.
 #
-# So 60% is the fast lane's reach over the code it can import, not "40% of this project is
-# untested". Both halves of that sentence matter.
+# So the number is the fast lane's reach over the code it CAN import, not "the rest of this
+# project is untested". Both halves of that sentence matter.
+#
+# NO DIGIT IS WRITTEN HERE, on purpose. This comment carried "60%" while the lane measured
+# 61.87%, for the same reason CLAIMS.md did: a percentage typed into a file nothing re-measures
+# is only true on the day it is typed. The figure is an artifact of the SG-00 record, rendered
+# into CLAIMS.md through an evidence anchor; `--cov-fail-under` below is the only number about
+# coverage that belongs in this file, because a gate is a decision and not a measurement.
 [tool.coverage.run]
 source = ["src/samegold"]
 branch = false
