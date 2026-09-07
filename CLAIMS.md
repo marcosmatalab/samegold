@@ -8,7 +8,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 533/533 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 4bb71c278 |
+| `SG-00` what this repository contains, counted | PASS | 535/535 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 98c980b44 |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | CI, 4200be34b |
@@ -33,7 +33,7 @@ survive the day it stops being true. It stopped being true within a week of bein
 virtue.
 
 **What the fast lane is actually about, since somebody was going to count it.** Of its
-<!--sg:SG-00.artifact.tests_fast-->576<!--/sg--> tests, **<!--sg:SG-00.artifact.fast_lane_repository_tests-->401<!--/sg--> of them check the
+<!--sg:SG-00.artifact.tests_fast-->581<!--/sg--> tests, **<!--sg:SG-00.artifact.fast_lane_repository_tests-->406<!--/sg--> of them check the
 repository** - its layering, its documents, its bundle, its scripts, its evidence plumbing -
 and **<!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> check the pipeline**: the generator, the close, the
 dimension, the digests, the invariants, the mutation engine, the parity comparisons.
@@ -54,8 +54,8 @@ and counted whole on the side its majority sits; moving its document-shaped test
 split by about ten.
 
 The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by
-the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->61.74<!--/sg-->%
-(<!--sg:SG-00.provenance-->local run, not reproduced in CI, 4bb71c278<!--/sg-->)**, and it is gated at 58 in CI.
+the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->61.79<!--/sg-->%
+(<!--sg:SG-00.provenance-->local run, not reproduced in CI, 98c980b44<!--/sg-->)**, and it is gated at 58 in CI.
 
 **The provenance is part of the figure, and that is the whole defence here.** Every other number
 in these documents is checked twice: the anchor keeps the document agreeing with the record, and
