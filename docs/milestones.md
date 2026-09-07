@@ -43,8 +43,14 @@ round 12: the bundle deploying in one command is not the milestone, the mileston
 to the cent against what the OSS lane computes on the same seed - with 727 accepted and 28
 quarantined across seven reasons out of 755, conservation closed, `undecided_rules` empty, and
 a Type 2 dimension of the same shape as the hand-written MERGE's. The record is committed at
-`evidence/databricks/SG-DBX-01.json` and every figure in `docs/databricks-run.md` is rendered
-from it.
+`evidence/databricks/SG-DBX-01.json`, and the 21 anchored figures in `docs/databricks-run.md`
+are rendered from it.
+
+That sentence used to read "every figure in `docs/databricks-run.md` is rendered from it". The
+document was 1117 lines holding 21 anchors, so the claim was wrong by a factor of about fifty -
+and it was the sentence that justified nobody reading the other 1096. It is now 333 lines: what
+was a finding moved to `FINDINGS.md`, what was a figure stayed and is rendered, and what was
+neither was deleted.
 
 **M12 IS NOT CLOSED**, and the reason is not a judgement about quality. Its own row lists seven
 things. Four are done and checkable against that record; three have not been started:
