@@ -5,18 +5,18 @@
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
-    "fast_lane_repository_tests": 401,
-    "fast_lane_seconds": 261.7,
+    "fast_lane_repository_tests": 406,
+    "fast_lane_seconds": 230.9,
     "fast_lane_unclassified_files": 0,
-    "line_coverage_pct": 61.74,
+    "line_coverage_pct": 61.79,
     "markdown_documents": 24,
     "python_modules": 56,
-    "source_lines": 11460,
-    "test_lines": 11345,
+    "source_lines": 11565,
+    "test_lines": 11498,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 576,
-    "tests_passed": 533,
+    "tests_fast": 581,
+    "tests_passed": 535,
     "tests_spark": 148
   },
   "ci_commit_sha": null,
@@ -32,11 +32,11 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "c377a0a16728a54148daf1003859d634",
+  "hash": "3d1772d0d480f5ecd20f97e241345fa0",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "11a6c3a6fd5c5da829058687bd7915c7",
+  "prev": "c377a0a16728a54148daf1003859d634",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -45,27 +45,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 533,
-      "trials": 533,
+      "successes": 535,
+      "trials": 535,
       "wilson95": [
-        0.992844,
+        0.992871,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "4bb71c278a44a7bce7b9093442c4783c1c389c2d",
-      "duration_s": 272.603,
+      "commit_sha": "98c980b4455831086fb57b5c0023945a4965e2ac",
+      "duration_s": 242.081,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        11833133143419432043
+        17007379577244945248
       ],
-      "started_at": "2026-09-07T21:29:12+00:00",
+      "started_at": "2026-09-07T23:05:22+00:00",
       "tree_dirty": false,
-      "tree_sha": "f1fc4d49e3c0b78396c17f0feaeffbfce95f7320"
+      "tree_sha": "4fd5ff53eec6a0b04990cfaee38bfb9388e475a2"
     }
   }
 }
