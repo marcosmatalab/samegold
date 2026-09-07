@@ -1,27 +1,19 @@
 # The Databricks lane: what was deployed, and what it returned
 
-> **State: run, four times, between 3 and 6 September 2026 against a real Free Edition
+> **State: run four times between 3 and 6 September 2026 against a real Free Edition
 > workspace.** The records are committed under `evidence/databricks/` with their job run ids,
-> and every figure below is rendered from the canonical one.
+> and every figure below is rendered from the canonical one by `samegold readme`.
 >
-> This header said the opposite for four days. It read "deploy attempted once ... it failed, so
-> every figure below still reads `NOT RUN`" while the twenty anchors under it held measured
-> values, because the anchors are rendered by a command and the sentence above them was typed by
-> a person. That is the finding of 7 September 2026 - the drift gate watched the figures and
-> never read the prose - and `samegold.evidence.prose` is the gate that now reads both.
->
-> The first deploy did fail, on 2 September: `databricks bundle validate -t free` answered
-> `Validation OK!` and `databricks bundle deploy -t free` died on the first POST with `cannot
-> create resources.pipelines.samegold_pipeline: name must be set (400
-> INVALID_PARAMETER_VALUE)`, taking the job with it as a failed dependency. What that cost and
-> what was done about it is in the last two sections.
->
-> Every figure below sits inside an HTML-comment anchor named `dbx:<field>`.
-> `tests/fast/test_databricks_bundle.py` fails if any of them holds a number while
-> `evidence/databricks/SG-DBX-01.json` is absent, and fails if any of them disagrees with that
-> record once it is present. So this document cannot get ahead of the run by hand, which is the
-> failure mode the whole repository is about: for eleven rounds `docs/limits.md` said the Delta
-> lane was "not executed here" while CI had been running it, red, for two days.
+> **What this document is, after 8 September 2026.** It was 1117 lines, of which 21 were
+> anchored - so `docs/milestones.md` could say "every figure here is rendered from the record"
+> while fifty lines of prose sat between each pair of rendered ones, unchecked by anything.
+> `docs/prose-audit-2026-09-07.md` found 38 of its 67 confirmed false statements pointing at
+> this file. Fixing them one at a time would have put them back a round later, so the document
+> was split three ways instead: what was a FINDING moved to `FINDINGS.md` with its class, what
+> was a FIGURE stayed and is rendered from the record, and what was neither - narrative written
+> before a run about what it would show, checklists scored against runs since superseded, and
+> paragraphs describing the state of a round that ended - was deleted. That last kind is a
+> diary, and the diary is already in the record and in the git history.
 
 ## What `make databricks` does
 
@@ -38,331 +30,37 @@ make databricks
 
 | step | what it does | why it is a step |
 |---|---|---|
-| `catalog` | creates the Unity Catalog catalog if missing, **with SQL** | a bundle cannot: there is no `catalogs` resource type. Nor can the Unity Catalog API on Free Edition - see below |
+| `catalog` | creates the Unity Catalog catalog if missing, **with SQL** | a bundle cannot: there is no `catalogs` resource type, and on Default Storage `databricks catalogs create` fails outright |
 | `validate` | `databricks bundle validate -t free` | the only step that needs no compute |
 | `deploy` | `databricks bundle deploy -t free` | schemas, volumes, the pipeline, the job |
 | `seed` | generates events with the OSS generator and uploads them to the landing volume | a pipeline over an empty directory reports nothing, and "no expectation failed" would arrive looking exactly like "no row was read" |
 | `run` | `databricks bundle run samegold_close -t free` | the schedule is deployed **paused**; this is how it starts |
 | `fetch` | copies `SG-DBX-01.json` out of the workspace into `evidence/databricks/` | a record that cannot leave the workspace is not evidence anyone can check |
 
-## The re-ingestion, in order, and what each step must print
-
-`make databricks` is `all`: catalog, validate, deploy, seed, run. **It does not full-refresh
-and it does not re-seed**, so it is the wrong command for the run that has to prove the type
-fix. The sequence below is the right one, and it is written down rather than assembled at the
-keyboard because on Free Edition a wrong update costs the whole day's compute quota.
-
-Three decisions are baked into the order, and each one is a question that has a wrong answer.
-
-**Re-seed? Yes, and it is not optional.** The landing volume holds events written by the
-generator as it was before round 18, which emitted eight kinds of corrupt record. It now emits
-nine (`beyond_bigint`, a price of 2^63). Every expected number in the checklist below is for
-the nine-kind population, so a run over the old bytes would disagree with all of them and the
-disagreement would say nothing.
-
-**Delete before seeding? Yes.** `step_seed` uses `databricks fs cp -r --overwrite`, which is a
-COPY and not a sync: it replaces files whose names collide and leaves behind any file the new
-generation no longer produces. Batch directory names come from arrival timestamps, so a stale
-file from the old population can survive and be ingested beside the new one. Emptying the
-landing directory is what makes the population definite. It also makes `SAMEGOLD_RESEED=1`
-redundant - `step_seed` skips only when the volume is non-empty - which is why it is passed
-anyway: it is a guard against a deletion that half-worked, not the mechanism.
-
-**Delete `_schema` too?** `cloudFiles.schemaLocation` is `{landing}/_schema`, an explicit path
-in the landing volume rather than pipeline-managed state, and it CACHES the schema Auto Loader
-inferred on the first run - the all-STRING one. `--full-refresh-all` resets the pipeline's
-tables and its own checkpoints. **Whether it also clears a schema location the source names
-explicitly has not been tested here**, and this document does not get to assume it: the failure
-mode is bronze coming back as STRING, the type fix looking as though it did not work, and a
-correct fix getting reverted. Deleting the directory costs one command and removes the
-question. It must be deleted TOGETHER with the full refresh and never on its own - a
-re-inferred schema under an existing checkpoint is how a streaming table fails on a schema
-change instead of on a type.
-
-**Seed first, then refresh.** The refresh re-reads whatever is in the landing zone at the
-instant it starts. Refreshing before seeding reprocesses the old population, produces a wrong
-close, and spends an update - and the second one is the part that matters here, because two
-updates is what the daily quota does not stretch to.
-
-```sh
-export DATABRICKS_HOST=https://<workspace>.cloud.databricks.com
-export DATABRICKS_TOKEN=dapi...
-CATALOG=samegold                       # SAMEGOLD_CATALOG overrides it everywhere below
-```
-
-**1. Deploy the fixed sources.** `deploy` runs catalog, validate and deploy.
-
-```sh
-scripts/databricks_run.sh deploy
-```
-
-Must print `==> catalog samegold` then `  exists`; `==> bundle validate -t free` ending in
-`Validation OK!`; and `==> bundle deploy -t free` ending in `Deployment complete!`. If validate
-says OK and deploy dies on a 400, that is the round-13 finding repeating and the message names
-the field.
-
-**2. Empty the landing zone, schema cache included.**
-
-```sh
-databricks fs rm -r  "dbfs:/Volumes/$CATALOG/raw/landing"
-databricks fs mkdir  "dbfs:/Volumes/$CATALOG/raw/landing"
-databricks fs ls     "dbfs:/Volumes/$CATALOG/raw/landing"
-```
-
-The third command must print **nothing at all**. If it lists `_schema`, the delete did not
-reach it and the run that follows will be inferring nothing: stop and delete it by name. The
-volume itself is a Unity Catalog object the bundle owns and survives the `rm`; the `mkdir` only
-puts the directory back, and `step_seed` would do it anyway.
-
-**3. Seed the new population.**
-
-```sh
-SAMEGOLD_RESEED=1 scripts/databricks_run.sh seed
-```
-
-Must print `==> seed dbfs:/Volumes/samegold/raw/landing`, then from the generator
-
-```
-755 events in 298 files under /tmp/...
-ledger: /tmp/.../truth/ledger.json
-```
-
-and then `  uploaded 298 files`. **If it prints `the landing volume already has files; not
-seeding again`, step 2 did not empty it** - the run would be over the old bytes. If the counts
-are not 755 and 298, the seed or the profile is not the default pair (`SAMEGOLD_SEED=20260901`,
-`SAMEGOLD_PROFILE=fast`) and every expected value below is for that pair and no other.
-
-**4. The one update.**
-
-```sh
-scripts/databricks_run.sh run-full-refresh
-```
-
-Must print `==> FULL REFRESH: the pipeline will re-read the landing zone from scratch`, then
-`  needed after a schemaHints change, because the inferred schema is cached`, then
-`==> bundle run samegold_close -t free` and the CLI's link to the run. This is the command that
-can cost the afternoon; everything above it is cheap and everything below it is read-only.
-
-**5. Fetch the record.**
-
-```sh
-scripts/databricks_run.sh fetch
-```
-
-Must print the two paths under `evidence/databricks/` and then the two tables ready to paste
-into the anchors in this document. If it prints a `SECTIONS THAT COULD NOT BE READ` line, those
-sections are holes and the anchors take the error message, not a zero.
-
-Then run the checklist below **before** pasting anything. A record that reports numbers is not
-the same as a lane that is right.
+`run-full-refresh` is the variant that re-reads the landing zone from scratch. It is needed
+after a `schemaHints` change, because `cloudFiles.schemaLocation` caches the inferred schema,
+and the cache is a path in the landing volume rather than pipeline-managed state - so it must
+be deleted together with the refresh, never on its own.
 
 ## What is deployed
 
 From `databricks/databricks.yml` and `databricks/resources/`:
 
-- **one pipeline**, `samegold_pipeline`: serverless, triggered (never continuous), `channel:
-  CURRENT`, `development: true`. Three sources: `databricks/src/bronze_autoloader.py` (Auto
-  Loader, directory listing, into `bronze_events`), `databricks/src/silver_expectations.py`
-  (the quarantine rules as pipeline expectations plus the classified table) and
-  `databricks/src/gold_close.py` (AUTO CDC Type 2 dimension, and the close as a materialized
-  view).
-- **one job**, `samegold monthly close`, three tasks in a chain: the pipeline update, then
-  `databricks/src/close_month.py` (the bitemporal close, as a notebook task), then
-  `databricks/src/publish_evidence.py` (the record).
-- **two schemas**, `main` and `raw`, with their grants, from `databricks/resources/grants.yml`.
-- **two volumes**, `raw.landing` and `raw.evidence`, from `databricks/resources/volumes.yml`.
-- **not deployed**: `databricks/sql/policies.sql`. See the last section.
-
-## The first real run, and why its numbers are not in the anchors below
-
-The lane was deployed and run against a Free Edition workspace on 2 September 2026. `deploy`,
-`seed` and the whole pipeline succeeded. `close_month` then died with
-`DELTA_CAST_OVERFLOW_IN_TABLE_WRITE`, writing a DOUBLE into `gross_cents BIGINT`.
-
-**The run produced figures. They are wrong, so they are written here and NOT pasted into the
-anchors below**, which still read `NOT RUN`. An anchor is for a number the lane earned; this
-section is for a number it did not.
-
-| measured in the workspace | value |
-|---|---|
-| `DESCRIBE revenue_by_month` | `gross_cents`, `returns_cents`, `net_cents` = **double** |
-| `DESCRIBE silver_classified` | 21 columns, **all STRING** except `_ingested_at` |
-| `revenue_by_month` 2026-01 | gross **2.767e19** from 428 lines |
-| `revenue_by_month` 2026-02 | gross 199 379 from 3 lines |
-| `silver_classified` | `bad-0000007`, `bad-0000015`, `bad-0000023`: `order_placed`, `qty='1'`, `unit_price_cents='9223372036854775807'`, `quarantine_reason='accepted'` |
-| `'9223372036854775807' > 1000000` in the SQL warehouse | `true` |
-| the same records through the OSS `CASE` | `amount_out_of_range` |
-| `silver_events` for those three ids | zero rows - the EXPECTATIONS dropped them |
-| the deployed file vs the repository | identical |
-
-The contract caps one line at 10 000 x 1 000 000 = 1e10 cents. Those three events are worth
-9.22e18 each and account for the whole of January's gross: six and a half million times the
-ceiling of a single line, from events the generator emits **in order to be rejected**.
-
-### The mechanism, measured rather than deduced
-
-The expectations dropped those rows and the classification accepted them, from the same rules
-in the same file. The only shape consistent with all of the above is that
-`unit_price_cents > 1000000` returned NULL inside the pipeline while returning `true` in the
-warehouse. That was checked on pyspark 4.2.0 rather than argued:
-
-| expression, `v` a STRING column holding `9223372036854775807` | `spark.sql.ansi.enabled=false` | `=true` |
-|---|---|---|
-| `v > 1000000` | **NULL** | `true` |
-| `v > 1000000L` | `true` | `true` |
-| `CAST(v AS INT)` | NULL | raises `CAST_INVALID_INPUT` |
-| `CAST(v AS BIGINT)` | 9223372036854775807 | 9223372036854775807 |
-
-The literal `1000000` is INT32. The STRING is coerced to **the literal's** type, the value
-overflows INT32, and non-ANSI Spark yields NULL for that cast. The pipeline behaved as
-non-ANSI, the warehouse as ANSI - which is exactly the pair of answers observed. The defect is
-the WIDTH of the literal, and it is unreachable the moment the column is a BIGINT.
-
-Then a NULL predicate does not match a `WHEN`, so the row fell through to `ELSE 'accepted'`.
-The expectations got it right for free: `expect_all_or_drop` treats "not TRUE" as "did not
-pass". The same NULL meant *drop* in one rendering and *accept* in the other.
-
-### What was changed
-
-- `bronze_autoloader.py` declares `cloudFiles.schemaHints` from the same schema the OSS lane
-  uses, so `qty`, `new_qty` and `unit_price_cents` arrive as BIGINT. **This needs a full
-  refresh** to take effect, because `cloudFiles.schemaLocation` caches the inferred schema:
-  `scripts/databricks_run.sh run-full-refresh`.
-- `silver_expectations.py` GENERATES the classification from `RULES` instead of restating it,
-  and acceptance is positive: every branch is `COALESCE(predicate, false)`, so a row is
-  `accepted` only when every rule said TRUE. A new `undecided_rules` column names any rule
-  that returned NULL, so if this ever happens again the run says so.
-- The three events now land in `amount_out_of_range`, which is where the other two lanes send
-  them, and needs no new quarantine reason.
-
-### What a review of that fix changed again, still without a re-run
-
-The fix above was read back a round later and three things in it were not finished. All three
-are in the repository and none of them has been near a workspace, which is the same sentence
-as the one at the top of this section and is why it is repeated rather than assumed.
-
-- **The literal still had no width.** Making a NULL predicate fail closed fixed the
-  consequence; the predicate was still NULL. Every bound literal in the rules now carries `L`
-  (`1000000L`, `10000L`, `0L`), which is the cheaper fix and the one that survives a pipeline
-  running before its schema is re-inferred. Re-measured on the reproduction - STRING columns,
-  ANSI off - no rule is undecidable and the Long.MaxValue record leaves through
-  `amount_out_of_range` rather than through the first rule that could not answer.
-- **`accepted` was still the `ELSE`.** Correct, because the branches are total, and correct by
-  an argument rather than by construction. It is now `WHEN <every rule holds> THEN 'accepted'`
-  over the same `RULES`, and the `ELSE` that remains is unreachable and raises: a record the
-  classification cannot classify is a pipeline fault, and is deliberately NOT a new member of
-  the closed enum.
-- **The rules agreed and their ORDER did not.** The OSS lane tested the bounds before the
-  currency; `RULES` declares the currency first. Measured on a record that breaks both: two
-  different doors for one record, on rules that are identical. The OSS branches follow `RULES`
-  now.
-
-`silver_expectations.py` is therefore not byte-identical to the file that produced the numbers
-below, and the next run has to be a `run-full-refresh` for the type hints to take effect at
-all.
-
-## The run that worked, and the checklist scored against it
-
-The lane ran end to end on 3 September 2026. The first run of the day was correct on the close
-and exposed two defects of its own; both were fixed and the lane was run again from commit
-`8c9faa7`. That is the run this checklist was scored against, and its `update` was 58d3de6f,
-COMPLETED, 0 ERROR-level events, `incomplete: []`.
-
-**The record in this repository is no longer that one.** It is the SECOND close's - update
-`289286cc`, 4 September 2026, over 1328 events - because the lane ran again and the record is
-whatever the last fetch brought down. Every anchor in this document is filled from it by
-`samegold readme`, mechanically, and
-`tests/fast/test_databricks_bundle.py::test_the_run_document_agrees_with_the_record` fails if
-the document and the record ever disagree. That test is what caught the two being out of step
-in the first place.
-
-### The first close's checklist, scored
-
-Everything from here to the end of the checklist is about the FIRST close, over 755 events. It
-is kept as it was scored rather than rewritten, because the point of it was that the expected
-column had been written before the run - editing it now to describe a later population would
-destroy exactly the property that made it worth anything. The second close is the section above,
-and the anchored figures in "What the run returned" describe the CURRENT record, which is the
-second close's.
-
-
-Every expected value in the section below it was written **before** any of this ran, from the
-generator and the OSS reference on the same seed. Here is each one against what the workspace
-produced.
-
-| # | check | expected | workspace | |
-|---|---|---|---|---|
-| 1 | money columns are `bigint` | `bigint` throughout | **not in the record** | see below |
-| 2 | the four `bad-*` verdicts | `amount_out_of_range` x2, `missing_required_field` x2 | **not in the record** | see below |
-| 3 | quarantine by reason | 727 / 6 / 5 / 3 / 6 / 2 / 3 / 3 = 755 | identical, all eight | ✅ |
-| 3 | conservation | 755 / 727 / 28 / 755 | identical | ✅ |
-| 3 | `undecided_rules` | 0 rows | `[]` | ✅ |
-| 3 | rescued rows | at least 2 | **not in the record** | see below |
-| 4 | expectations, per rule | 752/3, 749/6, 747/8, 743/12, 744/11, 747/8, 741/14 | **all fourteen identical** | ✅ |
-| 5 | `revenue_by_month` 2026-01 | 14 198 046, 425 lines | 14 198 046, 425 | ✅ |
-| 5 | `revenue_by_month` 2026-02 | 199 379, 3 lines | 199 379, 3 | ✅ |
-| 5 | `above_contract_ceiling` | false everywhere | false, both months | ✅ |
-| 5 | `revenue_closed` | 2 rows, version 0, "first close" | exactly that, and the returns figures too | ✅ |
-| 6 | dimension | 75 / 60 / 60 / 15 | 75 / 60 / 60 / 15 | ✅ |
-
-**Nothing disagreed.** Not one figure. The per-rule expectation counts are worth pausing on:
-those seven pairs were predicted by evaluating the lane's own predicates on local Spark over the
-generated population, and the Databricks event log's own accounting agrees on all fourteen
-numbers - which retires the caveat that stood beside them ("the check that survives even if the
-runtime's per-rule accounting turns out to differ").
-
-**And three of the six items could not be checked against the record at all**, because nothing
-in it spoke to them: the column types, the four named `bad-*` rows, and the rescued count. They
-were read off a terminal by the person who ran it, which is the same standing as prose - and a
-checklist and a record that do not cover the same ground is a gap somebody fills by remembering.
-`publish_evidence.py` now captures all three (`column_types`, `money_types`, `bad_events`,
-`rescued_rows`), so the next run closes it. Until then those three rows say "not in the record"
-rather than a tick, which is what they are.
-
-### The two findings from the earlier run, closed
-
-**The outcome field.** `MAX(details:update_progress.state)` is the alphabetical maximum, so
-`last_state` published `WAITING_FOR_RESOURCES` for update `44a237b3`, which completed. With
-`max_by(state, timestamp)` the record now reads `COMPLETED` for `58d3de6f`, and the CTE picks
-the most recent update to reach a TERMINAL state rather than the most recent to leave any event.
-`tests/spark/test_databricks_event_log_query.py` runs the lane's own query over a synthetic
-event log and requires COMPLETED for one that completes and FAILED for one that fails; with
-`MAX` restored, both report `WAITING_FOR_RESOURCES`.
-
-**The dimension.** AUTO CDC produced 78 versions and 18 closed rows against the hand-written
-MERGE's 75 and 15, because its default is a new version whenever ANY column changes and the
-source view carries `event_ts` and `event_id`. With
-`track_history_column_list=["segment", "country"]` the workspace produced **75 / 60 / 60 / 15**
-- the OSS lane's shape exactly. The workspace's own rows were then captured to
-`evidence/databricks/dim_customer_scd2.json`, and
-`tests/fast/test_databricks_dimension_parity.py` compares the two **row by row** against it:
-they agree on all seventy-five, as multisets and as per-customer histories.
-
-### What the record now shows that no record showed before
-
-`update_history` carries the ten most recent terminal updates, and the first one it ever wrote
-makes the retry loop visible:
-
-    2026-09-03 18:01:18  COMPLETED  58d3de6f      <- this record
-    2026-09-03 13:24:36  COMPLETED  44a237b3
-    2026-09-03 13:15:22  COMPLETED  b0cf0443
-    2026-09-03 12:54:57  FAILED     79bf353a
-    2026-09-03 12:49:22  FAILED     865c9dcf
-    2026-09-03 12:46:26  FAILED     c0322e9d
-    2026-09-03 12:44:50  FAILED     f3e72640
-    2026-09-03 12:43:53  FAILED     1adb8985
-    2026-09-03 12:43:18  FAILED     d56d5da0
-    2026-09-03 12:31:13  FAILED     78785ff2
-
-Seven consecutive failed updates in twenty-four minutes, from launches nobody made seven times.
-That is the shape a record describing one update cannot have.
-
-**It does not verify the fix.** `pipelines.numUpdateRetryAttempts: "0"` landed in `e002f29`,
-which was pushed after those failures; every update since has succeeded, and an update that
-succeeds does not exercise a retry setting. The setting is deployed and untested, and the next
-FAILED update is what tests it.
+- **one pipeline**, `samegold_pipeline`: serverless, triggered, `channel: CURRENT`,
+  `development: true`. Three sources: `bronze_autoloader.py` (Auto Loader into `bronze_events`),
+  `silver_expectations.py` (the quarantine rules as pipeline expectations plus the classified
+  table) and `gold_close.py` (AUTO CDC Type 2 dimension, and the close as a materialized view).
+- **one job**, `samegold monthly close`: the pipeline update, then `close_month.py`, then
+  `publish_evidence.py`.
+- **two schemas** and **two volumes**, with their grants.
+- **not deployed**: `databricks/sql/policies.sql`. See "What Free Edition cannot show".
 
 ## What the run returned
+
+Every figure in this section is inside a `dbx:` anchor and filled from
+`evidence/databricks/SG-DBX-01.json` by `samegold readme`.
+`tests/fast/test_databricks_bundle.py` fails if any of them holds a number while that record is
+absent, and fails if any disagrees with it once present.
 
 ### The pipeline update
 
@@ -443,67 +141,12 @@ Open rows must equal distinct customers: one current version per key is what Typ
 a dimension with two open rows for one customer is the defect the hand-written `MERGE` on the
 OSS lane has a delete-by-absence branch for.
 
-## The second close: a month that had already been signed off moved
 
-This is what the project is for, and until 4 September 2026 it had only ever happened on a
-laptop. January was closed at 14 198 046 cents. 573 events the first close had never seen were
-then ingested, 553 of them for January, and a second close restated it - without touching the
-version finance had signed off.
+## The close, recomputed rather than transcribed
 
-### The population, reproduced
-
-The first time this was done, the 573 events were produced by a script in `/tmp` on one
-machine. That made every figure the second close published rest on data no reader could
-regenerate, which is this repository's premise inverted, and it is now a command:
-
-```sh
-samegold generate-late --out /tmp/late --seed 20260901 --late-seed 20260904
-```
-
-It generates the base population, generates a second one from the late seed, keeps the events
-whose `event_id` the base did not have, and writes them under `batch=late-<stamp>` - the prefix
-matters, because both generations bucket arrivals into the same instants and Auto Loader lists
-one directory: uploaded under the base names, the second batch would replace the first.
-
-What it must print, and what `tests/fast/test_late_arrivals.py` fails on if it does not:
-
-```
-573 late events in 269 batch directories (269 files)
-  from 761 generated, of which 185 had already been delivered by the 755 events before them, and 3 carried no event_id
-  by type : customer_upserted 21, order_line_amended 63, order_placed 420, return_registered 69
-  by month: 2026-01 553, 2026-02 16, 2026-03 4
-```
-
-The three dropped lines are the ones with no `event_id`. That is a decision, not an accident:
-"not already present" cannot be decided for a record with no id, and keeping them would
-re-deliver a corrupt line the base population already carries - the quarantine counts would
-charge one fault twice. So the late batch carries no corrupt records, and the run's arithmetic
-shows it: quarantine stays at 28, all from the base population, and 727 + 573 = 1300 accepted.
-
-### Uploading and running it
-
-```sh
-databricks fs cp -r /tmp/late/bronze dbfs:/Volumes/samegold/raw/landing
-scripts/databricks_run.sh run          # NOT run-full-refresh: this is an incremental update
-scripts/databricks_run.sh fetch
-```
-
-`run`, not `run-full-refresh`. A full refresh re-reads the whole landing volume and recomputes
-the close from scratch, which would produce one correct close over 1328 events and no
-restatement at all - the second version exists because the first one was already there.
-
-**Deploy first if anything in `databricks/` has changed since the last deploy.**
-`databricks bundle run` runs what was DEPLOYED, not what is in the tree, and on 4 September that
-cost two things silently: `publish_evidence.py` did not write `dim_customer_scd2.json` and the
-record carried no `deploy` key, both because the commits that added them had never been
-deployed. The task ended SUCCESS. `FINDINGS.md` carries it; `scripts/databricks_run.sh all`
-deploys before it runs.
-
-### What the close has to say
-
-Computed by the DuckDB reference over the reproduced population, so this table is derived and
-not transcribed - `tests/fast/test_databricks_close_parity.py` recomputes it on every run of the
-fast lane and compares five columns against the record:
+Computed by the DuckDB reference over the reproduced population -
+`tests/fast/test_databricks_close_parity.py` recomputes it on every run of the fast lane and
+compares five columns against the record:
 
 | month | version | gross_cents | net_cents | line_count | return_count | rejected |
 |---|---|---|---|---|---|---|
@@ -511,69 +154,40 @@ fast lane and compares five columns against the record:
 | 2026-01 | 1 | 25 582 615 | 23 268 535 | 793 | 126 | 32 |
 | 2026-02 | 0 | 199 379 | 199 379 | 3 | 0 | 0 |
 
-Three properties, and each is a different thing that could have gone wrong:
+Three properties, each a different thing that could have gone wrong:
 
 - **version 0 is untouched**, figures and `restated_at` both. A restatement that rewrites the
   signed-off version has destroyed the evidence that it moved.
-- **February gains no version.** Sixteen of the late returns fall in February and four in March,
-  and they are returns against JANUARY sales: `gold_close.py` groups by the month of the sale,
-  February's aggregate is unchanged, and the MERGE's `<>` guard is what stops a close from
-  restating a month that did not move. March never appears at all, for the same reason.
+- **February gains no version.** The late returns fall in February and March but are returns
+  against JANUARY sales; `gold_close.py` groups by the month of the sale, so February's
+  aggregate is unchanged and the MERGE's `<>` guard stops a close restating a month that did
+  not move.
 - **conservation closes over the whole population**: `bronze_events` = `silver_classified` =
   1328 = 755 + 573, and `silver_events` 1300 + `silver_quarantine` 28 = 1328.
 
-And `close_month` was run a second time over the same data: `revenue_closed` stayed at three
-rows. The close's idempotence is executed rather than asserted.
-
-### What the workspace produced, and how it got into this document
-
-`evidence/databricks/SG-DBX-01.json` is the second close's record: update `289286cc`,
-COMPLETED, 0 ERROR-level events, `incomplete: []`. The capture beside it holds the workspace's
-own 92 dimension rows with `measured_in_the_workspace: true`, written by the notebook in the
-same session rather than exported by hand.
-
-**Every anchored figure in this document was re-rendered from that record by a command.**
+The late population is reproducible with one command, which is what makes the figures above
+checkable by a reader:
 
 ```sh
-scripts/databricks_run.sh fetch        # brings the record and the capture down
-samegold readme                        # fills every sg: and dbx: anchor from both
+samegold generate-late --out /tmp/late --seed 20260901 --late-seed 20260904
 ```
 
-That is new this round and it is the fix for how this document went wrong: the anchors were
-filled by hand the first time and by a script in a scratch directory the second, so when the
-lane ran again the document went on describing a run that no longer existed until a test caught
-it. `src/samegold/evidence/databricks_doc.py` derives every anchor name from a field the record
-carries, and an anchor the record cannot answer renders as `NOT RUN` rather than as a blank.
+`tests/fast/test_late_arrivals.py` fails if it does not print 573 late events in 269 batch
+directories.
 
-### What the comparison says now
-
-The row-by-row dimension comparison ran against the workspace's 92 rows and **they agree**:
-same sixty customers, same ninety-two intervals, same attributes, same instants, as multisets
-and as per-customer histories. The parity did not merely survive the second close, it got
-wider - it now covers late arrivals, which is the case a Type 2 dimension is hardest on.
-
-The arithmetic is measured rather than inferred from the difference. The late population adds
-eighteen distinct customer upserts; seventeen change a tracked attribute and one,
-`cu-C000039-1`, repeats what the customer already had. So 75 + 17 = 92 versions and
-15 + 17 = 32 closed rows, and the heartbeat that changed nothing produced no version, which is
-what `track_history_column_list` is for.
-
-## The third close, and the three runs that made the job a graph
-
-Three runs on 5 September 2026, in a fixed order, each one buying something the others could
-not. All three were deployed from `b131010` with a clean tree, and the record each produced
-says so from inside the workspace.
+## The three runs of 5 September, and which record is canonical
 
 | run | job run id | what it was for | what it left |
 |---|---|---|---|
-| 1 | `592180158314216` | the false branch, on data nothing had added to | `evidence/databricks/SG-DBX-01.run-1-no-op.json` |
-| 2 | `44869473800771` | a deliberate failure, and its repair | `evidence/databricks/SG-DBX-01.run-2-failed.json` |
-| 3 | `517089489320521` | the third close, and the true branch | `evidence/databricks/SG-DBX-01.json` - the canonical record |
+| 1 | `592180158314216` | the false branch, on data nothing had added to | `SG-DBX-01.run-1-no-op.json` |
+| 2 | `44869473800771` | a deliberate failure, and its repair | `SG-DBX-01.run-2-failed.json` |
+| 3 | `517089489320521` | the third close, and the true branch | `SG-DBX-01.json` - the canonical record |
 
-Runs 1 and 2 do not replace the canonical record and are not rendered from. Why that is a rule
-rather than a preference is in `evidence/databricks/README.md`; the short version is that run 1
-ingested nothing, so it reported no expectations at all, and committing it would have turned a
-measured table on this page into `NOT RUN`.
+Runs 1 and 2 do not replace the canonical record and are not rendered from.
+`evidence/databricks/README.md` is why: run 1 ingested nothing, so it reported no expectations
+at all, and committing it would have turned a measured table on this page into `NOT RUN`.
+
+### What the job decided, from the record
 
 ### What the job decided, from the record
 
@@ -591,45 +205,6 @@ two are only offered at all when the record positively shows that the branch wro
 A run whose verification never reported renders them as `NOT RUN` rather than as two zeros -
 which is the trap run 2 was built to spring, and did.
 
-### One month, not two, and the reason is a rule deciding for the third time
-
-The third close restated **one** month, so the `for_each` ran one iteration. That is the data's
-answer and not a weaker demonstration: the width comes from
-`{{tasks.close_month.values.months_written}}`, and a fan-out that ran two iterations because two
-were written into the bundle would be the decoration this job was rebuilt to remove. No seed was
-looked for that would have restated two - choosing a population by the shape of the close it
-produces is fitting the data to the demonstration.
-
-Why one: **a return books into the month of the sale it refers to.** The third arrival carries
-408 new orders, every one with a January sale timestamp, plus 36 February and 8 March returns
-against January sales. February's aggregate is therefore unchanged for the third close running,
-and the MERGE's `<>` guard does what a restatement policy is for. Nothing in this repository has
-yet fanned out over two months, and a reader should not have to infer breadth from the presence
-of a construct.
-
-### What run 2 proved, and what it cost
-
-`verify_no_restatement` was failed on purpose with `--params fail_task=verify_no_restatement`.
-The evidence task ran anyway - that is what `run_if: ALL_DONE` is for - and the record it wrote
-names the hole in the two fields built for it in the round before: `missing_checks` listing both
-checks that were owed and never written, and `incomplete` naming the task that owed them. The
-fetch printed `SECTIONS THAT COULD NOT BE READ: ['verify_no_restatement']`. Without that
-derivation the record would have been indistinguishable from run 1's but for a
-`close_verification` with zero rows in it, and zero rows reads as nothing to report.
-
-Two things it cost, both measured and both now written where they are read:
-
-- **the job reported `SUCCESS_WITH_FAILURES`, not `FAILED`**, because the last task in the graph
-  runs whatever happened and succeeded. Alerting on this job's terminal state is unsafe; the
-  failure signal is in the record. `docs/limits.md` carries both faces of that trade.
-- **the task that was made to fail ran twice**, 6s then 12s, 57 seconds apart, inside the
-  original run - with `max_retries: 0` declared on it. That declaration never reached the API,
-  and would not have helped if it had: serverless auto-optimization is what retried it.
-  `FINDINGS.md` carries the finding and `docs/limits.md` the measurement.
-
-The repair re-ran that task alone; `publish_evidence` stayed at `attempt_number: 0` and did not
-overwrite the record in the volume, which is the opposite of what `docs/predictions-2026-09-05.md`
-predicted and is scored there.
 
 ### The durations, which turn the ceilings into measurements
 
@@ -644,382 +219,43 @@ does not:
 | `verify_no_restatement` | 6 s | 600 s | 100x |
 | `publish_evidence` | 34 s | 900 s | 26.5x |
 
-`databricks/resources/jobs.yml` now carries each of these beside the timeout it justifies, with
-the date and with the margin it chose and why. They stay loose on purpose: what a ceiling has to
-do on this account is end a hang before it spends the day's compute, and what it must never do
-is kill a healthy run on a cold allocation - and a serverless cold start alone is one to two
-minutes.
-
-## The dashboard, and the one alert
-
-Declared in `databricks/resources/dashboards.yml`, with the page itself in
-`databricks/dashboards/samegold_close.lvdash.json` - a file, not a blob folded into YAML, so it
-is reviewable and diffable like the rest of the lane.
-
-### What it shows, and why each one has that shape
-
-A dashboard is the one artefact here that somebody reads without being asked to, which makes it
-the easiest place to put something decorative. Every widget on this page answers a question the
-project actually makes a claim about, and the form follows the question rather than the other
-way round.
-
-| widget | the question | why that form |
-|---|---|---|
-| every version of every closed month, with `gross_moved` and `lines_moved` | did a signed-off figure move, and did the earlier version stay put? | a **table**. This is the project's central claim and it is six numbers per version compared row-wise; a bar chart of gross by version would show the growth and hide the thing that matters, which is that v0 and v1 are unchanged to the cent. The deltas are computed in SQL with `LAG`, so the movement is a column rather than a subtraction the reader does |
-| quarantine by reason | which door did rows leave by? | a **bar**, horizontal, sorted descending, and **`accepted` excluded**. One categorical dimension against one count is what a bar is for. `accepted` is three orders of magnitude larger than the rest, so leaving it in flattens the seven bars that carry the information; it is shown beside them as a plain count instead. A pie was rejected for the same reason plus a worse one: it invites reading proportions of a whole, and these categories are not exclusive shares of anything a reader cares about |
-| accepted against quarantined | does the conservation identity hold? | a **two-cell table**. It exists so the bar above cannot be read as the whole population, and because `accepted + quarantined = silver_classified` is checkable by eye |
-| the expectations of the update the last run drove | did any rule fail on the rows that arrived? | a **table** of rule, passed, failed. Seven rows, two measures, and the interesting cell is a non-zero `failed`. A chart of `passed` would be seven near-identical bars saying nothing; the question is binary per rule and a table answers it by inspection |
-| whether the last run was SOUND | is there something to look at right now? | a **counter** showing `1` when the last run was not sound, beside a one-row table saying why. The question is binary and has to be readable at a glance from across a room; the table beside it carries `missing_checks` and `incomplete`, which is what a person needs before opening anything else |
-
-### Where the numbers come from, and why two new tables exist
-
-Free Edition has no account console, so there is no `system.lakeflow`: **nothing in SQL can
-answer "how did the last run of this job end?"**. And the job's own terminal state cannot answer
-it either, which is the finding run 2 produced - a run whose close failed reported
-`SUCCESS_WITH_FAILURES`, because the evidence task runs under `run_if: ALL_DONE`, is last in the
-graph, and succeeded.
-
-So `publish_evidence.py` now writes what it already knows into two tables, once per run:
-
-- `job_run_status` - one row per run: the decision, the branch, the task states, the holes, and
-  one BOOLEAN `ok` derived from them (no section incomplete, no expected check missing, no
-  upstream task in a state this graph does not produce on a healthy run);
-- `job_run_expectations` - one row per rule per run.
-
-A file in a volume cannot be charted and cannot be alerted on. These two are the same facts
-where a dashboard and an alert can reach them, and they carry history across runs, which the
-event log's own retention does not promise.
-
-### The alert, which is the answer to a finding
-
-`samegold_close_not_sound` fires when the most recent row of `job_run_status` has `ok = false`,
-or when there is no row at all.
-
-It deliberately does **not** watch the job's terminal state. That is the whole point: a run
-whose verification fails reports `SUCCESS_WITH_FAILURES`, and an alert on "not SUCCESS" would
-have stayed quiet through exactly the failure this lane was built to make visible. An empty
-result is treated as a trigger for the same reason - the table is written by the last task of
-every run, so no rows means no run ever finished writing one.
-
-**What it costs, calculated.** Free Edition gives one 2X-Small warehouse that stops itself after
-ten minutes idle, so each evaluation is a cold start plus a ten-minute idle window. A 2X-Small
-is 4 DBU/hour at the published rate, so one evaluation is about `4 x (10/60) = 0.67 DBU` of
-warehouse time to read one row. A daily schedule costs that once; hourly would cost about 16 DBU
-a day to read one row twenty-four times. **That figure is derived, not measured**: Free Edition
-exposes no `system.billing`, so nothing here can read a DBU. It is the published rate times the
-auto-stop window, and it is stated as such.
-
-**It is deployed `PAUSED`**, for the same reason the job's schedule is: the warehouse it wakes is
-the same compute the close needs, and the quota is a hard daily stop shared between them. The
-alert is declared so its shape, its query and its schedule are in the bundle and reviewable;
-unpausing it is one edit and a deploy.
-
-**It declares no notification destination**, and that is the same refusal as the job health
-rules: a notification with nowhere to go is decoration, and an email address in a public
-repository is worse. The difference from a health rule is that an alert has a STATE - the
-workspace records whether it is triggered, and that state can be read afterwards by a person or
-by a query. A health rule only had the notification.
-
-### What is checked here, and what only a deploy can check
-
-Checked in this repository, on every push:
-
-- the bundle declares the dashboard and the alert with every field their create APIs require;
-- the dashboard file exists, and every widget reads a dataset the file declares - a widget
-  pointing at a missing dataset renders as an empty box rather than as an error, which is the
-  failure mode that matters on a page people trust;
-- every dataset is read by some widget, so no query burns warehouse time to be shown nowhere;
-- every field a widget encodes is one its query selects;
-- the tables the dashboard names use the catalog the bundle deploys to. Bundle variables are
-  **not** substituted inside the dashboard file, so that spelling is held to the variable by a
-  test rather than by hope;
-- **the six dataset queries go through Spark's parser and are resolved against views with the
-  real column names**, in `tests/spark/test_databricks_lane_parses.py`, exactly like the rest of
-  the lane's SQL. A dashboard is SQL nothing compiles, and its failure mode is an empty widget
-  that looks like an answer.
-
-Not checked here, and only a deploy can:
-
-- ~~whether the `.lvdash.json` is the shape Lakeview accepts~~. **CLOSED, 6 September 2026**:
-  the deploy created it - `Created dashboards.samegold_close_dashboard` and `Created
-  alerts.samegold_close_not_sound`. The serialised format is not published as a schema this
-  repository can validate against, so the file was written by hand and the deploy was the only
-  thing that could test it. It passed;
-- whether the alert's evaluation binds to the `not_ok` column as written;
-- **what it looks like.** There are no screenshots in `docs/` yet, and this section says so
-  rather than implying otherwise: a screenshot has to be taken from a browser signed in to the
-  workspace, which is not something this repository can produce for itself. When they land they
-  carry the date and the commit, like every other measured thing here;
-- the warehouse id, which no bundle on this account can learn. `scripts/databricks_run.sh
-  deploy` resolves it from `warehouses list` - the same call the catalog step makes - and passes
-  it as a variable. The bundle carries a variable, never an id: a 16-character workspace-local
-  identifier committed to a repository is configuration that is wrong the first time somebody
-  else deploys it.
-
-  **The variable defaults to a placeholder, and that is a decision worth reading.** It was the
-  empty string for a day, and `warehouse_id` is REQUIRED on a dashboard - so `bundle validate`
-  and `bundle run` both died with `dashboard warehouse_id is required` while `deploy` kept
-  working, because `deploy` is the one command that passes it. The default is now
-  `PLACEHOLDER-NOT-A-WAREHOUSE-ID`: the bundle loads, `validate` prints that it checked the two
-  resources for shape and not for the warehouse they attach to, and `deploy` refuses to run with
-  it. A plausible-looking fake would have made `validate` report OK about a warehouse that does
-  not exist, which is a check supplying its own input. `FINDINGS.md` carries the whole of it.
-
-## The checklist: what to run afterwards, and what each answer has to be
-
-Six queries. Every expected value on the right was **measured** on the same generator the seed
-step runs, at `--profile fast --seed 20260901`, on commit 0bfcff1 - not remembered, and not
-inferred from the previous run, whose figures are wrong on purpose and kept above as a record
-of being wrong.
-
-They are reproducible without a workspace, which is the point of writing the number down rather
-than the impression:
-
-```sh
-samegold generate --out /tmp/expect --profile fast --seed 20260901   # 755 events, 298 files
-# then read /tmp/expect/truth/ledger.json, and for the close and the dimension run the DuckDB
-# reference over /tmp/expect/bronze - the same functions tests/spark compares this lane against.
-```
-
-**These numbers are a property of that seed, that profile and that commit.** Change any of the
-three and re-measure; a checklist compared against something somebody remembers is not a check,
-and a checklist that has quietly stopped describing the generator is worse.
-
-### 1. The money columns are integers
-
-The defect that started all of this: Auto Loader inferred every column as STRING, `qty *
-unit_price_cents` promoted to DOUBLE, and the close died writing a double into a BIGINT.
-
-```sql
-SELECT table_name, column_name, data_type
-FROM samegold.information_schema.columns
-WHERE table_schema = 'main'
-  AND column_name IN ('qty', 'new_qty', 'unit_price_cents',
-                      'gross_cents', 'returns_cents', 'net_cents')
-ORDER BY table_name, column_name;
-```
-
-| expected | |
-|---|---|
-| every row's `data_type` | `bigint` |
-| any `string` | the schema cache was not cleared - step 2 or step 4 did not take. **Stop here**: every number below is void |
-| any `double` | the same, one stage further on |
-
-### 2. The four deliberately-bad money events
-
-The generator emits these to be REJECTED. Two carry a price of `Long.MaxValue`, which fits a
-BIGINT and breaks the contract's bound; two carry 2^63, which does not fit the column at all and
-is rescued, leaving the column NULL.
-
-```sql
-SELECT event_id, qty, unit_price_cents, quarantine_reason, undecided_rules
-FROM samegold.main.silver_classified
-WHERE event_id IN ('bad-0000007', 'bad-0000008', 'bad-0000016', 'bad-0000017')
-ORDER BY event_id;
-```
-
-| event_id | qty | unit_price_cents | quarantine_reason | undecided_rules |
-|---|---|---|---|---|
-| `bad-0000007` | 1 | 9223372036854775807 | `amount_out_of_range` | *(empty)* |
-| `bad-0000008` | 1 | `NULL` | `missing_required_field` | *(empty)* |
-| `bad-0000016` | 1 | 9223372036854775807 | `amount_out_of_range` | *(empty)* |
-| `bad-0000017` | 1 | `NULL` | `missing_required_field` | *(empty)* |
-
-Four rows, exactly these verdicts. **`accepted` on any of them is the round-17 defect back**,
-and it is worth checking on its own rather than trusting the totals: two of these four were
-`accepted` on the run this document records, and the totals looked plausible right up until
-`close_month` overflowed.
-
-`undecided_rules` must be empty on all four. A rule name there means the classification decided
-by a predicate that could not answer - fail-closed, so not revenue, but a reason nothing
-established.
-
-And they must not be in the validated table:
-
-```sql
-SELECT count(*) AS must_be_zero FROM samegold.main.silver_events
-WHERE event_id IN ('bad-0000007', 'bad-0000008', 'bad-0000016', 'bad-0000017');
-```
-
-Expected `0`. This is the expectations and the classification agreeing about the same four rows,
-which is the whole parity claim of this lane on four records a human can read.
-
-### 3. Quarantine reasons, and the conservation identity
-
-```sql
-SELECT quarantine_reason, count(*) AS n
-FROM samegold.main.silver_classified GROUP BY 1 ORDER BY 1;
-```
-
-| quarantine_reason | expected n |
-|---|---|
-| `accepted` | 727 |
-| `amount_out_of_range` | 6 |
-| `missing_required_field` | 5 |
-| `negative_price` | 3 |
-| `non_positive_quantity` | 6 |
-| `unknown_currency` | 2 |
-| `unknown_event_type` | 3 |
-| `unparseable_json` | 3 |
-| **total** | **755** |
-
-No other reason may appear. The three return-stage reasons (`return_without_order`,
-`return_outside_window`, `return_exceeds_sold_qty`) are decided in gold from questions about the
-SALE, so those events are `accepted` here and are inside the 727 - that is the honest split, not
-a gap.
-
-```sql
-SELECT (SELECT count(*) FROM samegold.main.silver_classified) AS classified,
-       (SELECT count(*) FROM samegold.main.silver_events)     AS accepted,
-       (SELECT count(*) FROM samegold.main.silver_quarantine) AS quarantined,
-       (SELECT count(*) FROM samegold.main.bronze_events)     AS bronze;
-```
-
-Expected `755, 727, 28, 755` **for the first close**; the second close makes it
-`1328, 1300, 28, 1328`, and `classified = accepted + quarantined` holds on both. If
-`bronze` is 752 rather than 755, Auto Loader dropped the three unreadable lines instead of
-rescuing them - which the OSS reader does not do, so it is a divergence to record here and not
-a rounding difference to wave through.
-
-```sql
-SELECT count(*) AS must_be_zero FROM samegold.main.silver_classified
-WHERE undecided_rules IS NOT NULL AND undecided_rules <> '';
-```
-
-Expected `0`, over the whole table. With bronze typed and every bound literal carrying its
-width, no rule can be undecidable; a non-zero here is the type fix not having taken, reported by
-the classification rather than by the close.
-
-```sql
-SELECT count(*) AS rescued FROM samegold.main.bronze_events WHERE _rescued_data IS NOT NULL;
-```
-
-Expected **at least 2** - the two 2^63 prices, whose column is NULL precisely because the value
-was rescued. The OSS reader rescues five rows (those two plus the three unreadable lines); Auto
-Loader's rescue semantics are its own, so the number to insist on is that
-`bad-0000008` and `bad-0000017` are among them. A value that vanished without appearing here is
-the one failure shape this lane has no counter for.
-
-### 4. Expectations, per rule
-
-An expectation is evaluated on every row independently, so these do NOT sum to the table above:
-a row that breaks two rules is failed by both expectations and quarantined under the first.
-
-| rule | expected passed | expected failed |
-|---|---|---|
-| `unparseable_json` | 752 | 3 |
-| `unknown_event_type` | 749 | 6 |
-| `missing_required_field` | 747 | 8 |
-| `non_positive_quantity` | 743 | 12 |
-| `negative_price` | 744 | 11 |
-| `unknown_currency` | 747 | 8 |
-| `amount_out_of_range` | 741 | 14 |
-
-`passed + failed = 755` on every row of that table, which is the check that survives even if the
-runtime's per-rule accounting turns out to differ from evaluating the same predicates in Spark
-(these were produced the second way, over the same bytes). A rule reporting 0 failed is the one
-to distrust: every one of these seven has records planted against it on purpose.
-
-**The total is the update's, not the table's**, and reading it the other way is the easiest
-mistake this section invites. The silver tables are incremental, so these counts cover the rows
-THAT UPDATE ingested: 755 on the first close, 573 on the second - the late arrivals, not the
-1328 rows the table then held. An update that ingests nothing therefore reports **no
-expectations at all**, which is what run 592180158314216 published on 5 September 2026: an empty
-`expectations` list with an empty `incomplete` beside it. That is correct and, on its own, it is
-ambiguous - "no rows were processed" and "no rules are declared" render as the same empty list.
-So the record now carries `update_output_rows` next to it, and the pair is readable as
-arithmetic: no rows written, no rule reported.
-
-### 5. The close, and its size
-
-```sql
-SELECT accounting_month, gross_cents, returns_cents, net_cents,
-       line_count, return_count, returns_rejected_count
-FROM samegold.main.revenue_by_month ORDER BY accounting_month;
-```
-
-| accounting_month | gross_cents | returns_cents | net_cents | line_count | return_count | returns_rejected_count |
-|---|---|---|---|---|---|---|
-| `2026-01` | 14 198 046 | 1 286 834 | 12 911 212 | 425 | 71 | 22 |
-| `2026-02` | 199 379 | 0 | 199 379 | 3 | 0 | 0 |
-
-Two rows and no others. **January's gross is 14 198 046 cents - €141 980.46 - from 425 lines.**
-The run this document records published 2.767e19 from 428 lines for the same month, which is
-six and a half million times the contract's ceiling for a single line, so the order of magnitude
-is the check even before the digits are: a January that is not in the tens of millions of cents
-is not this population.
-
-```sql
-SELECT accounting_month, gross_cents, line_count,
-       gross_cents > line_count * 10000L * 1000000L AS above_contract_ceiling
-FROM samegold.main.revenue_by_month ORDER BY accounting_month;
-```
-
-`above_contract_ceiling` must be `false` on every row. It is the same query
-`publish_evidence.py` puts in the record, run by hand because a record that reports a `true`
-here is a record nobody should paste into this document.
-
-```sql
-SELECT accounting_month, close_version, gross_cents, net_cents, restatement_reason
-FROM samegold.main.revenue_closed ORDER BY accounting_month, close_version;
-```
-
-Two rows, both `close_version = 0` and `restatement_reason = 'first close'`, with the same
-figures as the table above. `close_month` closes every month STRICTLY EARLIER than the month of
-`as_of`, and `as_of` is the job's start time - so this holds for any run after February 2026 and
-would produce fewer rows for a run inside the data's own months.
-
-### 6. The Type 2 dimension
-
-```sql
-SELECT count(*)                                          AS versions,
-       count(DISTINCT customer_id)                       AS customers,
-       sum(CASE WHEN __END_AT IS NULL THEN 1 ELSE 0 END) AS open_rows,
-       sum(CASE WHEN __END_AT IS NOT NULL THEN 1 ELSE 0 END) AS closed_rows
-FROM samegold.main.dim_customer_scd2;
-```
-
-| expected | |
-|---|---|
-| versions | 75 |
-| customers | 60 |
-| open_rows | 60 |
-| closed_rows | 15 |
-
-Those four numbers are the FIRST close's; the second close makes them 92 / 60 / 60 / 32, and
-`open_rows = customers` holds on both - which is the point. That identity is what Type 2 means,
-and it is the property rather than the count: a dimension with two open rows for one customer is
-broken whatever the totals say. Both sets are AUTO CDC agreeing with the hand-written `MERGE`
-the OSS lane uses, which is the only reason this lane keeps both.
-
-The rows themselves are captured by the run, not by you. `publish_evidence.py` reads the same
-table a second time -
-
-```sql
-SELECT customer_id, segment, country, __START_AT, __END_AT
-FROM samegold.main.dim_customer_scd2 ORDER BY customer_id, __START_AT;
-```
-
-- and writes them to the evidence volume with a header naming the update that produced them;
-`scripts/databricks_run.sh fetch` brings the file down beside the record. That is a change from
-the first time round, when this document asked you to paste the query in and save the result:
-a capture exported by hand cannot say which run it came from, so a later run replacing the
-record left it comparing green against rows the workspace no longer held.
-
-`tests/fast/test_databricks_dimension_parity.py` compares it against the OSS lane's dimension on
-the same seed - row by row, as instants and as multisets - on every run of the fast lane, FAILS
-rather than skipping if the file is not there, and fails NAMING THE QUERY if its update id and
-the record's disagree. The capture from 3 September 2026 agrees on all seventy-five rows.
-
-### If every one of those holds
-
-Then paste the record's figures into the anchors above, run `make check`, and the sentence at
-the top of this document changes from "it failed" to what it did. Until then it stands.
+`databricks/resources/jobs.yml` carries each of these beside the timeout it justifies. They stay
+loose on purpose: a ceiling on this account has to end a hang before it spends the day's
+compute, and must never kill a healthy run on a cold allocation - a serverless cold start alone
+is one to two minutes.
+
+## The dashboard and the alert
+
+Declared in `databricks/resources/dashboards.yml`, with the page in
+`databricks/dashboards/samegold_close.lvdash.json` - a file rather than a blob folded into YAML,
+so it is reviewable and diffable.
+
+`publish_evidence.py` writes two tables per run, `job_run_status` and `job_run_expectations`,
+because Free Edition has no account console and therefore no `system.lakeflow`: nothing in SQL
+can otherwise answer "how did the last run of this job end?". A file in a volume can be neither
+charted nor alerted on.
+
+`samegold_close_not_sound` fires when the most recent `job_run_status` row has `ok = false`, or
+when there is no row at all. It deliberately does not watch the job's terminal state - see the
+`SUCCESS_WITH_FAILURES` finding below. It is deployed **PAUSED** (the warehouse it wakes is the
+compute the close needs, on a shared daily quota) and declares **no notification destination**,
+which is a refusal rather than an omission: an email address in a public repository is worse
+than no destination at all.
+
+Checked in this repository on every push: that the bundle declares both with every field their
+create APIs require; that every widget reads a dataset the file declares and every dataset is
+read by some widget; that every encoded field is one its query selects; that the table names use
+the catalog the bundle deploys to; and that **the six dataset queries go through Spark's parser
+and resolve against views with the real column names**
+(`tests/spark/test_databricks_lane_parses.py`). A dashboard is SQL that nothing compiles, and
+its failure mode is an empty widget that looks like an answer.
+
+Not checkable here, and only a deploy can: whether the alert's evaluation binds to the `not_ok`
+column as written, and **what it looks like** - there are no screenshots in `docs/` yet, because
+a screenshot has to be taken from a browser signed in to the workspace.
 
 ## What Free Edition cannot show, and what was done instead
 
-The limits are taken as given rather than worked around. Where one bites, it is declared here
-and in `docs/limits.md` rather than papered over.
 
 | limit | what it costs this lane | what is here instead |
 |---|---|---|
@@ -1033,60 +269,38 @@ and in `docs/limits.md` rather than papered over.
 | Default Storage, and therefore no metastore storage root | `databricks catalogs create` fails with `Metastore storage root URL does not exist` ([databricks/cli#4513](https://github.com/databricks/cli/issues/4513)) | the catalog is created with `CREATE CATALOG IF NOT EXISTS` through `POST /api/2.0/sql/statements` on the one 2X-Small warehouse, which resolves its location through Default Storage. The script waits 30s, cancels on timeout, and refuses to continue unless the statement reports `SUCCEEDED` |
 
 Three consequences worth stating plainly, because they are the ones that would otherwise be read
-as achievements:
+
+Three consequences worth stating plainly, because they would otherwise read as achievements:
 
 - **The row filter and the column mask are not enforced here.** `databricks/sql/policies.sql`
   declares both, and `is_account_group_member('finance_all')` resolves to false for everyone on
-  an account with no groups. Applying them would need a SQL warehouse id that the bundle does
-  not have and cannot create, so nothing in `make databricks` runs that file. It is checked by
-  a parser (`tests/spark/test_databricks_lane_parses.py`) and by nothing else.
-- **Cost is not measured on this lane at all.** The numbers above are rows and events. The
-  cost work lives in the OSS lane, where files and bytes come out of the Delta log and are
-  labelled as a proxy for DBUs rather than converted into one.
-- **No job health rule is declared, and that is a refusal rather than an omission.** A
-  `health:` block on a job or a task pairs a metric threshold - `RUN_DURATION_SECONDS` is the
-  one this lane would have used - with a NOTIFICATION, and notifying is the only thing it does.
-  This account has no notification destination: no Slack app, no webhook, no on-call rota. The
-  rule would therefore fire into nothing, or into a personal email address committed to a
-  public repository, and the second is worse than the first. It would also have been
-  indistinguishable, in a bundle, from a rule that works.
+  an account with no groups. Nothing in `make databricks` runs that file; it is checked by a
+  parser and by nothing else.
+- **Cost is not measured on this lane at all.** The figures above are rows and events. The cost
+  work lives in the OSS lane, where files and bytes come out of the Delta log and are labelled
+  as a proxy for DBUs rather than converted into one.
+- **No job health rule is declared, and that is a refusal.** A `health:` block pairs a threshold
+  with a NOTIFICATION, and notifying is all it does. This account has no destination, so the
+  rule would fire into nothing - and would be indistinguishable, in a bundle, from one that
+  works. What it would have watched is watched by something that ACTS instead:
+  `timeout_seconds` on the job and on every task.
 
-  A construct whose only effect is an announcement nobody receives is the decorative case this
-  round set out to remove, and it is the same argument that deleted `taskValues.set("evidence",
-  ...)` from `publish_evidence.py`: a value written for a reader that cannot exist. What the
-  rule would have watched is watched by something that ACTS instead - `timeout_seconds: 1800`
-  on the job and `600`/`900` on every task, which kills a stuck run rather than describing one,
-  and does so on an account where a stuck run spends the day's compute. When a destination
-  exists, the rule becomes worth declaring; until then this paragraph is the honest version of
-  it. `docs/milestones.md` M16 is where the alerting work lives.
+## What this lane found, and where each one is written
 
-## The prediction, scored
+The findings this lane produced are in `FINDINGS.md` with their defect class, and the platform
+behaviours they rest on are in `docs/limits.md` with their measurements. They are NOT restated
+here; a finding narrated in two places drifts in one of them.
 
-The section below was written before the lane had ever been deployed, as a list of the fields
-most likely to break first, "so that the list is a prediction and can be scored". It has now
-been scored, and it lost.
-
-The three runs that follow this round are predicted the same way and field by field, before
-they are launched, in `docs/predictions-2026-09-05.md` - including the figures the OSS lane can
-compute in advance, which is most of them.
-
-**What actually broke was not on the list.** `resources.pipelines.samegold_pipeline` carried no
-`name`. The key a resource is declared under is the bundle's id for it, not the pipeline's
-name, and `POST /api/2.0/pipelines` requires `name`. Every prediction below is about a field
-whose VALUE might be refused; the defect was a field that was not there at all, and the list
-did not contain the idea that a required field could be missing.
-
-**And the thing that should have caught it did not exist.** `databricks bundle validate -t
-free` answered `Validation OK!` on this bundle, and `.github/workflows/databricks.yml` runs
-validate as its default action, so that job had been green on a bundle the API rejects at the
-first request. Validate checks syntax, `include:` resolution and variable substitution, and
-warns about properties it does not recognise. It does not check that the request body it is
-about to send is one the API will accept - the bundle reference says a resource declaration
-"uses the corresponding object's create operation's request payload", and what that payload
-requires lives in the REST API reference. `tests/fast/test_databricks_bundle.py` now asserts
-the required fields for every resource type in the bundle, from that reference: `name` for all
-four, `catalog_name` for schemas and volumes, `schema_name` for volumes, `tasks` for jobs, and
-exactly one of `schema`/`target` for the pipeline.
+| what happened | where it is |
+|---|---|
+| One workspace evaluated the same predicate two ways: the pipeline as `ansi=false`, the SQL warehouse as `ansi=true`, so `unit_price_cents > 1000000` was NULL in one and `true` in the other. An INT32 literal, a STRING column, and a row that fell through to `ELSE 'accepted'` | `docs/limits.md`, "One workspace, two ANSI modes" - with the four-row measurement table |
+| A job whose close verification FAILED reported `SUCCESS_WITH_FAILURES`, because the evidence task runs `run_if: ALL_DONE`, is last in the graph, and succeeded. Alerting on terminal state is unsafe here | `FINDINGS.md`; the alert above is the answer to it |
+| A task declared `max_retries: 0` and ran twice anyway, 57 seconds apart - serverless auto-optimization retried it, and the declaration never reached the API | `FINDINGS.md`, "A declaration that does not govern" |
+| The late population was first produced by a script in `/tmp`, so every figure the second close published rested on data no reader could regenerate | `FINDINGS.md`; `samegold generate-late` is the fix |
+| `databricks bundle validate` answered `Validation OK!` on a bundle the API rejects at the first POST, because `resources.pipelines.samegold_pipeline` carried no `name` | `FINDINGS.md`, this round |
+| `MAX(state)` is the alphabetical maximum, so a completed update published `WAITING_FOR_RESOURCES` | `FINDINGS.md`; `max_by(state, timestamp)` is the fix |
+| AUTO CDC produced 78 versions against the hand-written MERGE's 75, because its default is a new version whenever ANY column changes | `FINDINGS.md`; `track_history_column_list` is the fix |
+| `warehouse_id` defaulted to the empty string, and the comment justifying it cited a CI behaviour that had not once occurred | `FINDINGS.md`, "A written reason is a claim with no test behind it" |
 
 ## If the next command fails
 
@@ -1103,6 +317,7 @@ not a reason to find out at POST time on someone else's workspace.
 | `cluster_by_auto` is rejected | `gold_close.py` | automatic liquid clustering needs predictive optimization on the metastore. If Free Edition does not enable it, that belongs in the table above as a limit, not as a workaround |
 | the run finishes and every count is 0 | the `seed` step | nothing was in the landing volume. `databricks fs ls dbfs:/Volumes/<catalog>/raw/landing` says whether the upload happened |
 | `job_run_id` in the record reads `{{job.run_id}}` | `resources/jobs.yml` | the runtime did not recognise that dynamic value reference and passed the text through. The record shows it rather than hiding it behind a blank |
+
 
 ## What to distrust in this document
 

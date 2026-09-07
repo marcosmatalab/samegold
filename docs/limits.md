@@ -186,15 +186,39 @@ recounted independently by the reference, so the loss is a number somebody can r
 
 ## Written and not executed here
 
-**Nothing, as of 4 September 2026.** `.devcontainer/Dockerfile` was the last entry in this
-section and it has been built and run: 160.4 s cold, 2.74 GB, and 0.4 s for
-`docker run --rm samegold make demo`, on Windows 11 with Docker Desktop's WSL2 backend and
-Ubuntu 24.04. The Dockerfile's header carries the breakdown.
+**The open-source Spark Declarative Pipelines lane, as of 8 September 2026.**
+`pipelines/spark-pipeline.yml` and `pipelines/transformations/bronze_silver.py` are linted by
+`ruff`, type-checked by `mypy` and parsed by `tests/fast/test_contract_documents.py`, and are
+executed by no Makefile target, no preflight step and no test. The only `spark-pipelines run`
+in this repository is inside a comment in the YAML's own header.
 
-The section stays, empty and dated, because it is the one this repository has been wrong in
-most often: the Delta lane sat here while it was running red in CI, and the Databricks lane sat
-here for six rounds. An empty list is a claim like any other, and the next thing written and
-not run belongs in it.
+**It was tried, on 8 September 2026, and it does not run.** WSL2 Ubuntu, Temurin 21,
+pyspark 4.2.0, Delta jars resolved from Maven Central. Three failures, in order:
+
+| attempt | result |
+|---|---|
+| `spark-pipelines run` | `Could not find valid SPARK_HOME` - a pip install sets neither `SPARK_HOME` nor a `python` on PATH that has pyspark |
+| with both set | `[SCHEMA_NOT_FOUND] The schema spark_catalog.samegold cannot be found` - the spec declares `database: samegold` and nothing creates it |
+| with the schema created first | the same error: the Connect server the CLI starts does not see the schema created beside it |
+
+And the spec's `configuration:` block is refused at runtime as a **warning**:
+`spark.sql.extensions` fails `[CANNOT_MODIFY_STATIC_CONFIG]`, `spark.jars.packages` fails
+`[CANNOT_MODIFY_CONFIG]`. The comment above that block says it is what stops the lane writing
+Parquet instead of Delta. `FINDINGS.md` carries the whole of it with its class.
+
+This section was **wrong about itself** until today. It read "Nothing, as of 4 September 2026"
+while that lane sat in the repository, unexecuted, and closed with the sentence below about
+what belongs in the list. The list had one member and did not name it - which is the failure
+this section exists to prevent, committed by the section itself.
+
+`.devcontainer/Dockerfile` was the previous entry and has been built and run: 160.4 s cold,
+2.74 GB, and 0.4 s for `docker run --rm samegold make demo`, on Windows 11 with Docker
+Desktop's WSL2 backend and Ubuntu 24.04. The Dockerfile's header carries the breakdown.
+
+The section stays, dated, because it is the one this repository has been wrong in most often:
+the Delta lane sat here while it was running red in CI, the Databricks lane sat here for six
+rounds, and the entry above sat OUTSIDE it while the heading claimed the list was empty. A list
+is a claim like any other, and the next thing written and not run belongs in it.
 
 What the build corrected is worth keeping: the header used to say ~7 min and ~2 GB. The time
 was 2.6x too pessimistic, the size 37% too optimistic, and the line labelled
