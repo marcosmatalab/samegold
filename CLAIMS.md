@@ -8,7 +8,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 463/463 (95% CI 99.2%-100.0%) | oss-local | CI, 4200be34b |
+| `SG-00` what this repository contains, counted | PASS | 520/520 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 389bf7f64 |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | CI, 4200be34b |
