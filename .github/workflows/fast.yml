@@ -29,7 +29,12 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev]"
       - name: tests
-        run: pytest tests/fast -q
+        # THE COVERAGE GATE, set just below the first pass rather than at a round number.
+        # 60% was what the fast lane measured on 6 September 2026, the first time this
+        # repository measured coverage at all; 58 is under it by enough that a platform
+        # difference cannot turn it red and not enough that a real regression can hide. What
+        # the number does and does not cover is written in pyproject.toml.
+        run: pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58
       - name: lint and types
         # Every directory that holds code, not just the two the command used to name. A
         # formatting error sat in `databricks/` while this step printed "All checks passed":
