@@ -68,6 +68,24 @@ def _value_for(record: dict[str, Any], field: str) -> str:
         return f"<= {rate['rule_of_three_upper95']:.2%}"
     if field == "point":
         return "n/a" if not rate else f"{rate['point']:.2%}"
+    if field == "provenance":
+        # THE SAME STRING THE RESULTS TABLE PRINTS, available beside a figure in prose.
+        #
+        # This exists for the figures nothing recomputes. A published number is checked one of
+        # two ways here: a test re-measures it every run (the fast lane's repository/domain
+        # split is recounted from pytest's own collection), or nothing does and the anchor only
+        # guarantees that the document still agrees with the RECORD. Line coverage is the
+        # second kind, and it cannot be moved to the first: coverage is produced by executing,
+        # so it has no single value - the same commit measures 61.97% on Linux and 62.00% on
+        # Windows, because thirty-nine tests skip there. A test that recomputed it would be
+        # red on half the machines that ran it, and a tolerance would be a typed number under
+        # another name.
+        #
+        # So the defence is not re-measurement, it is DATING. "62.00% (CI, 7d4f4c3)" stops
+        # being current the moment the commit beside it stops being the head, and a reader can
+        # see that without running anything. A bare "62.00%" cannot go stale visibly, which is
+        # the original defect with better machinery under it.
+        return _provenance(record)
     if field.startswith("artifact."):
         value = record.get("artifacts", {}).get(field.split(".", 1)[1], "n/a")
         if isinstance(value, bool):

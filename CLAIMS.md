@@ -54,14 +54,25 @@ and counted whole on the side its majority sits; moving its document-shaped test
 split by about ten.
 
 The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by
-the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->61.74<!--/sg-->%**, measured by the run that wrote this record
-and gated at 58 in CI. It was typed as 60% until 7 September 2026, when the lane measured
-61.87; the digit is now rendered from the record so that correcting it by hand is not a thing
-anybody has to remember to do. The run that measures it deselects the two evidence-dependent
-tests, so it reads a fraction of a point below the full lane CI gates: those two compare the
-documents against the evidence and execute barely any product code. No second figure is written
-here for that gap, because a number nothing re-measures is how this paragraph went wrong the
-first time. What it leaves out
+the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->61.74<!--/sg-->%
+(<!--sg:SG-00.provenance-->local run, not reproduced in CI, 4bb71c278<!--/sg-->)**, and it is gated at 58 in CI.
+
+**The provenance is part of the figure, and that is the whole defence here.** Every other number
+in these documents is checked twice: the anchor keeps the document agreeing with the record, and
+something re-measures the record. The split two paragraphs up is recounted from pytest's own
+collection on every run. Coverage has no such second half, and cannot be given one: it is
+produced by EXECUTING, so it has no single value. This same commit measures 61.97% on Linux and
+62.00% on Windows, where thirty-nine tests skip for a filesystem reason that has nothing to do
+with the code. A test that recomputed it would be red on half the machines that ran it, and a
+tolerance would be a typed number wearing a different hat.
+
+So the figure is dated instead. The commit rendered beside it stops being the head of the chain
+the moment anything lands, and a reader can see the number is old without running a thing - which
+a bare percentage cannot do. It was typed as 60% until 7 September 2026, while the lane measured
+61.87. The run that writes it deselects the two evidence-dependent tests, so it sits a fraction
+of a point below the full lane CI gates; no second figure is published for that gap, because a
+number nothing re-measures is exactly how this paragraph went wrong the first time. What it
+leaves out
 - the Spark modules the fast lane cannot import, and the Databricks notebooks it cannot import
 at all - is written in `pyproject.toml` beside the configuration.
 
