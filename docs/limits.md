@@ -202,6 +202,34 @@ was 2.6x too pessimistic, the size 37% too optimistic, and the line labelled
 `.github/workflows/spark.yml` - the whole venv step took 82.9 s here. **A number measured
 somewhere else is an estimate here.**
 
+## The prose gate is escaped by rewording, measured
+
+`samegold.evidence.prose` fails the build when a document asserts an absence of runs while
+`evidence/databricks/` holds run records. It matches the phrasings this repository actually
+uses, and the module comment says that narrowness is deliberate: a pattern that matched every
+negation would flag the sentences that *correct* old claims, and FINDINGS.md is a history by
+construction.
+
+That trade has a price, and it is written here rather than left for a reviewer to find, because
+this is the page a reviewer reads. **The gate is a spell-checker for one family of sentences,
+not a proof that no false absence claim is in these documents.** Measured against the three run
+records committed under `evidence/databricks/` on 7 September 2026, with the gate green:
+
+| sentence | gate |
+| --- | --- |
+| "The Databricks job has never been executed." | fails, correctly |
+| "The Databricks job has not been executed even once." | **passes**, and is false |
+| "The Databricks job has not yet run." | **passes**, and is false |
+| "No Databricks job run has taken place." | **passes**, and is false |
+
+Three of those four contradict `evidence/databricks/` and the gate is silent on all three. The
+first is caught because `never ... executed` is one of the phrasings in `NEVER_RUN`; the others
+are the same claim written by somebody who was not thinking about the pattern - which is the
+ordinary case, not an adversarial one.
+
+So the gate raises the cost of one specific way of being wrong. It does not lower the cost of
+reading the documents, and a green fast lane is not evidence that these pages are true.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

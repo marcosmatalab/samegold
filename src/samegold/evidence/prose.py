@@ -33,6 +33,7 @@ failure - so a declared exception cannot outlive the sentence it was written for
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -105,6 +106,40 @@ EXEMPTIONS: tuple[Exemption, ...] = (
         ),
     ),
 )
+
+
+def _tracked_files(repo: Path) -> frozenset[str]:
+    """Every path this checkout tracks, as git itself lists them.
+
+    THE REPOSITORY IS ASKED, because the shape of a name does not say whether it is a path. The
+    first version of the absence check decided that by looking at the candidate: a `/` in it, or
+    one of four extensions on the end. That kept prose words out of the gate - "there is no
+    `deploy` step" is a sentence about a word - and it also made the check blind to every file at
+    the top of the repository. `Makefile`, `pyproject.toml` and `LICENSE` have no `/` and none of
+    those four extensions, and they are among the most-cited paths in these documents.
+
+    A TRACKED FILE, and not merely a name git recognises. `git ls-files --error-unmatch evidence`
+    SUCCEEDS, because a directory is a pathspec that matches the twenty-two files under it, so
+    that command alone would turn "there is no `evidence`" red - the exact sentence the shape
+    filter was protecting. The predicate is exact membership in git's own list, which is true for
+    `Makefile` and false for `evidence`, `docs` and every bare word.
+
+    Outside a git checkout this is empty and the absence check does nothing, which is the honest
+    answer: a tree with no index cannot be asked what it tracks.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "ls-files", "-z"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    if out.returncode != 0:
+        return frozenset()
+    return frozenset(path for path in out.stdout.split("\x00") if path)
 
 
 def _run_records(repo: Path) -> list[Path]:
@@ -196,12 +231,17 @@ def check_document(path: Path, repo: Path) -> list[Drift]:
                 )
             )
 
+    # Computed once per document and only when there is something to test it against, so a
+    # document with no absence claims in it costs no subprocess.
+    tracked: frozenset[str] | None = None
     for match in NO_SUCH_PATH.finditer(text):
         if is_exempt(match.start()):
             continue
         candidate = match.group("path")
-        if "/" not in candidate and not candidate.endswith((".md", ".yml", ".py", ".json")):
-            continue  # a word in backticks, not a path
+        if tracked is None:
+            tracked = _tracked_files(repo)
+        if candidate not in tracked:
+            continue  # a word in backticks, a directory, or a file no commit knows about
         if (repo / candidate).exists():
             out.append(
                 Drift(

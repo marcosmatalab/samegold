@@ -32,21 +32,29 @@ survive the day it stops being true. It stopped being true within a week of bein
 **Does not show** anything about quality. Lines of code are a fact about a repository, not a
 virtue.
 
-**What the fast lane is actually about, since somebody was going to count it.** Of its 564
-tests, **389 of them check the repository** - its layering, its documents, its bundle, its
-scripts, its evidence plumbing - and **175 check the pipeline**: the generator, the close, the
+**What the fast lane is actually about, since somebody was going to count it.** Of its
+<!--sg:SG-00.artifact.tests_fast-->564<!--/sg--> tests, **<!--sg:SG-00.artifact.fast_lane_repository_tests-->389<!--/sg--> of them check the
+repository** - its layering, its documents, its bundle, its scripts, its evidence plumbing -
+and **<!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> check the pipeline**: the generator, the close, the
 dimension, the digests, the invariants, the mutation engine, the parity comparisons.
 
 That ratio is not an accident and it is not a defence. A repository whose subject is "can this
 project's claims about itself be checked" spends most of its test budget on the claims, and the
 honest way to publish that is to publish it. The criterion for the split is written in
-`tests/fast/test_documentation.py`, the sum is RECOMPUTED by the test that publishes it - a new
-test file that nobody classifies fails the run - and one file, `test_review_regressions.py`, is
-genuinely mixed and counted whole on the side its majority sits. Moving its document-shaped
-tests would shift the split by about ten.
+`src/samegold/evidence/lane_split.py`; the two figures above are SUMMED BY THE RUN that wrote
+this record and rendered through evidence anchors, exactly like every other number here, because
+the sum was typed until 7 September 2026 and had drifted eight tests behind the lane. Deciding
+which side a NEW test file belongs to stays a judgement, and `tests/fast/test_prose_gate.py`
+fails the run until somebody makes it. One file, `test_review_regressions.py`, is genuinely mixed
+and counted whole on the side its majority sits; moving its document-shaped tests would shift the
+split by about ten.
 
-The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by the
-fast lane is 60%**, first measured on 6 September 2026 and gated at 58 in CI; what it leaves out
+The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by
+the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->60<!--/sg-->%**, measured by the run that wrote this record
+and gated at 58 in CI. It was typed as 60% until 7 September 2026, when the lane measured
+61.87; the digit is now rendered from the record so that correcting it by hand is not a thing
+anybody has to remember to do. The run that measures it deselects the two evidence-dependent
+tests, which is worth 0.05 points against the full lane. What it leaves out
 - the Spark modules the fast lane cannot import, and the Databricks notebooks it cannot import
 at all - is written in `pyproject.toml` beside the configuration.
 

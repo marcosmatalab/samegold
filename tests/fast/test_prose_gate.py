@@ -10,11 +10,11 @@ how `test_every_test_that_reads_the_repository_evidence_is_marked` first reporte
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
+from samegold.evidence.lane_split import split
 from samegold.evidence.prose import check_documents, stale_exemptions
 
 REPO = Path(__file__).resolve().parents[2]
@@ -95,6 +95,12 @@ def test_the_gate_fires_on_a_sentence_written_tomorrow(tmp_path: Path) -> None:
     (repo / "databricks" / "resources").mkdir(parents=True)
     for name in ("jobs.yml", "grants.yml", "dashboards.yml"):
         (repo / "databricks" / "resources" / name).write_text("", encoding="utf-8")
+    # A REAL CHECKOUT, because the absence check asks git what it tracks instead of guessing
+    # from the shape of a name. A tree with no index can be asked nothing, and the
+    # `dashboards.yml` sentence below would then pass for that reason rather than because the
+    # gate had stopped working - a green that means "unmeasured".
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
 
     document = repo / "docs" / "invented.md"
     document.write_text(
@@ -125,119 +131,129 @@ def test_the_gate_fires_on_a_sentence_written_tomorrow(tmp_path: Path) -> None:
     ]
 
 
+# ------------------------------------------------- what counts as a path, asked of the repository
+#
+# The absence check used to decide what a backticked word was by looking at its SHAPE: a
+# candidate counted as a path if it contained a `/` or ended in one of four extensions. That
+# filter was written to keep prose words out of the gate - "there is no `deploy` step" is a
+# sentence about a word - and it did that. It also made the gate blind to every file at the top
+# of the repository, which is where `Makefile`, `pyproject.toml` and `LICENSE` live: three of the
+# most-cited paths in the documentation, and the three a sentence claiming an absence is most
+# likely to be wrong about.
+#
+# The shape of a name does not say whether it is a path. The repository does. A candidate counts
+# as a path when git lists it as a tracked FILE, which keeps "there is no `evidence`" green - a
+# directory is not a tracked path - and puts `Makefile` where it belongs.
+
+
+def _repo_with(tmp_path: Path, files: tuple[str, ...]) -> Path:
+    """A checkout whose index git can be asked about, which is the whole point of the rule."""
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    for name in files:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    # ADDED, not committed: `git ls-files` reads the index, and a test that needed an identity
+    # configured to commit would fail on a machine that has none for a reason unrelated to prose.
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+# The five sentences from the report, and the two that must stay silent. Each is a whole
+# sentence rather than a fragment because the gate reads sentences.
+TRACKED_FILES = (
+    "Makefile",
+    "pyproject.toml",
+    "LICENSE",
+    "scripts/preflight.sh",
+    "docs/limits.md",
+    "evidence/history.jsonl",
+)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "caught", "why"),
+    [
+        # BLIND BEFORE THIS TEST. No `/`, and an extension the shape filter did not list.
+        ("There is no `Makefile` here.", True, "a tracked file at the top of the repository"),
+        ("There is no `pyproject.toml` here.", True, "a tracked file, .toml was not in the list"),
+        ("There is no `LICENSE` here.", True, "a tracked file with no extension at all"),
+        # ALREADY CAUGHT, and kept that way: the fix must not trade one blindness for another.
+        ("There is no `scripts/preflight.sh` here.", True, "a tracked file, caught by shape too"),
+        ("There is no `docs/limits.md` here.", True, "a tracked file, caught by shape too"),
+        # SILENT, and both for the reason the shape filter existed.
+        ("There is no `evidence` in the record.", False, "a directory is not a tracked path"),
+        ("There is no `deploy` step in this lane.", False, "a word in backticks, not a path"),
+    ],
+)
+def test_an_absence_claim_is_measured_against_what_git_tracks(
+    tmp_path: Path, sentence: str, caught: bool, why: str
+) -> None:
+    """BORN RED for the first three, which is why it is written this way.
+
+    The three top-level files are the cases the shape filter could not see, and the two paths
+    with a `/` are the cases it could: a fix that catches the first three by loosening the shape
+    would also start catching the two negatives, so both halves are asserted together.
+    """
+    repo = _repo_with(tmp_path, TRACKED_FILES)
+    document = repo / "docs" / "claim.md"
+    document.write_text(f"# A document\n\n{sentence}\n", encoding="utf-8")
+
+    drifted = check_documents(repo, [document])
+    assert bool(drifted) is caught, (
+        f"{sentence!r} should {'be caught' if caught else 'stay green'} because {why}; "
+        f"the gate said {[str(d) for d in drifted]}"
+    )
+
+
+def test_an_absence_claim_about_a_path_this_checkout_does_not_track_stays_green(
+    tmp_path: Path,
+) -> None:
+    """The other half of asking git: a file on disk that no commit knows about.
+
+    This is the case the rule is narrower than the filesystem for, and deliberately. A sentence
+    is a claim about the REPOSITORY, and a file the repository does not track is not part of it -
+    a scratch file in somebody's checkout must not turn another author's true sentence red.
+    """
+    repo = _repo_with(tmp_path, TRACKED_FILES)
+    (repo / "scratch.md").write_text("", encoding="utf-8")  # on disk, never added
+
+    document = repo / "docs" / "claim.md"
+    document.write_text("# A document\n\nThere is no `scratch.md` here.\n", encoding="utf-8")
+    assert not check_documents(repo, [document]), "an untracked file is not a path claim"
+
+
 # ------------------------------------------------------------ what this suite is actually about
 #
-# A reviewer counted the fast lane and asked the obvious question: how much of it tests the
-# PIPELINE, and how much of it tests the repository's own paperwork? It is a fair question with
-# an uncomfortable answer, and the answer is published rather than waited for.
+# A reviewer counted the fast lane and asked how much of it tests the PIPELINE and how much tests
+# the repository's own paperwork. It is a fair question, the answer is published in CLAIMS.md,
+# and the answer used to be TYPED there: "389 of them check the repository", beside figures that
+# render through evidence anchors. It drifted the way every typed number here has drifted - a
+# commit added tests, the sum moved, the sentence did not.
 #
-# THE CRITERION, written down so the split can be argued with:
+# The criterion and the two sets now live in `samegold.evidence.lane_split`, where the SG-00
+# collector imports them and writes the sum into the evidence record; CLAIMS.md renders that sum
+# through an anchor, and `samegold check` fails when the document and the record disagree.
 #
-#   REPOSITORY - the test's verdict is decided by this repository's own text, configuration,
-#   structure, scripts or evidence plumbing. It reads or executes something committed here and
-#   compares it against something else committed here. It would survive, unchanged in kind, if
-#   the domain were payroll instead of retail revenue.
-#
-#   DOMAIN - the test's verdict is decided by RUNNING a computation over data: the generator,
-#   the close, the dimension, the digests, the invariants, the mutation engine, the parity
-#   comparisons against a reference.
-#
-# Two calls worth naming because a reader may disagree:
-#
-#   * `test_seeds` is REPOSITORY. Seeds are derived from the commit sha and the evidence store
-#     refuses records whose seeds were chosen; that is provenance plumbing, not arithmetic about
-#     revenue.
-#   * `test_review_regressions` is DOMAIN as a file, and it is the one genuinely mixed one:
-#     roughly a third of its tests are regressions in documents and lane declarations rather
-#     than in the close. Moving those would shift the split by about ten tests in the
-#     repository direction. It is counted whole, on the side its majority sits.
-#
-# The numbers are RECOMPUTED here rather than typed, for the same reason every other number in
-# this repository is: the split published in CLAIMS.md is what this test asserts, and a new test
-# file that nobody classifies fails the run rather than landing silently on one side.
-
-REPOSITORY_TESTS = {
-    "test_architecture.py",
-    "test_contract_documents.py",
-    "test_databricks_bundle.py",
-    "test_databricks_catalog_step.py",
-    "test_documentation.py",
-    "test_evidence_gate.py",
-    "test_preflight.py",
-    "test_prose_gate.py",
-    "test_seeds.py",
-}
-DOMAIN_TESTS = {
-    "test_databricks_close_parity.py",
-    "test_databricks_dimension_parity.py",
-    "test_digest.py",
-    "test_generator.py",
-    "test_governance.py",
-    "test_invariants.py",
-    "test_late_arrivals.py",
-    "test_money.py",
-    "test_mutation.py",
-    "test_review_regressions.py",
-    "test_rules.py",
-    "test_scd2.py",
-    "test_serve.py",
-    "test_timezone.py",
-    "test_verdict.py",
-}
+# What stays HERE is the half that is a judgement rather than a measurement: a new test file
+# belongs to neither set until somebody decides which, and this test fails until somebody does.
+# That is the property the published sum depends on, and it is the one a test can enforce.
 
 
-def _collected_by_file() -> dict[str, int]:
-    """How many tests each file contributes, from pytest's own collection.
+def test_every_test_file_in_the_fast_lane_is_classified() -> None:
+    """A new test file forces a decision instead of drifting onto a side.
 
-    Counted by collecting rather than by counting `def test_`: more than half of this suite is
-    parametrised, and `test_architecture.py` has seven functions and a hundred and thirteen
-    tests. A split computed from function definitions would be describing a different suite.
+    The SUM is not asserted here any more, and deliberately: it is an artifact of the SG-00
+    record and CLAIMS.md renders it through `<!--sg:SG-00.artifact.fast_lane_repository_tests-->`,
+    so a stale sentence is caught by the same drift gate as every other figure rather than by a
+    string comparison in a test. What a test can decide, and a renderer cannot, is whether a file
+    nobody has classified is allowed to change that sum silently. It is not.
     """
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "tests/fast",
-            "--collect-only",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-        ],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    counts: dict[str, int] = {}
-    for line in result.stdout.splitlines():
-        if "::" not in line:
-            continue
-        name = Path(line.split("::", 1)[0]).name
-        counts[name] = counts.get(name, 0) + 1
-    assert counts, result.stdout[-2000:] + result.stderr[-2000:]
-    return counts
-
-
-@pytest.mark.evidence_dependent
-def test_every_test_file_is_classified_and_the_split_is_what_the_documents_publish() -> None:
-    """The split, recomputed. A new file forces a decision instead of drifting onto a side."""
-    counts = _collected_by_file()
-    unclassified = sorted(set(counts) - REPOSITORY_TESTS - DOMAIN_TESTS)
+    _repository, _domain, unclassified = split(REPO)
     assert not unclassified, (
         f"these test files are in neither class: {unclassified}. The criterion is in the "
-        f"comment above; add each file to REPOSITORY_TESTS or DOMAIN_TESTS and say which in "
-        f"CLAIMS.md, because the published split is this sum."
-    )
-    repository = sum(n for name, n in counts.items() if name in REPOSITORY_TESTS)
-    domain = sum(n for name, n in counts.items() if name in DOMAIN_TESTS)
-    published = (REPO / "CLAIMS.md").read_text(encoding="utf-8")
-    assert f"{repository} of them check the repository" in published, (
-        f"the fast lane is {repository} repository / {domain} domain out of "
-        f"{repository + domain}, and CLAIMS.md publishes something else. Re-render the "
-        f"sentence rather than the measurement."
-    )
-    assert f"{domain} check the pipeline" in published, (
-        f"the fast lane is {repository} repository / {domain} domain out of "
-        f"{repository + domain}, and CLAIMS.md publishes something else."
+        f"docstring of samegold.evidence.lane_split; add each file to REPOSITORY_TESTS or "
+        f"DOMAIN_TESTS there, because the sum SG-00 publishes is that addition."
     )
