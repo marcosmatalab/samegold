@@ -45,14 +45,37 @@ variables:
   # create nor look up - which is why `databricks/sql/policies.sql` has been declared and never
   # applied since the lane existed.
   #
-  # It is resolvable one layer out: `scripts/databricks_run.sh` already asks `warehouses list`
-  # for the catalog step, and it passes the answer here at deploy time. The default is empty so
-  # that `databricks bundle validate` still runs with no workspace - which is what CI does -
-  # and a deploy with an empty value fails on the resource that needs it rather than silently
-  # deploying half a dashboard.
+  # It is resolvable one layer out: `scripts/databricks_run.sh` asks `warehouses list` - the same
+  # call the catalog step makes - and passes the answer at deploy time.
+  #
+  # THE DEFAULT USED TO BE EMPTY, AND THE COMMENT HERE SAID THAT WAS SO `bundle validate` COULD
+  # STILL RUN WITH NO WORKSPACE, "WHICH IS WHAT CI DOES". Both halves were wrong.
+  #
+  #   * `warehouse_id` is REQUIRED on a dashboard, so an empty value does not validate. Measured
+  #     on 6 September 2026: `bundle validate` dies with `dashboard warehouse_id is required` at
+  #     resources/dashboards.yml, and so does `bundle run` - EVERY command that loads the bundle
+  #     fails, not just the one that deploys. The lane was unusable except through `deploy`,
+  #     which is the one command that happens to pass the variable;
+  #   * CI does not do it. The `databricks` workflow is `workflow_dispatch` only and has **never
+  #     been run** - the API reports `total_count: 0` for its entire history - and the
+  #     repository has no `DATABRICKS_HOST`/`DATABRICKS_TOKEN` secrets, so a dispatch would fail
+  #     at authentication before it parsed anything. The sentence described a behaviour nobody
+  #     had ever executed.
+  #
+  # SO THE DEFAULT IS A PLACEHOLDER, and the shape of it is the point. It is not a plausible
+  # warehouse id and it is not meant to work: a real one is 16 hexadecimal characters, and this
+  # is thirty uppercase characters with hyphens, so the API rejects it rather than creating a
+  # dashboard attached to nothing.
+  #
+  # The alternative - a plausible-looking fake so that validate goes green - is a check that
+  # supplies its own input, which is the defect this repository has found in a fixture, a
+  # document and a spark harness already. `validate` says out loud that it ran against a
+  # placeholder, and `step_deploy` REFUSES to deploy with it. Both are tested without
+  # credentials in tests/fast/test_databricks_catalog_step.py, because this defect exists
+  # precisely because nobody ran the path a comment promised.
   warehouse_id:
-    description: The SQL warehouse the dashboard and the alert attach to. Resolved by scripts/databricks_run.sh at deploy time.
-    default: ""
+    description: The SQL warehouse the dashboard and the alert attach to. Defaults to a placeholder that validates and cannot deploy; scripts/databricks_run.sh resolves the real one at deploy time.
+    default: PLACEHOLDER-NOT-A-WAREHOUSE-ID
 
 targets:
   free:
