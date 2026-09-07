@@ -5,10 +5,10 @@
 # delta     adds the Delta jars from Maven Central.     ~3 min first time
 # faults    the crash campaign, ten repetitions.        ~20 min
 # evidence  every claim except SG-07.                   ~2 min
-# databricks  a Free Edition workspace and two env vars.  no duration here: unlike every
-#             line above it, this one has never been run, and a number nobody measured is
-#             the thing this repository is about. It can spend that account's compute quota
-#             for the rest of the day - see docs/databricks-run.md.
+# databricks  a Free Edition workspace and two env vars.  ~6 min for the whole job, measured
+#             on run 592180158314216 (5 September 2026): 81s of pipeline, 51s of close, and
+#             four short notebook tasks. It can spend that account's compute quota for the
+#             rest of the day - see docs/databricks-run.md.
 #
 # The durations are the ones measured on the machine that wrote this file, not a target.
 # `make doctor` prints what the fast lane actually took on yours.
@@ -30,16 +30,34 @@ help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	 awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-$(BIN)/python:
-	$(PY) -m venv $(VENV)
+# A STAMP, AND NOT THE INTERPRETER, and the difference cost this round a red preflight.
+#
+# This rule used to be `$(BIN)/python:` - a file target that exists the moment the venv does. So
+# once anybody had a venv, `install` was a no-op FOR EVER: adding a dependency to pyproject.toml
+# changed nothing, and every target that depends on `install` went on running against an
+# environment built before the dependency existed.
+#
+# Measured on 7 September 2026: `pytest-cov` was added to the `dev` extra and the fast lane's
+# command grew `--cov`, `make preflight` ran `install` first exactly as it is supposed to, and
+# the WSL2 clone still failed with `unrecognized arguments: --cov` because its venv was older
+# than the declaration. A dependency declared and not installed is the same class as every other
+# declaration in this repository that did not govern - and this one had the shortest possible
+# feedback loop between the declaration and the failure, which is why it was worth fixing rather
+# than working around with a manual `pip install`.
+#
+# The stamp depends on `pyproject.toml`, so the dependency list is what decides whether the
+# environment is stale.
+$(VENV)/.installed: pyproject.toml
+	test -x $(BIN)/python || $(PY) -m venv $(VENV)
 	$(BIN)/pip install -q -U pip
 	$(BIN)/pip install -q -e ".[dev]"
+	@touch $@
 
 .PHONY: install
-install: $(BIN)/python ## create the virtualenv with the fast lane only
+install: $(VENV)/.installed ## create the virtualenv with the fast lane only
 
 .PHONY: install-spark
-install-spark: $(BIN)/python ## add pyspark 4.2.0 + delta-spark 4.4.0 (about 500 MB)
+install-spark: $(VENV)/.installed ## add pyspark 4.2.0 + delta-spark 4.4.0 (about 500 MB)
 	$(BIN)/pip install -q -e ".[spark,rust,dev]"
 
 .PHONY: demo
@@ -48,7 +66,7 @@ demo: install ## 0.4 s in the container / 4.0 s on Windows, once installed; one 
 
 .PHONY: fast
 fast: install ## the fast lane: no JVM, no network, no credentials
-	$(BIN)/pytest tests/fast -q
+	$(BIN)/pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58
 
 .PHONY: spark
 spark: install-spark ## the Spark lane without Delta (works with no route to Maven Central)

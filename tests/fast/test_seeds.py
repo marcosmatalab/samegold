@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from samegold.generator.seeds import seed_for, seed_source, seeds_from_commit
@@ -73,3 +76,67 @@ def test_a_runs_own_output_does_not_make_the_tree_look_uncommitted() -> None:
     # A directory that merely starts with the same letters is not the evidence directory.
     assert _code_changes(" M evidence_notes.md") == ["evidence_notes.md"]
     assert _code_changes("") == []
+
+
+# ------------------------------------------------ a tool's scratch space is not a tracked file
+#
+# `.coverage` was committed on 7 September 2026, by the commit that added the coverage gate, and
+# `make fast` rewrites it on every run. Two costs, both measured rather than imagined:
+#
+#   * `git status --porcelain` reports " M .coverage" after the first command in the README.
+#     `_code_changes` above excludes only `evidence/`, so `current_tree()` returned dirty and
+#     every evidence record written after `make fast` published `tree_dirty: true`. That is the
+#     condition the long comment in `generator/seeds.py` describes as having emptied that field
+#     of meaning once already - nine records out of ten - recreated by a coverage gate;
+#   * in a second clone it aborted `git checkout main` with "Your local changes would be
+#     overwritten by checkout". A tool's scratch space that blocks a branch change is a cost
+#     paid by whoever clones this, not by the author who committed it.
+#
+# The artifact names are DERIVED, not typed: coverage is asked where it writes, from this
+# repository's own configuration, and pytest is asked for its cache directory. Only the tool
+# list is written down, and a tool that starts writing somewhere new is caught by the same
+# assertion because the path comes from the tool.
+
+
+def _tracked(repo: Path, path: str) -> list[str]:
+    """What git tracks at or under `path`. Empty for a file it has never been told about."""
+    out = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "--", path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return [line for line in out.stdout.splitlines() if line.strip()]
+
+
+def test_nothing_the_fast_lane_writes_is_tracked() -> None:
+    """The fast lane's own output must not be part of the repository.
+
+    Asked of the tools rather than listed by hand. `coverage.Coverage()` reads this repository's
+    `pyproject.toml` and reports the data file it will write; pytest reports its cache
+    directory. A tracked file among them is a file the next `make fast` will modify, and the
+    two costs of that are in the comment above.
+    """
+    repo = Path(__file__).resolve().parents[2]
+
+    import coverage
+
+    # The data file coverage will actually use here, including any `data_file` this repository
+    # sets in `[tool.coverage.run]`. Typing ".coverage" would miss a configuration change.
+    data_file = Path(coverage.Coverage(config_file=str(repo / "pyproject.toml")).config.data_file)
+    written = {
+        data_file.name: "coverage's data file, from coverage's own configuration",
+        f"{data_file.name}.*": "coverage's per-process data files under -p/--parallel",
+        ".pytest_cache": "pytest's cache directory",
+        ".hypothesis": "hypothesis's example database, written by the property tests",
+    }
+
+    offenders = {
+        name: (why, found) for name, why in written.items() if (found := _tracked(repo, name))
+    }
+    assert not offenders, (
+        "the fast lane writes these and git tracks them, so every run of the lane dirties the "
+        "tree and can block a checkout in somebody else's clone:\n"
+        + "\n".join(f"  {name} ({why}): {found}" for name, (why, found) in offenders.items())
+        + "\n\nRemove them with `git rm --cached` and ignore them; they are output, not source."
+    )
