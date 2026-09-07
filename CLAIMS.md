@@ -8,7 +8,7 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 520/520 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 389bf7f64 |
+| `SG-00` what this repository contains, counted | PASS | 533/533 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 4bb71c278 |
 | `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 4200be34b |
 | `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | CI, 4200be34b |
@@ -33,7 +33,7 @@ survive the day it stops being true. It stopped being true within a week of bein
 virtue.
 
 **What the fast lane is actually about, since somebody was going to count it.** Of its
-<!--sg:SG-00.artifact.tests_fast-->564<!--/sg--> tests, **<!--sg:SG-00.artifact.fast_lane_repository_tests-->389<!--/sg--> of them check the
+<!--sg:SG-00.artifact.tests_fast-->576<!--/sg--> tests, **<!--sg:SG-00.artifact.fast_lane_repository_tests-->401<!--/sg--> of them check the
 repository** - its layering, its documents, its bundle, its scripts, its evidence plumbing -
 and **<!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> check the pipeline**: the generator, the close, the
 dimension, the digests, the invariants, the mutation engine, the parity comparisons.
@@ -42,19 +42,26 @@ That ratio is not an accident and it is not a defence. A repository whose subjec
 project's claims about itself be checked" spends most of its test budget on the claims, and the
 honest way to publish that is to publish it. The criterion for the split is written in
 `src/samegold/evidence/lane_split.py`; the two figures above are SUMMED BY THE RUN that wrote
-this record and rendered through evidence anchors, exactly like every other number here, because
-the sum was typed until 7 September 2026 and had drifted eight tests behind the lane. Deciding
+this record and rendered through evidence anchors, exactly like every other number here. Until
+7 September 2026 that sum was typed, and it did not survive the commit that wrote this sentence:
+adding the tests for the two defects fixed alongside it moved the repository side from 389 to
+401, and the only thing that noticed was a string comparison demanding somebody retype it. That
+is the failure this repository exists to argue against, one level in from where it usually
+appears. Deciding
 which side a NEW test file belongs to stays a judgement, and `tests/fast/test_prose_gate.py`
 fails the run until somebody makes it. One file, `test_review_regressions.py`, is genuinely mixed
 and counted whole on the side its majority sits; moving its document-shaped tests would shift the
 split by about ten.
 
 The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by
-the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->60<!--/sg-->%**, measured by the run that wrote this record
+the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->61.74<!--/sg-->%**, measured by the run that wrote this record
 and gated at 58 in CI. It was typed as 60% until 7 September 2026, when the lane measured
 61.87; the digit is now rendered from the record so that correcting it by hand is not a thing
 anybody has to remember to do. The run that measures it deselects the two evidence-dependent
-tests, which is worth 0.05 points against the full lane. What it leaves out
+tests, so it reads a fraction of a point below the full lane CI gates: those two compare the
+documents against the evidence and execute barely any product code. No second figure is written
+here for that gap, because a number nothing re-measures is how this paragraph went wrong the
+first time. What it leaves out
 - the Spark modules the fast lane cannot import, and the Databricks notebooks it cannot import
 at all - is written in `pyproject.toml` beside the configuration.
 
