@@ -4,19 +4,19 @@
     "adrs": 10,
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_green": true,
-    "fast_lane_seconds": 48.3,
-    "markdown_documents": 21,
-    "python_modules": 52,
-    "source_lines": 10249,
-    "test_lines": 7970,
+    "fast_lane_seconds": 51.3,
+    "markdown_documents": 22,
+    "python_modules": 54,
+    "source_lines": 11000,
+    "test_lines": 11019,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 469,
-    "tests_passed": 463,
-    "tests_spark": 95
+    "tests_fast": 555,
+    "tests_passed": 549,
+    "tests_spark": 148
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/34106077889",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.3",
@@ -28,11 +28,11 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "fb1744e39114bd3a0c12c25a80e01a9b",
+  "hash": "6a9c20197ef13d307441a70e31d6a223",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "eaa705cf47b76d0208d85f556799b10f",
+  "prev": "20e0f57760226c0f0e03288a00de9f36",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -41,27 +41,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 463,
-      "trials": 463,
+      "successes": 549,
+      "trials": 549,
       "wilson95": [
-        0.991771,
+        0.993051,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 50.029,
+      "commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+      "duration_s": 53.125,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        12107865124289014616
+        10863799434220380855
       ],
-      "started_at": "2026-09-03T23:03:11+00:00",
+      "started_at": "2026-09-07T09:30:39+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "d8fcf93c9900b6be98c17e2df3b19fc83a8e9bf2"
     }
   }
 }

@@ -4,8 +4,8 @@
     "closes_per_run": 5,
     "comparisons": 15
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/34106077889",
   "claim_id": "SG-01",
   "environment": {
     "delta_rs": "1.6.3",
@@ -17,12 +17,12 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "bead14b7b11227e99d1028c3c48ae0c7",
+  "hash": "b599aa4ff8ff1e6c54674533e6068dd2",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "a89abfba6d4aa525088326ef6062341b",
+  "prev": "17d1c63f9a06e35ce61894cfd9a7be1b",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -39,21 +39,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 3.385,
+      "commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+      "duration_s": 3.232,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        8844364849666614446,
-        12516769735498689994,
-        6369017646971949719
+        11843128044363747439,
+        4725037878110168728,
+        11571469048928833734
       ],
-      "started_at": "2026-09-03T23:00:41+00:00",
+      "started_at": "2026-09-07T09:28:10+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "d8fcf93c9900b6be98c17e2df3b19fc83a8e9bf2"
     }
   }
 }

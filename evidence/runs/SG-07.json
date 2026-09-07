@@ -3,8 +3,8 @@
   "artifacts": {
     "batches_available": 8,
     "clean_digest": {
-      "content": "95b83733be3b8dc2dec6781717338f96",
-      "multiset": "c4fda286dbb0e2c49d7b84fd49b726f7"
+      "content": "70ba7646ba6d49a3f4368f1db65ec9c2",
+      "multiset": "4ef2ca2516c9ee400001bd4677450f34"
     },
     "divergence_rate_upper95_per_point": {
       "after_batch_write_before_commit": 0.299573,
@@ -12,7 +12,7 @@
     },
     "divergence_rate_upper95_per_run": 0.149787,
     "divergences": [],
-    "duration_s": 779.37,
+    "duration_s": 746.35,
     "injected_runs": 20,
     "missed_injections": [],
     "negative_control": {
@@ -20,8 +20,8 @@
         "multiset"
       ],
       "digest": {
-        "content": "95b83733be3b8dc2dec6781717338f96",
-        "multiset": "00c38ccb92ae24b24c44a95990777ad6"
+        "content": "70ba7646ba6d49a3f4368f1db65ec9c2",
+        "multiset": "0fb744f622ba94c051c8d92c5ceef10e"
       },
       "note": "the content digest deduplicates by event_id and is blind to double writes; the multiset digest is the one that has to catch this",
       "status": "detected",
@@ -48,8 +48,8 @@
     "reachable_points_total": 4,
     "runs": 20
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/34106077889",
   "claim_id": "SG-07",
   "environment": {
     "delta_rs": "1.6.3",
@@ -61,12 +61,12 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "17d1c63f9a06e35ce61894cfd9a7be1b",
+  "hash": "439db8eebbe7208908c875788f5760ef",
   "not_claimed": [
     "crash safety of the engine: the reachable points are the ones the writer owns, and the points inside a Delta commit or a state-store checkpoint are listed in faults/points.py as not covered",
     "anything about Databricks: serverless gives you no process to kill"
   ],
-  "prev": "d2c0798e3d631d90ff7734ab1d65f0cb",
+  "prev": "031c3ea5b5cb4d89caa56f1793487988",
   "runtime": "oss-local",
   "title": "the silver writer survives a crash at each of its structural points",
   "verdict": {
@@ -83,19 +83,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 779.44,
+      "commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+      "duration_s": 746.413,
       "n": 1,
       "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "faults",
       "seed_source": "commit",
       "seeds": [
-        13360426498125566079
+        4835373775511734127
       ],
-      "started_at": "2026-09-03T23:16:12+00:00",
+      "started_at": "2026-09-07T09:43:07+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "d8fcf93c9900b6be98c17e2df3b19fc83a8e9bf2"
     }
   }
 }
