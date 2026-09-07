@@ -2,12 +2,12 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-    "records_verified": 180,
+    "commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+    "records_verified": 190,
     "seed_source": "commit"
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/34106077889",
   "claim_id": "SG-06",
   "environment": {
     "delta_rs": "1.6.3",
@@ -19,40 +19,40 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "d2c0798e3d631d90ff7734ab1d65f0cb",
+  "hash": "031c3ea5b5cb4d89caa56f1793487988",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "fb1744e39114bd3a0c12c25a80e01a9b",
+  "prev": "6a9c20197ef13d307441a70e31d6a223",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "180 records verified against commit 4200be34b9af",
+    "note": "190 records verified against commit b5b107cc4e46",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 180,
-      "trials": 180,
+      "successes": 190,
+      "trials": 190,
       "wilson95": [
-        0.979105,
+        0.980182,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 0.318,
+      "commit_sha": "b5b107cc4e468600a98220c4a59cdc7edccb3dfa",
+      "duration_s": 0.357,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        16216494133283344190
+        5077516221017520827
       ],
-      "started_at": "2026-09-03T23:03:11+00:00",
+      "started_at": "2026-09-07T09:30:39+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "d8fcf93c9900b6be98c17e2df3b19fc83a8e9bf2"
     }
   }
 }
