@@ -732,10 +732,11 @@ Checked in this repository, on every push:
 
 Not checked here, and only a deploy can:
 
-- **whether the `.lvdash.json` is the shape Lakeview accepts.** The serialised dashboard format
-  is not published as a schema this repository can validate against; the structure here was
-  written by hand. The deploy is what tests it, and if it is rejected the message will name the
-  key. This is the irreproducible part, and it is the reason the file is small and regular;
+- ~~whether the `.lvdash.json` is the shape Lakeview accepts~~. **CLOSED, 6 September 2026**:
+  the deploy created it - `Created dashboards.samegold_close_dashboard` and `Created
+  alerts.samegold_close_not_sound`. The serialised format is not published as a schema this
+  repository can validate against, so the file was written by hand and the deploy was the only
+  thing that could test it. It passed;
 - whether the alert's evaluation binds to the `not_ok` column as written;
 - **what it looks like.** There are no screenshots in `docs/` yet, and this section says so
   rather than implying otherwise: a screenshot has to be taken from a browser signed in to the
@@ -746,6 +747,15 @@ Not checked here, and only a deploy can:
   it as a variable. The bundle carries a variable, never an id: a 16-character workspace-local
   identifier committed to a repository is configuration that is wrong the first time somebody
   else deploys it.
+
+  **The variable defaults to a placeholder, and that is a decision worth reading.** It was the
+  empty string for a day, and `warehouse_id` is REQUIRED on a dashboard - so `bundle validate`
+  and `bundle run` both died with `dashboard warehouse_id is required` while `deploy` kept
+  working, because `deploy` is the one command that passes it. The default is now
+  `PLACEHOLDER-NOT-A-WAREHOUSE-ID`: the bundle loads, `validate` prints that it checked the two
+  resources for shape and not for the warehouse they attach to, and `deploy` refuses to run with
+  it. A plausible-looking fake would have made `validate` report OK about a warehouse that does
+  not exist, which is a check supplying its own input. `FINDINGS.md` carries the whole of it.
 
 ## The checklist: what to run afterwards, and what each answer has to be
 

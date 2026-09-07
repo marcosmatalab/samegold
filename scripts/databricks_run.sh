@@ -327,7 +327,21 @@ else:
     print("", "NONE")
 '
 
-step_validate() { say "bundle validate -t $TARGET"; (cd "$BUNDLE" && databricks bundle validate -t "$TARGET"); }
+step_validate() {
+    say "bundle validate -t $TARGET"
+    # WHAT THIS DOES NOT CHECK, printed rather than left to be assumed. The dashboard and the
+    # alert both take a `warehouse_id`, and this step does not resolve one: it validates against
+    # the placeholder the bundle defaults to, so their SHAPE is checked and the warehouse they
+    # would attach to is not.
+    #
+    # Resolving one here was considered and refused. It would make `validate` need credentials
+    # and a workspace round-trip for the one command in this lane that is supposed to run
+    # without either - and the version of this file that made `validate` impossible without a
+    # workspace is the defect this comment exists because of.
+    echo "  warehouse_id: $WAREHOUSE_PLACEHOLDER (the dashboard and the alert are checked for"
+    echo "  shape; the warehouse they attach to is resolved by \`deploy\` and not by this step)"
+    (cd "$BUNDLE" && databricks bundle validate -t "$TARGET")
+}
 # The commit, carried INTO the deploy so that what the run publishes can name the code that
 # produced it. Until now the only commit anywhere near this lane was the one `step_fetch` writes
 # into fetch.json afterwards - this machine's HEAD when somebody copied the files down, which is
@@ -537,15 +551,36 @@ step_deploy() {
     # invented in this script.
     warehouse=""
     if py="$(python_bin)"; then
+        # `cut`, NOT `awk '{print $1}'`. `WAREHOUSE_FIELDS` prints `id state`, and with no
+        # warehouse the id is EMPTY - so the line is " NONE", awk collapses the leading
+        # whitespace, and field one comes back as the STATE. Measured by running this path
+        # against a workspace with no warehouse: it deployed with `--var=warehouse_id=NONE`,
+        # straight past the refusal below, which is a guard defeated by its own input
+        # parsing. `cut -d" " -f1` keeps an empty first field empty.
         warehouse="$(databricks warehouses list -o json 2>/dev/null \
-            | "$py" -c "$WAREHOUSE_FIELDS" | awk '{print $1}')"
+            | "$py" -c "$WAREHOUSE_FIELDS" | cut -d" " -f1)"
     fi
-    if [ -n "$warehouse" ]; then
-        echo "  warehouse for the dashboard and the alert: $warehouse"
-    else
-        echo "  WARNING: no SQL warehouse came back from \`warehouses list\`, so the dashboard"
-        echo "  and the alert have no id to attach to and the deploy will fail on them."
+    # REFUSED, NOT WARNED. The bundle defaults `warehouse_id` to a placeholder so that
+    # `validate` and `run` can load it without a workspace; a DEPLOY that used that placeholder
+    # would create a dashboard and an alert attached to a warehouse that does not exist, and
+    # the whole point of the placeholder is that it can never be deployed. The API would also
+    # reject it - it is not the shape of an id - but a guard that relies on the far end noticing
+    # is a guard that reports somebody else's error message.
+    if [ -z "$warehouse" ] || [ "$warehouse" = "$WAREHOUSE_PLACEHOLDER" ]; then
+        die \
+"no SQL warehouse came back from \`warehouses list\`, so there is no id for the dashboard and
+the alert to attach to.
+
+Free Edition gives exactly one 2X-Small warehouse. If it is there, this is an authentication
+or a permissions problem; if it is not, the workspace has none and these two resources cannot
+be deployed at all.
+
+Refusing rather than deploying with the placeholder \`$WAREHOUSE_PLACEHOLDER\`, which would
+create a dashboard and an alert pointing at a warehouse that does not exist.
+
+  databricks warehouses list -o json"
     fi
+    echo "  warehouse for the dashboard and the alert: $warehouse"
     echo "  deploying $commit (tree_dirty=$dirty)"
     (cd "$BUNDLE" && databricks bundle deploy -t "$TARGET" \
         --var="catalog=$CATALOG" \
@@ -611,6 +646,10 @@ JOB_NAME="samegold monthly close"
 # databricks.yml. A test holds the two together, the same way it does for the job: a name this
 # script looks up and a name the bundle deploys are two spellings of one fact.
 PIPELINE_NAME="samegold"
+# The placeholder `databricks/databricks.yml` gives `warehouse_id`, spelled here so the deploy
+# can refuse it. One literal in two files, tied by a test - the same rule as the job and
+# pipeline names above.
+WAREHOUSE_PLACEHOLDER="PLACEHOLDER-NOT-A-WAREHOUSE-ID"
 
 # Reads the deployed job and prints what it was DEPLOYED FROM. One call.
 #
