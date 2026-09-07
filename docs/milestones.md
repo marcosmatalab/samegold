@@ -56,7 +56,7 @@ things. Four are done and checkable against that record; three have not been sta
 | AUTO CDC Type 2 | done | 75 / 60 / 60 / 15, and equal to the hand-written MERGE's dimension ROW BY ROW - same customers, same intervals, same instants - against the workspace's own rows, committed |
 | the event log read for the update's state | done | `update.last_state = COMPLETED`, `error_events = 0`, plus ten terminal updates in `update_history` |
 | **bundle deploy from CI** | **not started** | `gh run list --workflow databricks.yml` returns nothing. The workflow exists and can deploy, seed, run and fetch on a `workflow_dispatch`; it has never been dispatched. Every deploy so far was from a laptop |
-| **AI/BI dashboard** | **not started** | there is no dashboard resource in the bundle. `databricks/resources/` holds `grants.yml`, `jobs.yml` and `volumes.yml`, and nothing else |
+| **AI/BI dashboard** | **done** | `databricks/resources/dashboards.yml` declares the dashboard and one SQL alert, and `databricks/dashboards/samegold_close.lvdash.json` is the page. Deployed 6 September 2026: `Created dashboards.samegold_close_dashboard`, `Created alerts.samegold_close_not_sound` |
 | **screenshots as evidence** | **not started** | none exist |
 
 Two more things are DEPLOYED AND UNVERIFIED, which is a different state again and is why the
@@ -65,9 +65,9 @@ next run still has work to do:
 - `pipelines.numUpdateRetryAttempts: "0"`. It landed after the retry loop it was written for,
   and every update since has succeeded. An update that succeeds does not exercise a retry
   setting; the next FAILED one tests it.
-- the four sections `publish_evidence.py` now captures for the checklist items the record could
-  not answer (`column_types`, `money_types`, `bad_events`, `rescued_rows`). Written, parsed,
-  analysed against the lane's own tables, never run.
+- ~~the four sections `publish_evidence.py` captures for the checklist items the record could
+  not answer~~. `column_types`, `money_types`, `bad_events` and `rescued_rows` are all in the
+  committed record now; this line described them as unrun for two rounds after they had run.
 - the run writing the row-level dimension capture itself, with the deploy's commit carried in
   as a bundle variable. The capture in the repository was exported by hand and its header says
   so; the next fetch replaces it with one the workspace measured. Until then, what ties it to
@@ -76,4 +76,4 @@ next run still has work to do:
 
 **The hours stay at 18 and that figure is an estimate nobody has measured against.** This
 document has no record of hours spent, so changing the number would be inventing one. What can
-be said with a number is the state above: four of seven, three not started, two unverified.
+be said with a number is the state above: five of seven done, two not started - bundle deploy from CI, and screenshots as evidence.

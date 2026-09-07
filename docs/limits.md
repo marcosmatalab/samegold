@@ -56,21 +56,25 @@ the Spark-facing code for the first time, and the fast lane that runs mypy does 
 That found the three Databricks-only primitives now recorded in `PARITY.md`, and ten places
 where a `SparkSession | None` was used as a `SparkSession`.
 
-## Still not executed here
+## Executed here now, and this section said otherwise for four days
 
 The Databricks lane needs a workspace: the bundle, Unity Catalog, expectations, AUTO CDC, the
-event log and the dashboard. Its sources are parsed, its rules are compared record by record
-against the OSS implementation in `tests/spark`, and since round 12 its three Databricks-only
-API calls are pinned by the open-source signatures they fail against.
+event log and the dashboard. **It has one, and it has run four times between 3 and 6 September
+2026**; the records are under `evidence/databricks/`, every figure in `docs/databricks-run.md`
+is rendered from the canonical one, and the dashboard and its alert were deployed on the 6th.
 
-**A deploy was attempted for the first time on 2 September 2026, against a real Free Edition
-workspace, and it failed.** `databricks bundle validate -t free` passed; `databricks bundle
-deploy -t free` died on the first POST because the pipeline resource carried no `name`, which
-that API requires and validate does not check. The catalog step failed before that, for a
-different reason: `databricks catalogs create` cannot work on a Default Storage metastore.
-Both are fixed and both now have tests. **Nothing has yet run the pipeline**, so every figure
-in `docs/databricks-run.md` still reads `NOT RUN`, and this section is worth exactly as much
-as the identical sentence about the Delta lane was worth for eleven rounds: check it.
+**This heading used to read "Still not executed here"**, and the paragraph under it said
+"Nothing has yet run the pipeline, so every figure in `docs/databricks-run.md` still reads
+`NOT RUN`" - while that document held twenty rendered figures. It was wrong from 3 September to
+7 September, which is the finding this round is named for: the drift gate checked the anchored
+numbers on every push and no gate had ever read a sentence. `samegold.evidence.prose` reads
+them now, and `FINDINGS.md` carries the class.
+
+The first deploy did fail, on 2 September 2026. `databricks bundle validate -t free` passed;
+`databricks bundle deploy -t free` died on the first POST because the pipeline resource carried
+no `name`, which that API requires and validate does not check. The catalog step failed before
+that, for a different reason: `databricks catalogs create` cannot work on a Default Storage
+metastore. Both are fixed and both now have tests.
 
 What changed in round 13 is that the lane is now deployable in one command and produces a
 record when it is, so the sentence above has a date on it rather than being open-ended:
@@ -78,9 +82,10 @@ record when it is, so the sentence above has a date on it rather than being open
 - `make databricks` reads `DATABRICKS_HOST` and `DATABRICKS_TOKEN` and runs the whole lane -
   catalog, validate, deploy, seed, run, fetch. `scripts/databricks_run.sh` is the script.
 - `docs/databricks-run.md` holds the results, with every run-produced figure inside an anchor
-  that currently reads `NOT RUN`. `tests/fast/test_databricks_bundle.py` fails if any of them
-  holds a number while `evidence/databricks/SG-DBX-01.json` does not exist. A document cannot
-  get ahead of its run by hand any more; that is the round-12 finding turned into a test.
+  rendered from `evidence/databricks/SG-DBX-01.json`. `tests/fast/test_databricks_bundle.py`
+  fails if any of them holds a number while that record does not exist, and fails if any of them
+  disagrees with it once it does. A document cannot get ahead of its run by hand any more; that
+  is the round-12 finding turned into a test.
 - `tests/fast/test_databricks_bundle.py` also checks the bundle against the Free Edition limits
   it has to live inside, which is how four defects that would have failed the first deploy or
   the first run were found: a landing volume nothing created, two notebook tasks reading their

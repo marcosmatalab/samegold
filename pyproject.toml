@@ -36,6 +36,7 @@ spark = [
 rust = ["deltalake>=1.6,<2"]
 dev = [
   "pytest>=8",
+  "pytest-cov>=5",
   "pytest-xdist>=3",
   "hypothesis>=6.100",
   "ruff>=0.6",
@@ -60,6 +61,37 @@ markers = [
   "evidence_dependent: compares the documents with evidence/, so SG-00 deselects it while writing that evidence",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+# COVERAGE, and the honest reading of the number it prints.
+#
+# There was none in this repository until 6 September 2026 - no `--cov` anywhere, in any lane.
+# For a project whose subject is measuring what it claims, that is the most obvious hole a
+# reviewer could find, and it took a reviewer to find it.
+#
+# WHAT THE NUMBER MEANS HERE. It is line coverage of `src/samegold` by the FAST lane alone. Three
+# things it deliberately leaves out, so nobody reads it as more than it is:
+#
+#   * the Spark modules. `pipelines/transform.py`, `pipelines/gold_scd2_merge.py`,
+#     `pipelines/schema.py` and `ingest/adapter.py` need a JVM, so the fast lane cannot import
+#     them and they sit at 0%. They are covered by `tests/spark`, which this measurement does not
+#     include - a lane that needs a JVM cannot gate a lane that must not;
+#   * `databricks/src/*.py`, the notebooks. They run inside a workspace and cannot be imported
+#     here at all; what stands in for coverage there is `tests/spark/test_databricks_lane_parses.py`
+#     resolving every statement they contain against the real column names;
+#   * the tests themselves, which is the usual exclusion and the uninteresting one.
+#
+# So 60% is the fast lane's reach over the code it can import, not "40% of this project is
+# untested". Both halves of that sentence matter.
+[tool.coverage.run]
+source = ["src/samegold"]
+branch = false
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length = 100

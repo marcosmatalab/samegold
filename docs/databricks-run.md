@@ -1,19 +1,27 @@
 # The Databricks lane: what was deployed, and what it returned
 
-> **State: deploy attempted once, on 2 September 2026, against a real Free Edition workspace.
-> It failed, so every figure below still reads `NOT RUN`.** `databricks bundle validate -t
-> free` answered `Validation OK!` and `databricks bundle deploy -t free` then died on the
-> first POST with `cannot create resources.pipelines.samegold_pipeline: name must be set (400
-> INVALID_PARAMETER_VALUE)`, taking the job with it as a failed dependency. Ten files had
-> already uploaded. What that cost and what was done about it is in the last two sections.
+> **State: run, four times, between 3 and 6 September 2026 against a real Free Edition
+> workspace.** The records are committed under `evidence/databricks/` with their job run ids,
+> and every figure below is rendered from the canonical one.
 >
-> Every figure below sits inside an HTML-comment anchor named `dbx:<field>`, and every one of
-> them currently reads `NOT RUN`. `tests/fast/test_databricks_bundle.py` fails if any of them
-> holds a number while `evidence/databricks/SG-DBX-01.json` is absent, and fails if any of
-> them disagrees with that record once it is present. So this document cannot get ahead of the
-> run by hand, which is the failure mode the whole repository is about: for eleven rounds
-> `docs/limits.md` said the Delta lane was "not executed here" while CI had been running it,
-> red, for two days.
+> This header said the opposite for four days. It read "deploy attempted once ... it failed, so
+> every figure below still reads `NOT RUN`" while the twenty anchors under it held measured
+> values, because the anchors are rendered by a command and the sentence above them was typed by
+> a person. That is the finding of 7 September 2026 - the drift gate watched the figures and
+> never read the prose - and `samegold.evidence.prose` is the gate that now reads both.
+>
+> The first deploy did fail, on 2 September: `databricks bundle validate -t free` answered
+> `Validation OK!` and `databricks bundle deploy -t free` died on the first POST with `cannot
+> create resources.pipelines.samegold_pipeline: name must be set (400
+> INVALID_PARAMETER_VALUE)`, taking the job with it as a failed dependency. What that cost and
+> what was done about it is in the last two sections.
+>
+> Every figure below sits inside an HTML-comment anchor named `dbx:<field>`.
+> `tests/fast/test_databricks_bundle.py` fails if any of them holds a number while
+> `evidence/databricks/SG-DBX-01.json` is absent, and fails if any of them disagrees with that
+> record once it is present. So this document cannot get ahead of the run by hand, which is the
+> failure mode the whole repository is about: for eleven rounds `docs/limits.md` said the Delta
+> lane was "not executed here" while CI had been running it, red, for two days.
 
 ## What `make databricks` does
 
@@ -419,7 +427,7 @@ never reached.
 
 ### AUTO CDC: the Type 2 dimension
 
-`dp.create_auto_cdc_flow(..., stored_as_scd_type=2)` is one of the three Databricks-only calls
+`dp.create_auto_cdc_flow(..., stored_as_scd_type=2)` is one of the four Databricks-only calls
 `PARITY.md` pins against the open-source signatures they fail on. The OSS lane maintains the
 same dimension by hand with a two-pass `MERGE` in `src/samegold/pipelines/gold_scd2_merge.py`;
 that the two agree is the point of having both.

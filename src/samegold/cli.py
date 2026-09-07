@@ -47,6 +47,11 @@ RENDERED_FILES = (
     # are the two the claims module's own docstring says cite it.
     "PARITY.md",
     "EXAM_MAP.md",
+    # The design, moved out of a 389-line README on 6 September 2026. It carries SG-09's cost
+    # figures and SG-00's per-lane test counts, so it has to be rendered or those go stale the
+    # first time the claims run - which is the failure mode that moving text between documents
+    # invites, and the reason this tuple exists rather than a glob.
+    "docs/how-it-works.md",
 )
 
 

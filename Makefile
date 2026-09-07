@@ -5,10 +5,10 @@
 # delta     adds the Delta jars from Maven Central.     ~3 min first time
 # faults    the crash campaign, ten repetitions.        ~20 min
 # evidence  every claim except SG-07.                   ~2 min
-# databricks  a Free Edition workspace and two env vars.  no duration here: unlike every
-#             line above it, this one has never been run, and a number nobody measured is
-#             the thing this repository is about. It can spend that account's compute quota
-#             for the rest of the day - see docs/databricks-run.md.
+# databricks  a Free Edition workspace and two env vars.  ~6 min for the whole job, measured
+#             on run 592180158314216 (5 September 2026): 81s of pipeline, 51s of close, and
+#             four short notebook tasks. It can spend that account's compute quota for the
+#             rest of the day - see docs/databricks-run.md.
 #
 # The durations are the ones measured on the machine that wrote this file, not a target.
 # `make doctor` prints what the fast lane actually took on yours.
@@ -48,7 +48,7 @@ demo: install ## 0.4 s in the container / 4.0 s on Windows, once installed; one 
 
 .PHONY: fast
 fast: install ## the fast lane: no JVM, no network, no credentials
-	$(BIN)/pytest tests/fast -q
+	$(BIN)/pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58
 
 .PHONY: spark
 spark: install-spark ## the Spark lane without Delta (works with no route to Maven Central)

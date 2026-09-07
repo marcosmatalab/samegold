@@ -87,7 +87,7 @@ case "$(uname -s)" in
 esac
 
 # ------------------------------------------------------------------ .github/workflows/fast.yml
-run "fast/tests"        "pytest tests/fast -q"
+run "fast/tests"        "pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58"
 run "fast/lint"         "ruff check src tests databricks pipelines"
 run "fast/format"       "ruff format --check src tests databricks pipelines"
 run "fast/types"        "mypy"

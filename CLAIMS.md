@@ -32,6 +32,24 @@ survive the day it stops being true. It stopped being true within a week of bein
 **Does not show** anything about quality. Lines of code are a fact about a repository, not a
 virtue.
 
+**What the fast lane is actually about, since somebody was going to count it.** Of its 564
+tests, **389 of them check the repository** - its layering, its documents, its bundle, its
+scripts, its evidence plumbing - and **175 check the pipeline**: the generator, the close, the
+dimension, the digests, the invariants, the mutation engine, the parity comparisons.
+
+That ratio is not an accident and it is not a defence. A repository whose subject is "can this
+project's claims about itself be checked" spends most of its test budget on the claims, and the
+honest way to publish that is to publish it. The criterion for the split is written in
+`tests/fast/test_documentation.py`, the sum is RECOMPUTED by the test that publishes it - a new
+test file that nobody classifies fails the run - and one file, `test_review_regressions.py`, is
+genuinely mixed and counted whole on the side its majority sits. Moving its document-shaped
+tests would shift the split by about ten.
+
+The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by the
+fast lane is 60%**, first measured on 6 September 2026 and gated at 58 in CI; what it leaves out
+- the Spark modules the fast lane cannot import, and the Databricks notebooks it cannot import
+at all - is written in `pyproject.toml` beside the configuration.
+
 ## SG-01: two implementations agree on the versioned close
 
 **Experiment.** For each commit-derived seed, the generator writes a dataset and its ledger.
