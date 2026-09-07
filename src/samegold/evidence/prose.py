@@ -35,6 +35,7 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 # `dir/` holds `a`, `b` and `c`, and nothing else.
@@ -79,17 +80,49 @@ NO_SUCH_PATH = re.compile(
 )
 
 
+class Kind(Enum):
+    """WHY a sentence is exempt, because there are two reasons and they expire differently.
+
+    The list used to hold both under one word, and "it is true, here is the measurement" and
+    "this gate has nothing to say about this sentence" are not the same promise:
+
+      * MEASURED_TRUE is a claim about the PRESENT that happens to be true today. It is exactly
+        the kind of sentence this gate exists to catch, spared only because the repository cannot
+        check it offline. It has an expiry: the day the Databricks job runs, every MEASURED_TRUE
+        exemption about a job that has not run becomes a false sentence with a note attached
+        saying somebody once checked. Re-reading these is work that has to happen.
+      * OUT_OF_SCOPE is not a claim about the present at all, and no future run can make it
+        false. The gate's evidence is the run records under `evidence/databricks/`, and those
+        give it standing over sentences about the Databricks lane and none whatsoever over a
+        sentence about, say, a shell guard that was fixed in the same round it was written.
+        Nothing about this one expires, and re-reading it when the lane runs is wasted effort.
+
+    The distinction is recorded rather than enforced. A test that tried to decide which kind a
+    sentence deserved would be reading intent, which is the thing this module opens by saying it
+    does not do.
+    """
+
+    MEASURED_TRUE = "measured true"
+    OUT_OF_SCOPE = "out of scope"
+
+
 @dataclass(frozen=True)
 class Exemption:
-    """A sentence that matches one of the shapes above and is nevertheless true.
+    """A sentence that matches one of the shapes above and is nevertheless not a defect.
 
     `fragment` has to appear in the document, or this exemption is stale and the check fails on
     the exemption rather than on the document. That is the property that stops this list from
     becoming the place inconvenient sentences go to be forgotten.
+
+    MATCHED BY FRAGMENT AND NOT BY LINE, which is what lets an exemption survive a merge that
+    moves the sentence down the file. The cost of that choice is the other half of the same
+    property: reword the sentence and the fragment is orphaned, and `stale_exemptions` fails
+    rather than letting the exemption quietly cover nothing.
     """
 
     document: str
     fragment: str
+    kind: Kind
     reason: str
 
 
@@ -97,6 +130,7 @@ EXEMPTIONS: tuple[Exemption, ...] = (
     Exemption(
         document="docs/milestones.md",
         fragment="it has never been dispatched",
+        kind=Kind.MEASURED_TRUE,
         reason=(
             "TRUE, and measured on 6 September 2026: the `databricks` workflow is "
             "workflow_dispatch only and the GitHub API reports total_count 0 for its entire "
@@ -262,15 +296,23 @@ def check_documents(repo: Path, documents: list[Path]) -> list[Drift]:
 def stale_exemptions(repo: Path) -> list[str]:
     """Exemptions whose sentence is no longer in the document they name.
 
-    An exemption is a promise that a matching sentence is true. When the sentence goes, the
-    promise is about nothing - and a list of exceptions nobody prunes is how the next false
-    sentence gets waved through.
+    An exemption is a promise about a matching sentence. When the sentence goes, the promise is
+    about nothing - and a list of exceptions nobody prunes is how the next false sentence gets
+    waved through.
+
+    The KIND is named in the failure, because it says what the reader has to do next. An orphaned
+    MEASURED_TRUE exemption means a claim about the present lost its measurement; an orphaned
+    OUT_OF_SCOPE one usually means the sentence was simply rewritten, and the fragment needs
+    updating rather than the fact re-checking.
     """
     out = []
     for exemption in EXEMPTIONS:
         path = repo / exemption.document
         if not path.exists():
-            out.append(f"{exemption.document} does not exist")
+            out.append(f"{exemption.document} does not exist ({exemption.kind.value})")
         elif exemption.fragment not in path.read_text(encoding="utf-8"):
-            out.append(f"{exemption.document} no longer contains {exemption.fragment!r}")
+            out.append(
+                f"{exemption.document} no longer contains {exemption.fragment!r} "
+                f"({exemption.kind.value})"
+            )
     return out
