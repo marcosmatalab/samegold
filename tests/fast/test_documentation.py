@@ -8,8 +8,10 @@ executes. These tests execute it.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -221,3 +223,113 @@ def test_every_diagram_is_structurally_a_diagram(document: Path, index: int, sou
                     f"{document.name} block {index}: unquoted label in {line!r}. Quote it, or "
                     f"a comma or a bracket inside it becomes syntax."
                 )
+
+
+# ------------------------------------------------------ the diagram is checked like a sentence
+#
+# The repository had no images at all until 8 September 2026, and a reviewer decides in thirty
+# seconds. Two SVGs is the whole budget, and both are hand-written and committed rather than
+# exported, so a change to one is a diff and not a new binary.
+#
+# The risk a picture adds is the one this repository already has a gate for one document along:
+# a diagram is prose with boxes, and it goes stale the same way. `docs/databricks-run.md` said
+# `NOT RUN` beside twenty measured anchors for four days because nothing read the sentence. A
+# figure naming `silver_events` after somebody renamed the table would be the same defect with
+# better typography.
+#
+# So the table names in figure 1 are read out of the CODE THAT DECLARES THEM. Two sources,
+# because this lane has two ways of creating a table: the `name=`/`target=` keyword of a
+# declarative-pipeline decorator, and a `CREATE TABLE` in the close notebook's SQL.
+
+
+def _tables_the_lane_declares() -> set[str]:
+    """Every table name `databricks/src/` creates, from the two ways it creates one."""
+    names: set[str] = set()
+    for path in sorted((REPO / "databricks" / "src").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        # `@dp.table(name="...")`, `dp.create_streaming_table(name="...")`,
+        # `dp.create_auto_cdc_flow(target="...")` - parsed, not grepped, so a name inside a
+        # comment or a docstring cannot satisfy this.
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg not in {"name", "target"}:
+                    continue
+                value = keyword.value
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    names.add(value.value)
+        # `CREATE TABLE IF NOT EXISTS {catalog}.main.revenue_closed (` - the close notebook
+        # writes its own table in SQL rather than declaring it, and a figure that named it
+        # would otherwise be unchecked.
+        names.update(re.findall(r"CREATE TABLE IF NOT EXISTS \{catalog\}\.\w+\.(\w+)", source))
+    return names
+
+
+FIGURES = ("pipeline-light.svg", "pipeline-dark.svg")
+
+
+@pytest.mark.parametrize("figure", FIGURES)
+def test_the_figures_name_tables_the_lane_actually_creates(figure: str) -> None:
+    """Every monospaced table name in figure 1 is a table `databricks/src/` declares.
+
+    The direction that matters is figure -> code: a diagram may leave a table out, but it may
+    not name one that does not exist. A rename that misses the picture fails here.
+    """
+    svg = (REPO / "docs" / "img" / figure).read_text(encoding="utf-8")
+    declared = _tables_the_lane_declares()
+    assert declared, "no table names were parsed out of databricks/src/ - the reader is broken"
+
+    # The names drawn in the figure: snake_case words, which is how this lane spells a table
+    # and how nothing else in the diagram is spelled.
+    drawn = {
+        text
+        for text in re.findall(r">([a-z][a-z0-9_]*)<", svg)
+        if "_" in text and not text.startswith("a-")
+    }
+    assert drawn, f"{figure} names no tables at all; the figure or this reader has changed"
+
+    unknown = sorted(drawn - declared)
+    assert not unknown, (
+        f"{figure} names {unknown}, which databricks/src/ does not create. Either the table was "
+        f"renamed and the picture was not, or the picture invented a name. The lane declares: "
+        f"{sorted(declared)}"
+    )
+
+
+def test_the_two_themes_of_a_figure_say_exactly_the_same_thing() -> None:
+    """The light and dark files must not drift apart.
+
+    They are two files because GitHub's `<picture>` is the only reliable way to switch on the
+    reader's theme, and two files is two things to edit. Colours may differ; every word must
+    not. This is what stops a correction landing in the theme the author happens to use.
+    """
+    for name in ("pipeline", "restatement"):
+        light = (REPO / "docs" / "img" / f"{name}-light.svg").read_text(encoding="utf-8")
+        dark = (REPO / "docs" / "img" / f"{name}-dark.svg").read_text(encoding="utf-8")
+        assert re.findall(r">([^<>]+)<", light) == re.findall(r">([^<>]+)<", dark), (
+            f"{name}-light.svg and {name}-dark.svg carry different text. They are one diagram "
+            f"in two palettes; edit both or neither."
+        )
+
+
+def test_the_figures_survive_the_markdown_sanitiser() -> None:
+    """GitHub strips what it does not trust, and a stripped diagram is an unstyled mess.
+
+    Checked rather than assumed, because the failure is invisible locally: the file renders
+    perfectly in a browser and arrives on GitHub with its colours gone. Presentation
+    attributes survive; a stylesheet does not.
+    """
+    for path in sorted((REPO / "docs" / "img").glob("*.svg")):
+        svg = path.read_text(encoding="utf-8")
+        for forbidden in ("<style", "class=", "@import", "<script", "<foreignObject", "<image"):
+            assert forbidden not in svg, (
+                f"{path.name} contains {forbidden!r}, which GitHub's markdown sanitiser removes. "
+                f"Colours and strokes have to be presentation attributes on each element."
+            )
+        # An external font is a font the reader does not get; generic families always resolve.
+        assert "https://" not in svg.replace('xmlns="http://www.w3.org/2000/svg"', ""), (
+            f"{path.name} references something external. Nothing outside the file is fetched "
+            f"when GitHub renders it."
+        )
+        ET.fromstring(svg)

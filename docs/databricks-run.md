@@ -189,8 +189,6 @@ at all, and committing it would have turned a measured table on this page into `
 
 ### What the job decided, from the record
 
-### What the job decided, from the record
-
 | | |
 |---|---|
 | the close's decision | <!--dbx:orch.decision-->restated<!--/dbx--> |
@@ -304,20 +302,10 @@ here; a finding narrated in two places drifts in one of them.
 
 ## If the next command fails
 
-These were the fields predicted to break, kept as written. One of them has since been made
-explicit rather than left to be inferred: `volume_type: MANAGED` is now spelled out, because
-the reference does not mark it required or optional and "the documentation is ambiguous" is
-not a reason to find out at POST time on someone else's workspace.
-
-| symptom | field | what it means |
-|---|---|---|
-| `validate` rejects an unknown field | `development: true` on the pipeline, or `resources.volumes` | the CLI is older than the field. Upgrade the CLI rather than deleting the field: `development` is what stops a failed update retrying into the quota |
-| `deploy` fails on a missing catalog | none | `scripts/databricks_run.sh catalog` did not run, or the token cannot create a catalog. A bundle cannot declare one |
-| the pipeline fails at import with `ModuleNotFoundError: pyspark.pipelines` | the three `libraries.file` sources | the runtime on `channel: CURRENT` does not expose the Spark 4 declarative API under that name. The lane is written against it deliberately - `PARITY.md` explains why - and this is the honest way to find out |
-| `cluster_by_auto` is rejected | `gold_close.py` | automatic liquid clustering needs predictive optimization on the metastore. If Free Edition does not enable it, that belongs in the table above as a limit, not as a workaround |
-| the run finishes and every count is 0 | the `seed` step | nothing was in the landing volume. `databricks fs ls dbfs:/Volumes/<catalog>/raw/landing` says whether the upload happened |
-| `job_run_id` in the record reads `{{job.run_id}}` | `resources/jobs.yml` | the runtime did not recognise that dynamic value reference and passed the text through. The record shows it rather than hiding it behind a blank |
-
+Moved to `docs/runbook.md`, which is the page for it: this document describes what a run
+returned, and a symptom table is read while something is on fire. It is not copied - there is
+one of it, in the runbook, beside what fires the alert, how to tell a data problem from a
+platform one, and how to repair a run without spending the day's quota.
 
 ## What to distrust in this document
 

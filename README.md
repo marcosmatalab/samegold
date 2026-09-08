@@ -18,6 +18,29 @@ were booked as revenue, because the classification read "I cannot answer" as "ac
 not a pipeline that works: it is one whose claims about itself are checkable, with a record of
 every time one of them turned out to be false.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
+  <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; silver_events feeds revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane and the DuckDB reference compute it twice and must agree on one canonical digest." src="docs/img/pipeline-light.svg">
+</picture>
+
+Every table named in that diagram is one the lane actually creates:
+`tests/fast/test_documentation.py::test_the_figures_name_tables_the_lane_actually_creates`
+reads the names out of `databricks/src/` and fails if the picture and the code drift apart. A
+diagram that drifts is the same defect class as a sentence that drifts, and the sentences have
+had a gate since 7 September 2026.
+
+## Why it exists, in one picture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/restatement-dark.svg">
+  <img alt="Timeline: a sale on 5 January, January closes on 5 February at gross 14198046, a return for that January sale arrives on 18 February, and on 5 March January is restated as version 1 while version 0 stays unchanged." src="docs/img/restatement-light.svg">
+</picture>
+
+A return books into the month of the **sale**, not the month it arrived. So a month that
+finance has already signed off can move afterwards - and the version they signed off has to
+still be there, unchanged, next to the one that replaced it. That is what "bitemporal" buys,
+and it is the property `SG-04` measures.
+
 ## Refute it
 
 ```bash
@@ -104,6 +127,7 @@ because of who typed it was never evidence.
 - [`CLAIMS.md`](CLAIMS.md) - every claim, its experiment, and what it does **not** show
 - [`docs/how-it-works.md`](docs/how-it-works.md) - the design: three witnesses, the digest, the evidence gate, what layout costs
 - [`docs/databricks-run.md`](docs/databricks-run.md) - what the cloud lane deploys and what it ran
+- [`docs/runbook.md`](docs/runbook.md) - the alert has fired at three in the morning: what it means, data problem or platform problem, and how to repair a run without spending the day's quota
 - [`docs/limits.md`](docs/limits.md) - what this repository could not verify, and why
 - [`EXAM_MAP.md`](EXAM_MAP.md) - the Databricks Professional guide, objective by objective
 - [`PARITY.md`](PARITY.md) - open-source lane versus Databricks, claim by claim

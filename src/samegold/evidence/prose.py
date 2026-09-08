@@ -32,8 +32,10 @@ failure - so a declared exception cannot outlive the sentence it was written for
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
+import urllib.request
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -106,6 +108,18 @@ class Kind(Enum):
     OUT_OF_SCOPE = "out of scope"
 
 
+# THE EVENT THAT FALSIFIES A MEASURED_TRUE EXEMPTION, named so a test can ask about it.
+#
+# `stale_exemptions` catches an exemption whose SENTENCE moved. It cannot catch one whose WORLD
+# moved, and that is the failure mode these three have: they are true because a workflow has
+# never been dispatched, and the day it is, all of them become false sentences carrying a note
+# that says somebody checked once. Nothing in the document changes, so nothing goes red.
+#
+# This repository cannot check it offline - it is a fact about a remote service, which is why
+# these are exempt at all. CI has a network, so CI is where it is asked.
+DATABRICKS_WORKFLOW_HAS_RUN = "the databricks workflow has been dispatched at least once"
+
+
 @dataclass(frozen=True)
 class Exemption:
     """A sentence that matches one of the shapes above and is nevertheless not a defect.
@@ -124,6 +138,10 @@ class Exemption:
     fragment: str
     kind: Kind
     reason: str
+    # WHAT WOULD MAKE THIS FALSE, for the exemptions where an outside event would. A
+    # MEASURED_TRUE exemption without one is a claim nothing can falsify on a schedule, which is
+    # allowed but rarer than it looks; `expiring_on` is how a test finds the ones that can.
+    expires_when: str | None = None
 
 
 EXEMPTIONS: tuple[Exemption, ...] = (
@@ -131,6 +149,7 @@ EXEMPTIONS: tuple[Exemption, ...] = (
         document="docs/milestones.md",
         fragment="it has never been dispatched",
         kind=Kind.MEASURED_TRUE,
+        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
         reason=(
             "TRUE, and measured on 6 September 2026: the `databricks` workflow is "
             "workflow_dispatch only and the GitHub API reports total_count 0 for its entire "
@@ -149,6 +168,7 @@ EXEMPTIONS: tuple[Exemption, ...] = (
         document="FINDINGS.md",
         fragment="**has never been run**",
         kind=Kind.MEASURED_TRUE,
+        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
         reason=(
             "TRUE, and measured on 8 September 2026: the `databricks` workflow is "
             "workflow_dispatch only and the GitHub API reports total_count 0 for its entire "
@@ -178,6 +198,7 @@ EXEMPTIONS: tuple[Exemption, ...] = (
         document="FINDINGS.md",
         fragment="on a workflow that has never run (this round)",
         kind=Kind.MEASURED_TRUE,
+        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
         reason=(
             "TRUE, and the same measurement as the first FINDINGS.md entry: the `databricks` "
             "workflow reports total_count 0. This is the one-line restatement of that finding "
@@ -336,6 +357,74 @@ def check_document(path: Path, repo: Path) -> list[Drift]:
 def check_documents(repo: Path, documents: list[Path]) -> list[Drift]:
     """Every drifted sentence across the documents, in document order."""
     return [drift for path in documents if path.exists() for drift in check_document(path, repo)]
+
+
+def expiring_on(event: str) -> list[Exemption]:
+    """The exemptions that `event` would make false."""
+    return [e for e in EXEMPTIONS if e.expires_when == event]
+
+
+def expired_exemptions(event: str, has_happened: bool) -> list[Exemption]:
+    """The exemptions `event` has already falsified.
+
+    SPLIT FROM THE ASKING ON PURPOSE. The network supplies one boolean and this decides what it
+    means, so the decision can be tested with the answer forced both ways - which is the only
+    way to know this fires, since the true case cannot be produced on demand: it needs somebody
+    to dispatch a workflow.
+    """
+    return expiring_on(event) if has_happened else []
+
+
+def _origin_slug(repo: Path) -> str | None:
+    """`owner/name` from the origin remote. DERIVED, because a typed slug is a fork's first bug."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    url = out.stdout.strip().removesuffix(".git")
+    if url.startswith("git@") and ":" in url:
+        url = url.split(":", 1)[1]
+    elif "github.com/" in url:
+        url = url.split("github.com/", 1)[1]
+    else:
+        return None
+    parts = [p for p in url.split("/") if p]
+    return "/".join(parts[-2:]) if len(parts) >= 2 else None
+
+
+def databricks_workflow_run_count(repo: Path, timeout: float = 10.0) -> int | None:
+    """How many times `.github/workflows/databricks.yml` has run, or None if it cannot be asked.
+
+    NONE IS NOT ZERO, and the distinction is the whole point. Offline, rate-limited, renamed
+    workflow, no origin remote - every one of those returns None and the caller skips. Only a
+    definite answer from the API is allowed to fail a test, because a check that turns red when
+    the network is unavailable is a check people learn to ignore.
+
+    Unauthenticated: the endpoint is public for a public repository, and a test that needed a
+    token would not run for a contributor.
+    """
+    slug = _origin_slug(repo)
+    if slug is None:
+        return None
+    url = f"https://api.github.com/repos/{slug}/actions/workflows/databricks.yml/runs?per_page=1"
+    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                return None
+            payload = json.load(response)
+    except Exception:
+        return None
+    count = payload.get("total_count")
+    return count if isinstance(count, int) else None
 
 
 def stale_exemptions(repo: Path) -> list[str]:

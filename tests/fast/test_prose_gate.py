@@ -15,7 +15,14 @@ from pathlib import Path
 import pytest
 
 from samegold.evidence.lane_split import split
-from samegold.evidence.prose import check_documents, stale_exemptions
+from samegold.evidence.prose import (
+    DATABRICKS_WORKFLOW_HAS_RUN,
+    check_documents,
+    databricks_workflow_run_count,
+    expired_exemptions,
+    expiring_on,
+    stale_exemptions,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -223,6 +230,62 @@ def test_an_absence_claim_about_a_path_this_checkout_does_not_track_stays_green(
     document = repo / "docs" / "claim.md"
     document.write_text("# A document\n\nThere is no `scratch.md` here.\n", encoding="utf-8")
     assert not check_documents(repo, [document]), "an untracked file is not a path claim"
+
+
+# ------------------------------------------------- the exemption that expires without moving
+#
+# `stale_exemptions` catches an exemption whose SENTENCE moved. It cannot catch one whose WORLD
+# moved, and that is the shape of the three MEASURED_TRUE entries here: they are true because
+# `.github/workflows/databricks.yml` has never been dispatched, and the day it is, all three
+# become false sentences carrying a note saying somebody checked once. Nothing in any document
+# changes, so nothing else in this suite goes red.
+#
+# It cannot be checked offline - it is a fact about a remote service, which is why those
+# sentences are exempt rather than fixed. CI has a network, so CI is where it is asked, and a
+# machine that cannot ask skips instead of failing: a check that goes red when the network is
+# down is a check people learn to ignore.
+
+
+def test_the_expiry_fires_when_the_event_happens() -> None:
+    """BORN SEEN FAILING, with the answer forced, because the true case cannot be arranged.
+
+    Making this go red for real needs somebody to dispatch a workflow against a Free Edition
+    workspace. So the network's single boolean is separated from what it means, and the meaning
+    is tested both ways here - which is what stops the check below from being a line of code
+    that has never once evaluated its own consequent.
+    """
+    expiring = expiring_on(DATABRICKS_WORKFLOW_HAS_RUN)
+    assert expiring, (
+        "no exemption declares that dispatching the databricks workflow would falsify it. "
+        "Either the three MEASURED_TRUE entries lost their `expires_when`, or this event name "
+        "changed and the exemptions were not moved with it."
+    )
+    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=True) == expiring
+    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=False) == []
+
+
+def test_no_exemption_survives_the_run_that_makes_its_sentence_false() -> None:
+    """Asked of the GitHub API, and skipped where it cannot be asked.
+
+    The count is unauthenticated: the endpoint is public for a public repository, and a check
+    that needed a token would not run for a contributor. `None` means "could not ask" - offline,
+    rate-limited, renamed workflow, no origin remote - and never "has not run".
+    """
+    runs = databricks_workflow_run_count(REPO)
+    if runs is None:
+        pytest.skip(
+            "the GitHub API could not be asked for the databricks workflow's run count "
+            "(offline, rate-limited, or no origin remote); CI has a network and asks there"
+        )
+    expired = expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=runs > 0)
+    assert not expired, (
+        f"`.github/workflows/databricks.yml` has now run {runs} time(s), so these exemptions "
+        f"are covering sentences that are no longer true:\n"
+        + "\n".join(f"  {e.document}: {e.fragment!r}" for e in expired)
+        + "\n\nEach one says a workflow has never run. Re-measure the sentence it covers, fix "
+        "the document, and delete the exemption - it was a claim about the present, and the "
+        "present moved."
+    )
 
 
 # ------------------------------------------------------------ what this suite is actually about
