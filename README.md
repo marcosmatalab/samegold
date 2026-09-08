@@ -23,11 +23,18 @@ every time one of them turned out to be false.
   <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; silver_events feeds revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane and the DuckDB reference compute it twice and must agree on one canonical digest." src="docs/img/pipeline-light.svg">
 </picture>
 
-Every table named in that diagram is one the lane actually creates:
-`tests/fast/test_documentation.py::test_the_figures_name_tables_the_lane_actually_creates`
-reads the names out of `databricks/src/` and fails if the picture and the code drift apart. A
-diagram that drifts is the same defect class as a sentence that drifts, and the sentences have
-had a gate since 7 September 2026.
+**That diagram is checked against the code, in three ways.**
+`tests/fast/test_documentation.py::test_the_figures_agree_with_the_repository` derives the
+table names and the reads between them from `databricks/src/` by parsing it, and the money
+figures from `evidence/databricks/SG-DBX-01.json`. A renamed table, a reversed arrow or a
+changed digit each turns it red, and each turns red on its own.
+
+It earned that on the first run: the picture originally drew the tidy chain bronze -> classified
+-> events -> gold, and the lane does not do that. `silver_events` is read from `bronze_events`
+and is a parallel table declared for the event log, and gold reads `silver_classified` - which
+the code says in one line of docstring, and the drawing contradicted. A diagram that drifts is
+the same defect class as a sentence that drifts, and the sentences have had a gate since
+7 September 2026.
 
 ## Why it exists, in one picture
 
