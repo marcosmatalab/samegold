@@ -26,6 +26,39 @@ the ones already done carry their measured cost.
 
 Remaining: about 53 hours.
 
+## What v1.0.0 requires, and what it deliberately does not
+
+**The criterion changed on 8 September 2026, and this section is the change rather than a
+quiet edit.** It previously read as "every remaining milestone", which made the tag a function
+of the backlog's length instead of the project's readiness. Three milestones are now explicitly
+**out of scope for v1.0.0**, and they stay listed above with their hours because dropping them
+from the table would be deleting the estimate rather than deferring the work.
+
+**In scope for the tag:**
+
+| id | why it gates the tag |
+|---|---|
+| M11 | the second implementation has to RUN. Until 8 September the open-source declarative lane was linted, type-checked and executed by nothing, and when it was finally run it did not start - `FINDINGS.md` carries it. A project whose thesis is that two implementations agree cannot tag while one of them has never produced a table |
+| M12 | the cloud lane deploys from CI and carries screenshots. Deploy-from-CI is the last mechanical claim the repository makes about itself that nothing checks |
+| M16 | the runbook, the on-call notes and the restatement alert. `docs/runbook.md` landed on 8 September; the alert is declared and paused, and the threshold work is what remains |
+
+**Out of scope for the tag, and why:**
+
+| id | hours | why it is not a tag blocker |
+|---|---|---|
+| M13 | 8 | grants and masks deployed with a drift test. Real work, and what it buys is **exam-syllabus coverage**: `databricks/sql/policies.sql` is already written, parsed and explained, and a reviewer reading this repository learns nothing new from it being applied to a workspace that has one account group containing one person |
+| M14 | 8 | the duplicate-escape measurement. The most interesting of the three, and still not a tag blocker: the property it measures is already **stated** as a limit (silver is append-only and may hold duplicates; uniqueness is enforced at the gold boundary), and the size of the effect changes a number in `docs/limits.md` rather than anything a reviewer sees about the project |
+| M15 | 4 | a pandas UDF and a Python UDF where they are genuinely the right tool. Syllabus coverage by construction - the phrase "where they are genuinely the right tool" is doing the work, and nothing in this close needs one |
+
+**The criterion, stated so it can be argued with:** a milestone gates v1.0.0 if leaving it
+undone would make something this repository *claims* unchecked, or would leave a reviewer
+reading a sentence the code does not support. It does not gate the tag merely because it
+appears on an exam syllabus. M13, M14 and M15 buy breadth of topic coverage; M11, M12 and M16
+buy the difference between a claim and a checked claim.
+
+That is **20 of the 53 hours declared as future work**, and the three remain in the table above
+with their estimates so the total is still honest about what is unbuilt.
+
 ## Order and why
 
 M10 before M11 because a declarative pipeline that writes Parquet instead of Delta is a
