@@ -227,74 +227,271 @@ def test_every_diagram_is_structurally_a_diagram(document: Path, index: int, sou
 
 # ------------------------------------------------------ the diagram is checked like a sentence
 #
-# The repository had no images at all until 8 September 2026, and a reviewer decides in thirty
-# seconds. Two SVGs is the whole budget, and both are hand-written and committed rather than
-# exported, so a change to one is a diff and not a new binary.
+# A figure makes three kinds of claim, and only one of them was gated when the figures landed:
 #
-# The risk a picture adds is the one this repository already has a gate for one document along:
-# a diagram is prose with boxes, and it goes stale the same way. `docs/databricks-run.md` said
-# `NOT RUN` beside twenty measured anchors for four days because nothing read the sentence. A
-# figure naming `silver_events` after somebody renamed the table would be the same defect with
-# better typography.
+#   NAMES   the boxes name tables the lane creates          - checked from the first commit
+#   EDGES   the arrows are reads the lane actually does     - found by rendering it and looking,
+#                                                             which is not a gate
+#   NUMBERS the digits drawn are the digits in the record   - typed, in a repository that has
+#                                                             rendered anchors for exactly this
 #
-# So the table names in figure 1 are read out of the CODE THAT DECLARES THEM. Two sources,
-# because this lane has two ways of creating a table: the `name=`/`target=` keyword of a
-# declarative-pipeline decorator, and a `CREATE TABLE` in the close notebook's SQL.
+# All three are checked here, from the repository rather than from a literal: names and edges
+# out of `databricks/src/` by AST, numbers out of the canonical evidence record. A number
+# compared against a constant in this file would only have moved the typed digit from the SVG
+# into the Python.
+#
+# The edges property earned its place immediately. The first figure drew the chain
+# bronze -> classified -> events -> gold, which reads well and is wrong three times: the lane
+# reads `silver_events` from `bronze_events`, and gold reads `silver_classified`. The docstring
+# on `silver_events` says "Gold reads `silver_classified`, not this one" and the picture said
+# otherwise, because nothing compared them.
+#
+# ONE test, three properties, each failing on its own: a renamed table reddens NAMES, a
+# reversed arrow reddens EDGES, a changed digit reddens NUMBERS, and none of the three reddens
+# another. A mutation that reddens two would mean this is checking one thing badly rather than
+# three things.
 
 
-def _tables_the_lane_declares() -> set[str]:
-    """Every table name `databricks/src/` creates, from the two ways it creates one."""
-    names: set[str] = set()
-    for path in sorted((REPO / "databricks" / "src").glob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        # `@dp.table(name="...")`, `dp.create_streaming_table(name="...")`,
-        # `dp.create_auto_cdc_flow(target="...")` - parsed, not grepped, so a name inside a
-        # comment or a docstring cannot satisfy this.
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Call):
-                continue
-            for keyword in node.keywords:
-                if keyword.arg not in {"name", "target"}:
-                    continue
-                value = keyword.value
-                if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                    names.add(value.value)
-        # `CREATE TABLE IF NOT EXISTS {catalog}.main.revenue_closed (` - the close notebook
-        # writes its own table in SQL rather than declaring it, and a figure that named it
-        # would otherwise be unchecked.
-        names.update(re.findall(r"CREATE TABLE IF NOT EXISTS \{catalog\}\.\w+\.(\w+)", source))
-    return names
+def _digits_only(text: str) -> str:
+    """`14 198 046` -> `14198046`. ONE place, because two would disagree eventually.
+
+    The figures group digits for a reader and the record stores an integer, so the two can only
+    be compared through a normaliser. It is here, it is used by nothing else, and
+    `test_the_digit_normaliser` is its own case - a comparison whose normaliser is untested
+    passes for the wrong reason the day the grouping character changes.
+    """
+    return re.sub(r"[\s\u00a0\u202f]", "", text)
 
 
-FIGURES = ("pipeline-light.svg", "pipeline-dark.svg")
+@pytest.mark.parametrize(
+    ("grouped", "expected"),
+    [
+        ("14 198 046", "14198046"),
+        ("25 582 615", "25582615"),
+        ("199 379", "199379"),
+        ("14\u00a0198\u00a0046", "14198046"),  # a non-breaking space groups too
+        ("1158", "1158"),
+        ("", ""),
+    ],
+)
+def test_the_digit_normaliser(grouped: str, expected: str) -> None:
+    """The one place grouped digits become comparable, with its own cases."""
+    assert _digits_only(grouped) == expected
+
+
+FIGURES = (
+    "pipeline-light.svg",
+    "pipeline-dark.svg",
+    "restatement-light.svg",
+    "restatement-dark.svg",
+)
 
 
 @pytest.mark.parametrize("figure", FIGURES)
-def test_the_figures_name_tables_the_lane_actually_creates(figure: str) -> None:
-    """Every monospaced table name in figure 1 is a table `databricks/src/` declares.
+@pytest.mark.evidence_dependent
+def test_the_figures_agree_with_the_repository(figure: str) -> None:
+    """Three properties of one picture, each falsifiable on its own.
 
-    The direction that matters is figure -> code: a diagram may leave a table out, but it may
-    not name one that does not exist. A rename that misses the picture fails here.
+    The direction is figure -> repository throughout: a diagram may leave a table, an edge or a
+    figure out, and may not invent one. Omission is editorial; invention is a false statement
+    with better typography.
     """
-    svg = (REPO / "docs" / "img" / figure).read_text(encoding="utf-8")
-    declared = _tables_the_lane_declares()
-    assert declared, "no table names were parsed out of databricks/src/ - the reader is broken"
+    svg = _figure(figure)
+    tables, lane_edges = _lane_tables_and_edges()
+    assert tables and lane_edges, "nothing was parsed out of databricks/src/; the reader broke"
+    failures: list[str] = []
 
-    # The names drawn in the figure: snake_case words, which is how this lane spells a table
-    # and how nothing else in the diagram is spelled.
-    drawn = {
-        text
-        for text in re.findall(r">([a-z][a-z0-9_]*)<", svg)
-        if "_" in text and not text.startswith("a-")
+    # ---- NAMES. A box names a table; free text is prose. `order_placed` is an event type
+    # drawn beside a timeline, and reading it as a table would make the figure claim something
+    # it never says.
+    drawn_names = {
+        text for text in _boxes(svg) if "_" in text and re.fullmatch(r"[a-z][a-z0-9_]*", text)
     }
-    assert drawn, f"{figure} names no tables at all; the figure or this reader has changed"
+    invented = sorted(drawn_names - tables)
+    if invented:
+        failures.append(
+            f"NAMES: {figure} names {invented}, which databricks/src/ does not create. Either "
+            f"a table was renamed and the picture was not, or the picture invented a name. "
+            f"The lane declares {sorted(tables)}."
+        )
 
-    unknown = sorted(drawn - declared)
-    assert not unknown, (
-        f"{figure} names {unknown}, which databricks/src/ does not create. Either the table was "
-        f"renamed and the picture was not, or the picture invented a name. The lane declares: "
-        f"{sorted(declared)}"
+    # ---- EDGES
+    wrong = sorted(_drawn_edges(svg, tables) - lane_edges)
+    if wrong:
+        failures.append(
+            f"EDGES: {figure} draws {wrong}, which the lane does not read. The reads it does "
+            f"are {sorted(lane_edges)}. An arrow is a claim about the dataflow; a wrong one is "
+            f"a false statement that renders beautifully."
+        )
+
+    # ---- NUMBERS
+    known = _record_numbers()
+    for grouped in _drawn_numbers(svg):
+        digits = _digits_only(grouped)
+        if digits not in known:
+            failures.append(
+                f"NUMBERS: {figure} draws {grouped!r} ({digits}), which is not a value in "
+                f"evidence/databricks/SG-DBX-01.json. Figures quote the record like every "
+                f"other published figure here, or they go stale where nobody is looking."
+            )
+
+    assert not failures, "\n\n".join(failures)
+
+
+def _lane_tables_and_edges() -> tuple[set[str], set[tuple[str, str]]]:
+    """What `databricks/src/` declares: the table names, and the reads between them.
+
+    Parsed, never grepped, so a name in a comment or a docstring cannot satisfy either. Two
+    ways this lane creates a table and two ways it reads one:
+
+      * created by the `name=` keyword of a pipeline decorator, by the `target=` of an AUTO CDC
+        flow, or by a `CREATE TABLE` in the close notebook's SQL;
+      * read by `spark.readStream.table("x")`, by the `source=` of an AUTO CDC flow, or by a
+        `FROM x` inside a `spark.sql` string - which is how `revenue_by_month` reads, and
+        leaving it out would have made the busiest table in the figure edgeless.
+    """
+    names: set[str] = set()
+    edges: set[tuple[str, str]] = set()
+
+    def read_by(node: ast.AST) -> set[str]:
+        found: set[str] = set()
+        for inner in ast.walk(node):
+            if not isinstance(inner, ast.Call):
+                continue
+            if isinstance(inner.func, ast.Attribute) and inner.func.attr == "table":
+                for arg in inner.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        found.add(arg.value)
+            for arg in inner.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    found.update(re.findall(r"\bFROM\s+([a-z][a-z0-9_]*)", arg.value))
+        return found
+
+    for path in sorted((REPO / "databricks" / "src").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        names.update(re.findall(r"CREATE TABLE IF NOT EXISTS \{catalog\}\.\w+\.(\w+)", source))
+
+        for node in ast.walk(tree):
+            # A bare `dp.create_auto_cdc_flow(target=..., source=...)` is an edge on its own.
+            if isinstance(node, ast.Call):
+                kw = {k.arg: k.value for k in node.keywords}
+                target, sourced = kw.get("target"), kw.get("source")
+                if isinstance(target, ast.Constant) and isinstance(target.value, str):
+                    names.add(target.value)
+                    if isinstance(sourced, ast.Constant) and isinstance(sourced.value, str):
+                        edges.add((sourced.value, target.value))
+                nm = kw.get("name")
+                if isinstance(nm, ast.Constant) and isinstance(nm.value, str):
+                    names.add(nm.value)
+
+            # A decorated function produces a table and reads the ones in its body.
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                produced = None
+                for decorator in node.decorator_list:
+                    if not isinstance(decorator, ast.Call):
+                        continue
+                    for keyword in decorator.keywords:
+                        if keyword.arg in {"name", "target"} and isinstance(
+                            keyword.value, ast.Constant
+                        ):
+                            produced = keyword.value.value
+                if isinstance(produced, str):
+                    edges.update((src, produced) for src in read_by(node))
+
+    return names, edges
+
+
+def _figure(name: str) -> str:
+    return (REPO / "docs" / "img" / name).read_text(encoding="utf-8")
+
+
+def _boxes(svg: str) -> dict[str, tuple[float, float, float, float]]:
+    """Every labelled box, as name -> (x, y, w, h). A label is the text inside a rect."""
+    rects = [
+        (float(m[0]), float(m[1]), float(m[2]), float(m[3]))
+        for m in re.findall(
+            r'<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg
+        )
+    ]
+    out: dict[str, tuple[float, float, float, float]] = {}
+    for tx, ty, text in re.findall(r'<text x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]+)</text>', svg):
+        x, y = float(tx), float(ty)
+        for rx, ry, rw, rh in rects:
+            if rx <= x <= rx + rw and ry <= y <= ry + rh:
+                out.setdefault(text.strip(), (rx, ry, rw, rh))
+                break
+    return out
+
+
+def _touches(point: tuple[float, float], geometry: tuple[float, float, float, float]) -> bool:
+    """Is this point on the boundary of that box? Arrows are drawn edge to edge."""
+    px, py = point
+    x, y, w, h = geometry
+    eps = 1.5
+    inside_x = x - eps <= px <= x + w + eps
+    inside_y = y - eps <= py <= y + h + eps
+    on_vertical = abs(px - x) <= eps or abs(px - (x + w)) <= eps
+    on_horizontal = abs(py - y) <= eps or abs(py - (y + h)) <= eps
+    return (inside_x and inside_y) and (on_vertical or on_horizontal)
+
+
+def _drawn_edges(svg: str, tables: set[str]) -> set[tuple[str, str]]:
+    """Arrows whose two ends are both lane tables. Others are not claims about the dataflow."""
+    boxes = {name: geometry for name, geometry in _boxes(svg).items() if name in tables}
+    drawn: set[tuple[str, str]] = set()
+    for d in re.findall(r'<path d="([^"]+)"[^>]*marker-end', svg):
+        points = [(float(a), float(b)) for a, b in re.findall(r"[ML]\s+([\d.-]+)\s+([\d.-]+)", d)]
+        if len(points) < 2:
+            continue
+        starts = [n for n, g in boxes.items() if _touches(points[0], g)]
+        ends = [n for n, g in boxes.items() if _touches(points[-1], g)]
+        if len(starts) == 1 and len(ends) == 1 and starts[0] != ends[0]:
+            drawn.add((starts[0], ends[0]))
+    return drawn
+
+
+# A figure quotes a money figure grouped (`14 198 046`) or bare. Both are ANCHORED, so a label
+# like `v0  14 198 046` yields the amount and not `014198046` - which is what the first version
+# of this extracted, reporting a failure about itself rather than about the picture.
+_GROUPED = re.compile(r"(?<!\w)(\d{1,3}(?:[\s\u00a0\u202f]\d{3})+)(?!\w)")
+_BARE = re.compile(r"(?<![\w.])(\d{5,})(?![\w.])")
+
+
+def _drawn_numbers(svg: str) -> set[str]:
+    """Every money-sized figure drawn in the picture, grouped or bare.
+
+    Five digits is the floor for an ungrouped run so that a year is never read as a
+    measurement.
+    """
+    found: set[str] = set()
+    for text in re.findall(r">([^<>]+)<", svg):
+        found.update(_GROUPED.findall(text))
+        found.update(_BARE.findall(text))
+    return found
+
+
+def _record_numbers() -> set[str]:
+    """Every integer the canonical Databricks record holds, as a string of digits."""
+    record = json.loads(
+        (REPO / "evidence" / "databricks" / "SG-DBX-01.json").read_text(encoding="utf-8")
     )
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, bool):
+            return
+        if isinstance(node, int):
+            found.add(str(node))
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(record)
+    return found
 
 
 def test_the_two_themes_of_a_figure_say_exactly_the_same_thing() -> None:
@@ -305,8 +502,8 @@ def test_the_two_themes_of_a_figure_say_exactly_the_same_thing() -> None:
     not. This is what stops a correction landing in the theme the author happens to use.
     """
     for name in ("pipeline", "restatement"):
-        light = (REPO / "docs" / "img" / f"{name}-light.svg").read_text(encoding="utf-8")
-        dark = (REPO / "docs" / "img" / f"{name}-dark.svg").read_text(encoding="utf-8")
+        light = _figure(f"{name}-light.svg")
+        dark = _figure(f"{name}-dark.svg")
         assert re.findall(r">([^<>]+)<", light) == re.findall(r">([^<>]+)<", dark), (
             f"{name}-light.svg and {name}-dark.svg carry different text. They are one diagram "
             f"in two palettes; edit both or neither."
@@ -324,10 +521,9 @@ def test_the_figures_survive_the_markdown_sanitiser() -> None:
         svg = path.read_text(encoding="utf-8")
         for forbidden in ("<style", "class=", "@import", "<script", "<foreignObject", "<image"):
             assert forbidden not in svg, (
-                f"{path.name} contains {forbidden!r}, which GitHub's markdown sanitiser removes. "
-                f"Colours and strokes have to be presentation attributes on each element."
+                f"{path.name} contains {forbidden!r}, which GitHub's markdown sanitiser "
+                f"removes. Colours and strokes must be presentation attributes on each element."
             )
-        # An external font is a font the reader does not get; generic families always resolve.
         assert "https://" not in svg.replace('xmlns="http://www.w3.org/2000/svg"', ""), (
             f"{path.name} references something external. Nothing outside the file is fetched "
             f"when GitHub renders it."
