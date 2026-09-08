@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 360" width="920" height="360" role="img" aria-label="Timeline: a sale on 5 January, January closes on 5 February at gross 14198046, a return for that January sale arrives on 18 February, and on 5 March January is restated as version 1 while version 0 stays unchanged.">
+<defs><marker id="a-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8c959f"/></marker><marker id="a-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0969da"/></marker><marker id="a-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#cf222e"/></marker><marker id="a-gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8250df"/></marker><marker id="a-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a7f37"/></marker></defs>
+<rect width="920" height="360" fill="#ffffff"/>
+<text x="28" y="30" fill="#1f2328" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" text-anchor="start" font-weight="600">Why this project exists: a return that arrives after the close</text>
+<text x="28" y="50" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" text-anchor="start">The month is signed off. Then the world changes something that already happened.</text>
+<path d="M 40 150 L 880 150" stroke="#8c959f" stroke-width="1.6" marker-end="url(#a-line)"/>
+<path d="M 120 142 L 120 124" stroke="#1a7f37" stroke-width="1.4" fill="none"/>
+<circle cx="120" cy="150" r="6" fill="#1a7f37" stroke="#ffffff" stroke-width="2"/>
+<text x="120" y="94" fill="#1f2328" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" text-anchor="middle" font-weight="600">a sale</text>
+<text x="120" y="112" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="middle">order_placed</text>
+<text x="120" y="172" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle">5 Jan</text>
+<path d="M 330 142 L 330 124" stroke="#0969da" stroke-width="1.4" fill="none"/>
+<circle cx="330" cy="150" r="6" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="330" y="94" fill="#1f2328" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" text-anchor="middle" font-weight="600">January closes</text>
+<text x="330" y="112" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="middle">gross 14 198 046</text>
+<text x="330" y="172" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle">5 Feb</text>
+<path d="M 560 142 L 560 124" stroke="#cf222e" stroke-width="1.4" fill="none"/>
+<circle cx="560" cy="150" r="6" fill="#cf222e" stroke="#ffffff" stroke-width="2"/>
+<text x="560" y="94" fill="#1f2328" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" text-anchor="middle" font-weight="600">a return arrives</text>
+<text x="560" y="112" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="middle">for the January sale</text>
+<text x="560" y="172" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle">18 Feb</text>
+<path d="M 770 142 L 770 124" stroke="#8250df" stroke-width="1.4" fill="none"/>
+<circle cx="770" cy="150" r="6" fill="#8250df" stroke="#ffffff" stroke-width="2"/>
+<text x="770" y="94" fill="#1f2328" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" text-anchor="middle" font-weight="600">January is restated</text>
+<text x="770" y="112" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="middle">v1, and v0 untouched</text>
+<text x="770" y="172" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle">5 Mar</text>
+<path d="M 560 190 C 560 254, 120 254, 120 192" stroke="#cf222e" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#a-bad)"/>
+<text x="340" y="272" fill="#cf222e" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">a return books into the month of its SALE, not the month it arrived</text>
+<rect x="612" y="202" width="268" height="66" rx="6" fill="#eaeef2" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="628" y="224" fill="#1f2328" font-family="ui-monospace, monospace" font-size="12" text-anchor="start" font-weight="600">revenue_closed</text>
+<text x="628" y="243" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="start">v0  14 198 046   frozen, still queryable</text>
+<text x="628" y="260" fill="#656d76" font-family="ui-monospace, monospace" font-size="11" text-anchor="start">v1  25 582 615   restated_at set</text>
+<text x="28" y="336" fill="#656d76" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" text-anchor="start">The version finance signed off is never rewritten. That is the property the whole repository is built to prove.</text>
+</svg>
