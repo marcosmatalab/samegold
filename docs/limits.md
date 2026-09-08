@@ -254,6 +254,49 @@ ordinary case, not an adversarial one.
 So the gate raises the cost of one specific way of being wrong. It does not lower the cost of
 reading the documents, and a green fast lane is not evidence that these pages are true.
 
+## The credential in CI is a personal token, because the free tier has no other kind
+
+Stated here rather than in a commit message, because it is a standing property of how this
+repository is deployed and a reviewer is entitled to see it without reading git history.
+
+**What is in CI.** `.github/workflows/databricks.yml` authenticates with a Databricks
+**personal access token**, held in a GitHub *environment* named `databricks` together with the
+workspace host. It is dispatch-only, it never starts compute, and the token is issued with an
+expiry.
+
+**Why a personal one.** Free Edition has no account console, and therefore:
+
+| what a workspace would normally use | why it is unavailable here |
+|---|---|
+| a service principal with a scoped role | service principals are an account-level object; Free Edition exposes no account API |
+| OAuth machine-to-machine credentials | same reason - they are issued against an account |
+| a token scoped to one catalog or one job | Free Edition's PATs carry the user's own authority, whole |
+
+So the credential in CI has **the same authority over the workspace as the person who issued
+it**. That is not a design decision and it is not defended as one: it is the only kind of
+credential this tier can produce, and the alternative is a lane that cannot be deployed from CI
+at all.
+
+**What is done about it, given that.** Four narrowings, none of which changes the paragraph
+above:
+
+- it lives in a GitHub **environment**, not in repository secrets. A repository secret is
+  readable by every workflow in the repository, including one added later by a change nobody
+  read closely; an environment secret is readable only by a job that names that environment;
+- the workflow is `workflow_dispatch` only - no `push`, no `schedule` - and there is no
+  `pull_request_target` anywhere in this repository, which is the trigger that would run a
+  fork's code against these secrets;
+- its actions are pinned to **commit SHAs**. A tag is a mutable pointer, and moving one is the
+  realistic way a token leaves a repository;
+- it can `validate` and `deploy`, and there is no input that makes it `run`. A deploy uploads
+  definitions; a run spends the day's compute quota.
+
+**The residual, plainly.** A workspace-wide token exists, in a public repository's CI
+configuration, guarded by GitHub's environment protection and by an expiry date. If it leaks,
+the workspace is compromised, and rotating it is the only remedy. `docs/runbook.md` carries
+what to do the day it expires - which will happen, and is the expected end of its life rather
+than an incident.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not
