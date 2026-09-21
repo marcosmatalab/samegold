@@ -2,16 +2,16 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "779eae79fd02b3e8c418418706db4007",
-      "5ee85a5423cdfa610237e31f58ab5c4c",
-      "8d907d73f9668fc04f6eedf872461093"
+      "95e9db50b25021ddd0bcccf07f91ee4c",
+      "e64b66cc69f00535974fc4c81e9de4e7",
+      "2e1e8a20ca5aaa7751a5da19922ce5d0"
     ]
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
   "claim_id": "SG-05",
   "environment": {
-    "delta_rs": "1.6.3",
+    "delta_rs": "1.6.4",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
@@ -20,11 +20,11 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "25f6311863d30c4731579e82e6845275",
+  "hash": "cbe9303263a1b4c426dceb9ab739dea9",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "0687287ad02870dd3b031c3abe3745b4",
+  "prev": "b5f03718ba692e39446f5abd734a35ed",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 4.432,
+      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+      "duration_s": 2.68,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        10007348130109661132,
-        15853290183792886296,
-        16275010448062782664
+        566218849428236509,
+        5850623954038814887,
+        15140611013430842673
       ],
-      "started_at": "2026-09-03T23:02:10+00:00",
+      "started_at": "2026-09-21T10:04:08+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
     }
   }
 }

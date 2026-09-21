@@ -3,11 +3,11 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/33815591122",
+  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
   "claim_id": "SG-02",
   "environment": {
-    "delta_rs": "1.6.3",
+    "delta_rs": "1.6.4",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
@@ -16,12 +16,12 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "c69f3d50137026ce7cf4d29103e2f7e2",
+  "hash": "326ba2f384ab8de2da55d6b075dacea6",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "bead14b7b11227e99d1028c3c48ae0c7",
+  "prev": "f43f092b9158e00b6652d75c9c8990f9",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "4200be34b9af9dc2d19e4fdf07775b6644e15f9d",
-      "duration_s": 6.553,
+      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+      "duration_s": 3.935,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        17231547605419164549,
-        15949760983791629419,
-        4774740153470721441
+        16263132534951923977,
+        2872856479665480637,
+        14208131205871191713
       ],
-      "started_at": "2026-09-03T23:00:47+00:00",
+      "started_at": "2026-09-21T10:03:17+00:00",
       "tree_dirty": false,
-      "tree_sha": "18e8c4ed1f3099a92caa62c1dd5e86def917a879"
+      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
     }
   }
 }
