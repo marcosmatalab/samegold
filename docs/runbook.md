@@ -176,6 +176,58 @@ time on someone else's workspace.
 
 ---
 
+## 5b. `lineage mismatch in state files`
+
+Every bundle command except `validate` refuses:
+
+```console
+Error: lineage mismatch in state files
+
+Available state files:
+- terraform.tfstate: remote terraform state serial=1 lineage="01006fb3-..."
+- resources.json:    remote direct state    serial=9 lineage="3c04fd56-..."
+```
+
+**What it means.** The workspace holds two deployment states that disagree about which
+deployment they describe. From v1.x the CLI's DIRECT engine is the default and keeps
+`resources.json`; the Terraform engine keeps `terraform.tfstate`. A CLI from a generation that
+knows only Terraform cannot see the direct state, so a failed deploy from one can leave a
+fresh `terraform.tfstate` beside the real one. That is how this happened on 22 September 2026:
+run 35756907303 ran a v0.221 CLI against a workspace whose state a v1.14 CLI owned.
+
+**`validate` still passes**, and that is the trap. A green validate says the bundle resolves
+and the credentials work; it says nothing about the state, so this can sit there unnoticed
+until the next deploy.
+
+**Find out which file is the stale one before deleting anything.**
+
+```bash
+databricks workspace list /Users/<you>/.bundle/samegold/free/state -o json
+```
+
+Read the two files' `modified_at`, and read the two serials out of the error above. The stale
+one is the file whose serial is low and whose timestamp matches a deploy that FAILED - a
+deployment that has really happened many times has a high serial. Cross-check the timestamp
+against `gh run list --workflow=databricks.yml`: if it lands on a failed run, that run wrote it.
+
+**Then remove the stale one, and only that one.**
+
+```bash
+databricks workspace delete /Users/<you>/.bundle/samegold/free/state/terraform.tfstate
+```
+
+Substitute the file the check above identified. Deleting the WRONG one loses the record of
+what is deployed, and the next deploy will try to create resources that already exist - which
+for the pipeline means a name collision, and for anything else means a duplicate.
+
+**Nothing in the workspace's data is touched by this.** A state file describes what was
+deployed; it is not the deployment. The pipeline, its updates and the tables are untouched, and
+the pipeline id that `FINDINGS.md` cites is unaffected.
+
+**Afterwards**, `scripts/databricks_run.sh deploy-definitions` prints the plan and refuses if
+any resource would lose its id, so the first deploy after a state repair is the one occasion
+when reading that plan matters most.
+
 ## 6. When it is over
 
 - If it was a **data** problem: the finding goes in `FINDINGS.md` with its defect class, and any

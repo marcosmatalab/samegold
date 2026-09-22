@@ -2151,3 +2151,40 @@ def test_the_secrets_come_from_an_environment_and_not_from_the_repository() -> N
         "the bundle job does not name an environment, so its secrets would have to be "
         "repository-wide - reachable by every other workflow in this repository"
     )
+
+
+def test_the_deploy_asks_for_a_plan_exactly_once() -> None:
+    """One invocation, because a second one is unguarded by construction.
+
+    The refusing plan was added to `step_deploy` and the earlier version of it - the one that
+    printed the plan and carried on - was left in place below. Both ran. The guard still
+    refused, so every test of the guard passed, and the second invocation sat there costing a
+    round trip and ending in `|| echo "(this CLI has no bundle plan)"` - a message that was
+    printed, in a real CI log, about a CLI that has `bundle plan` and had failed for an
+    entirely different reason.
+
+    That is this repository's own recurring defect wearing a shell script: a line whose text
+    describes one thing and whose condition describes another. Counting the invocations is the
+    cheapest check that says the guarded one is the only one.
+    """
+    script = (Path(__file__).resolve().parents[2] / "scripts" / "databricks_run.sh").read_text(
+        encoding="utf-8"
+    )
+    # Every CLI call in this script is made the same way, `(cd "$BUNDLE" && databricks ...)`,
+    # so that is what an invocation is. Matching the words alone counted the two `die` messages
+    # that QUOTE the command in order to explain why it failed - a first version of this test
+    # failed on its own error text, which is the same shape of mistake it exists to catch.
+    invocations = [
+        line
+        for line in script.splitlines()
+        if "databricks bundle plan" in line and 'cd "$BUNDLE"' in line
+    ]
+    assert len(invocations) == 1, (
+        f"scripts/databricks_run.sh invokes `databricks bundle plan` {len(invocations)} "
+        f"times: {invocations}. Only the one whose result is READ may exist; a second call "
+        f"is a round trip whose answer nothing acts on."
+    )
+    assert "-o json" in invocations[0], (
+        "the plan is parsed, so it must be asked for as JSON: the text summary is a format "
+        "the CLI is free to change and this script would be grepping it."
+    )
