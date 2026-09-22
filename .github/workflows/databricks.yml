@@ -59,10 +59,28 @@ on:
 permissions:
   contents: read
 
+# ONE AT A TIME, AND THE RUNNING ONE WINS. A workspace is not a build: two deploys against one
+# Free Edition workspace interleave their uploads, and the loser of that race leaves the bundle
+# half-written with no error anywhere. `cancel-in-progress: false` on purpose - cancelling a
+# deploy mid-upload is the one way to get a workspace state that matches no commit, which is
+# the "the workspace ran what was deployed, and nobody had deployed" finding in FINDINGS.md
+# arriving by a different road.
+concurrency:
+  group: databricks-workspace
+  cancel-in-progress: false
+
 jobs:
   bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # NOT IN A FORK. There is no `pull_request` trigger here and
+    # tests/fast/test_databricks_bundle.py refuses to let one be added, so this guard is not
+    # what stops a fork's pull request reaching the token - the absence of the trigger is. It
+    # is here for the case the trigger list does not cover: somebody forks this repository,
+    # dispatches the workflow in their copy, and the secret names resolve to whatever they
+    # happen to have under those names. A job that is skipped says so in the UI; a job that
+    # runs against a workspace the author did not mean to touch says nothing at all.
+    if: github.repository == 'marcosmatalab/samegold'
     # The environment is the access control. Without this line the secrets below resolve to
     # empty strings and the CLI fails at authentication, which is the shape of the failure
     # measured on 8 September 2026 when the environment did not yet exist.

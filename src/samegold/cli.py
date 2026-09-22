@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from samegold import claims as claim_module
@@ -142,6 +142,7 @@ def _run_claims(
     work: Path,
     evidence_dir: str | Path = "",
     repetitions: int = 3,
+    chain_head: str | None = None,
 ) -> Iterator[EvidenceRecord]:
     """Yields one record at a time.
 
@@ -171,7 +172,7 @@ def _run_claims(
         elif name == "SG-07":
             records.append(claim_module.claim_crash_campaign(work, repetitions=repetitions))
         elif name == "SG-06":
-            records.append(claim_module.claim_seed_provenance(Path(evidence_dir)))
+            records.append(claim_module.claim_seed_provenance(Path(evidence_dir), up_to=chain_head))
         else:
             raise UserError(
                 f"unknown claim {name}",
@@ -326,8 +327,8 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
 
     work = _work_dir(args.work)
 
-    def run_claim(claim_id: str, sha: str, profile: str) -> dict[str, object]:
-        """One claim, with its seeds pinned to the commit and its profile taken from the record.
+    def run_claim(claim_id: str, record: Mapping[str, object]) -> dict[str, object]:
+        """One claim, re-run the way the record it must reproduce says it was run.
 
         The pin is what makes this a recomputation rather than a fresh measurement: the
         record was written at the commit the evidence job ran on, HEAD is at least two commits
@@ -336,10 +337,21 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
         the pin can never enter the chain - `seed_source` reports "pinned" and the store
         refuses it - and this command appends nothing in any case.
         """
+
+        def section(name: str, of: Mapping[str, object]) -> Mapping[str, object]:
+            value = of.get(name, {})
+            return value if isinstance(value, Mapping) else {}
+
+        runs = section("runs", section("verdict", record))
+        sha = str(runs.get("commit_sha", ""))
+        profile = str(runs.get("profile") or "")
+        # SG-06's denominator is the length of the chain, and the chain grows. The record
+        # names the head it was measured over so that re-running it asks the same question.
+        chain_head = str(section("artifacts", record).get("chain_head", "")) or None
         previous = os.environ.get(seeds_module.SEED_COMMIT_ENV)
         os.environ[seeds_module.SEED_COMMIT_ENV] = sha
         try:
-            record = next(
+            fresh = next(
                 iter(
                     _run_claims(
                         [claim_id],
@@ -352,6 +364,7 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
                         work,
                         REPO_ROOT / "evidence",
                         repetitions=args.repetitions,
+                        chain_head=chain_head,
                     )
                 )
             )
@@ -360,7 +373,7 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
                 os.environ.pop(seeds_module.SEED_COMMIT_ENV, None)
             else:
                 os.environ[seeds_module.SEED_COMMIT_ENV] = previous
-        return record.to_json()
+        return fresh.to_json()
 
     try:
         result = reproduce.reproduce_latest(

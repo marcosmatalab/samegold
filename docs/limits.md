@@ -326,6 +326,22 @@ needs a JVM and about ten minutes. Both can be forced with `--claims`. The summa
 what it recomputed before it says anything reassuring, so a run that recomputed nothing cannot
 print "every published figure reproduces".
 
+## The ADR rule checks that a command exists, not that it exists where the ADR says
+
+The fourth rule in `samegold.evidence.prose` fails an accepted ADR that quotes a command the
+implementation does not run. It was written after ADR 0014 sat on `main` describing an
+auto-merge that was in no workflow.
+
+It does not catch the other half of the same week. ADR 0011 said `samegold verify-latest` ran
+"as a step in `fast.yml`, in `evidence.yml` before the record is pushed, and in
+`make preflight`", and it was in two of those three. The rule asks whether the command is
+anywhere in the implementation; it was, in `fast.yml`, so the rule was satisfied by a file the
+sentence was not about. Checking a command against the FILE an ADR names is a further rule
+nobody has written.
+
+What found it was reading the workflow. `docs/findings/the-gate-found-three-things-and-two-were-its-own.md`
+is the write-up.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

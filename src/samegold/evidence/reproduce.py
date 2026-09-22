@@ -69,15 +69,6 @@ NOT_BY_DEFAULT = {
         "lane rather than to this one. `samegold verify-latest --claims SG-07` runs it where "
         "a JVM exists."
     ),
-    "SG-06": (
-        "its rate counts the records in the chain, and the chain has grown since it was "
-        "written - by its own record, at least. Re-running it would compare the length of the "
-        "history then against the length of the history now, which is arithmetic about time "
-        "rather than about truth: it can never reproduce and its failing would mean nothing. "
-        "What checks it instead is `samegold check`, which re-verifies every record in the "
-        "chain on every run of the fast lane, and the arithmetic rule below, which holds its "
-        "rate to the `records_verified` and `chain_breaks` it published."
-    ),
 }
 
 
@@ -175,7 +166,7 @@ def code_moved_since(repo_root: Path, sha: str, head: str) -> list[str]:
 
 def reproduce_latest(
     latest: Mapping[str, Mapping[str, Any]],
-    run_claim: Callable[[str, str, str], Mapping[str, Any]],
+    run_claim: Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
     *,
     repo_root: Path,
     claim_ids: Sequence[str] | None = None,
@@ -183,10 +174,16 @@ def reproduce_latest(
 ) -> Reproduction:
     """Re-run each claim from the seeds its own most recent record names, and compare.
 
-    `run_claim` takes the claim id, the commit sha to pin the seeds to and the PROFILE the
-    record names, and returns a fresh record as a dict. It is injected rather than imported so
-    that this module stays inside the `evidence` layer; `cli.py` is the composition root and
-    supplies it.
+    `run_claim` takes the claim id and THE RECORD to reproduce, and returns a fresh record
+    as a dict. It is injected rather than imported so that this module stays inside the
+    `evidence` layer; `cli.py` is the composition root and supplies it.
+
+    The whole record rather than a handful of fields, because "the seeds its own record names"
+    turned out to mean more than the seeds. It means the commit, so the derivation matches; the
+    profile, so the population matches; and for SG-06 the chain head, so the denominator
+    matches. Each of those was discovered by this gate reporting a mismatch about evidence that
+    was perfectly good, and a signature that has to grow every time is a signature that should
+    have been the record.
 
     The profile is part of "from the seeds its own record names" and the first version of this
     left it out. SG-01 was recorded at the `fast` profile and recomputed at `ci`, which is a
@@ -261,10 +258,7 @@ def reproduce_latest(
             )
             continue
 
-        # The record's own profile, falling back to the caller's when it names none: SG-06
-        # and SG-00 record `n/a`, because what they measure is not a population.
-        profile = str(runs.get("profile") or "")
-        fresh = run_claim(claim_id, sha, profile)
+        fresh = run_claim(claim_id, record)
         got = _rate(fresh)
         if got is None:
             mismatches.append(

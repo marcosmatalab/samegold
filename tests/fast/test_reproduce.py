@@ -68,8 +68,8 @@ def _record(
     }
 
 
-def _never_runs(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
-    raise AssertionError(f"the claim {claim_id} at {sha} ({profile}) should not have been re-run")
+def _never_runs(claim_id: str, record: dict[str, Any]) -> dict[str, Any]:
+    raise AssertionError(f"{claim_id} should not have been re-run: {record!r}")
 
 
 # ------------------------------------------------------------- the arithmetic half
@@ -158,9 +158,10 @@ def test_the_forged_rate_is_caught_by_recomputing_it() -> None:
     """
     forged = _record(successes=999, trials=999)
 
-    def runner(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
-        assert sha == SHA, "the seeds must be pinned to the commit the record names"
-        assert profile == "ci", "the profile must be the one the record names, not a default"
+    def runner(claim_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        runs = record["verdict"]["runs"]
+        assert runs["commit_sha"] == SHA, "the seeds must be pinned to the record's commit"
+        assert runs["profile"] == "ci", "the profile must be the record's, not a default"
         return _record(claim_id=claim_id)
 
     result = reproduce_latest(
@@ -178,7 +179,7 @@ def test_a_genuine_record_reproduces() -> None:
     genuine = _record()
     result = reproduce_latest(
         {"SG-03": genuine},
-        lambda claim_id, sha, profile: _record(claim_id=claim_id),
+        lambda claim_id, record: _record(claim_id=claim_id),
         repo_root=REPO,
         claim_ids=["SG-03"],
         head_sha=HEAD,
@@ -200,7 +201,8 @@ def test_the_profile_the_record_names_is_the_one_it_is_recomputed_at() -> None:
     """
     seen: list[str] = []
 
-    def runner(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
+    def runner(claim_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        profile = record["verdict"]["runs"]["profile"]
         seen.append(profile)
         return _record(claim_id=claim_id, profile=profile)
 
@@ -247,7 +249,7 @@ def test_naming_a_claim_explicitly_overrides_the_default_policy() -> None:
     record = _record(claim_id="SG-00", successes=5, trials=5, purpose="facts", artifacts={})
     result = reproduce_latest(
         {"SG-00": record},
-        lambda claim_id, sha, profile: record,
+        lambda claim_id, published: record,
         repo_root=REPO,
         claim_ids=["SG-00"],
         head_sha=HEAD,

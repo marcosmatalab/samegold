@@ -2060,3 +2060,94 @@ def test_a_boolean_in_the_record_is_a_boolean() -> None:
         f"failure says the set got SMALLER, a run from the fixed notebook has landed and the "
         f"list above should be emptied."
     )
+
+
+# ------------------------------------------------- the workflow that holds a workspace token
+#
+# `.github/workflows/databricks.yml` is the only job in this repository with a live Databricks
+# personal access token in its environment, and Free Edition has no service principals, so a
+# personal token is the only kind there is: it carries the whole workspace. Everything below is
+# a property its header comment already claims. None of them was enforced until 22 September
+# 2026, which is this repository's most frequent defect - a declaration that does not govern -
+# in the file where it would cost the most.
+
+WORKFLOW = REPO / ".github" / "workflows" / "databricks.yml"
+
+
+def _workflow() -> dict[str, Any]:
+    assert WORKFLOW.is_file(), f"no workflow at {WORKFLOW.relative_to(REPO)}"
+    # PyYAML parses the `on:` key as the boolean True, because YAML 1.1 says so.
+    document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return document
+
+
+def test_the_databricks_workflow_is_dispatch_only() -> None:
+    """No `pull_request`, no `pull_request_target`, no `push`, no `schedule`.
+
+    `pull_request_target` is the one that matters: it runs the BASE repository's workflow with
+    the base repository's secrets, against a head the contributor controls. On a public
+    repository, with a token that carries a whole workspace, that is the shape through which
+    secrets leave. The absence of the trigger is the guard; the `if:` on the job is a second
+    one for the fork case the trigger list cannot speak to.
+    """
+    triggers = _workflow()[True] if True in _workflow() else _workflow()["on"]
+    forbidden = sorted(
+        name
+        for name in ("pull_request", "pull_request_target", "push", "schedule")
+        if name in triggers
+    )
+    assert not forbidden, (
+        f"databricks.yml would run on {forbidden}. This job holds a Databricks personal access "
+        f"token for the whole workspace, and Free Edition offers no other kind of credential. "
+        f"`workflow_dispatch` is the only trigger a person decides on."
+    )
+    assert "workflow_dispatch" in triggers, "the workflow can no longer be started at all"
+
+
+def test_the_databricks_workflow_offers_no_way_to_start_compute() -> None:
+    """`validate` and `deploy`, and no `run`.
+
+    A deploy uploads definitions and starts nothing. A run spends the daily quota of a Free
+    Edition workspace, and a quota spent from CI is a workspace nobody can use until tomorrow.
+    The header comment says there is no input that makes it run; this is what makes that true.
+    """
+    triggers = _workflow()[True] if True in _workflow() else _workflow()["on"]
+    options = triggers["workflow_dispatch"]["inputs"]["action"]["options"]
+    assert set(options) == {"validate", "deploy"}, options
+    body = WORKFLOW.read_text(encoding="utf-8")
+    for forbidden in ("databricks_run.sh run", "databricks_run.sh all", "bundle run"):
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue  # the header explains what it will not do, by naming it
+            assert forbidden not in stripped, f"databricks.yml can start compute: {line.strip()!r}"
+
+
+def test_the_databricks_workflow_runs_one_at_a_time() -> None:
+    """Two deploys against one workspace interleave their uploads and the loser leaves it
+    half-written, with no error anywhere. Cancelling is worse than queueing: a deploy killed
+    mid-upload leaves a workspace matching no commit."""
+    document = _workflow()
+    concurrency = document.get("concurrency")
+    assert concurrency, "databricks.yml has no concurrency group; two deploys can interleave"
+    assert concurrency.get("cancel-in-progress") is False, (
+        "cancel-in-progress must be false: a deploy cancelled mid-upload leaves the workspace "
+        "in a state that matches no commit"
+    )
+
+
+def test_the_databricks_workflow_is_guarded_against_running_in_a_fork() -> None:
+    job = _workflow()["jobs"]["bundle"]
+    assert "github.repository ==" in str(job.get("if", "")), (
+        "the bundle job has no fork guard. Forked, this workflow resolves DATABRICKS_HOST and "
+        "DATABRICKS_TOKEN to whatever the fork happens to have under those names."
+    )
+
+
+def test_the_secrets_come_from_an_environment_and_not_from_the_repository() -> None:
+    """A repository secret is visible to every workflow, including one a pull request adds."""
+    job = _workflow()["jobs"]["bundle"]
+    assert job.get("environment") == "databricks", (
+        "the bundle job does not name an environment, so its secrets would have to be "
+        "repository-wide - reachable by every other workflow in this repository"
+    )

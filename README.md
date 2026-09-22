@@ -104,9 +104,14 @@ to break it.** In lines: <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> 
 <!--sg:SG-00.artifact.tests_fast-->674<!--/sg--> tests,
 <!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> exercise the pipeline and
 <!--sg:SG-00.artifact.fast_lane_repository_tests-->499<!--/sg--> check this repository's own
-claims about itself. Those figures are measured by `make evidence` and rendered here, like
-every other number on this page; the classification behind them is in
-`src/samegold/evidence/lane_split.py`, written out so it can be argued with.
+claims about itself - a test of the close, against a test of this repository's own paperwork.
+
+Those figures are measured by `make evidence` and rendered here, like every other number on
+this page. The split is an addition over a classification that is a JUDGEMENT, so the
+classification is written out in `src/samegold/evidence/lane_split.py` where it can be argued
+with, and <!--sg:SG-00.artifact.fast_lane_unclassified_files-->0<!--/sg--> test files are in
+neither class - a file nobody has classified fails the fast lane rather than being assigned a
+side, because the published sum is that addition.
 
 **That ratio is the point rather than an accident.** Anybody can write a month-end close. What
 is hard, and what this is about, is knowing whether the one you wrote is right, and being able
@@ -205,6 +210,7 @@ fails if one figure on it stops matching the records.
 - [`docs/databricks-run.md`](docs/databricks-run.md) - what the cloud lane deploys and what it ran
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - what the workspace measured, rendered from the records it left
 - [`docs/runbook.md`](docs/runbook.md) - the alert has fired at three in the morning: what it means, data problem or platform problem, and how to repair a run without spending the day's quota
+- [`docs/findings/`](docs/findings/) - the write-ups: what the recompute gate found on its first run, and how two of the three were the gate
 - [`docs/limits.md`](docs/limits.md) - what this repository could not verify, and why
 - [`EXAM_MAP.md`](EXAM_MAP.md) - the Databricks Professional guide, objective by objective
 - [`PARITY.md`](PARITY.md) - open-source lane versus Databricks, claim by claim

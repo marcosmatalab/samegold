@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from samegold.claims import claim_seed_provenance
 from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.registry import CLAIM_TITLES
 from samegold.evidence.render import BEGIN, END, check_readme, render_readme
@@ -439,3 +440,82 @@ def test_no_published_rate_disagrees_with_its_own_record() -> None:
         f"no rule could check any published rate ({unchecked}), so this test compared "
         f"nothing and passed, which is the defect it exists to catch"
     )
+
+
+# ------------------------------------------------- SG-06 counts a chain that names its head
+#
+# SG-06's rate was `records - breaks` over `records`, measured over the chain AS IT STOOD. The
+# chain grows - this claim's own record is appended the moment it finishes - so re-running it
+# verified a longer history and published a bigger number. `samegold verify-latest` reported
+# 203/203 against 204/204, and always would have.
+#
+# That was called a limitation for about an hour. It is not one: a measurement whose
+# denominator is "now" cannot be checked by anybody, including whoever took it. The claim names
+# the head it verified, and re-running it against that head asks the same question.
+
+
+def _chain_of(tmp_path: Path, claims: tuple[str, ...]) -> EvidenceStore:
+    store = EvidenceStore(tmp_path)
+    for claim_id in claims:
+        store.append(_record(claim_id))
+    return store
+
+
+@pytest.mark.evidence_dependent
+def test_sg06_publishes_the_head_it_verified() -> None:
+    """Without the head, the number is about a moving target."""
+    record = EvidenceStore(REPO / "evidence").latest().get("SG-06")
+    assert record is not None, "SG-06 has no evidence; run `make evidence`"
+    head = record.get("artifacts", {}).get("chain_head")
+    assert head, (
+        "SG-06 publishes no chain_head, so its record count is about the chain at some "
+        "unrecorded moment and nothing can reproduce it. Run `make evidence`."
+    )
+    hashes = [row.get("hash") for row in EvidenceStore(REPO / "evidence").read_history()]
+    assert head in hashes, f"SG-06 names a head that is not in the chain: {head}"
+
+
+def test_sg06_verified_against_its_own_head_gives_the_same_answer(tmp_path: Path) -> None:
+    """The property the redefinition buys, over a chain that then grows underneath it."""
+    store = _chain_of(tmp_path, ("SG-01", "SG-02", "SG-03"))
+    first = claim_seed_provenance(tmp_path)
+    head = first.artifacts["chain_head"]
+    assert first.verdict.rate is not None
+    measured = (first.verdict.rate.successes, first.verdict.rate.trials)
+    assert measured == (3, 3), measured
+
+    # The chain grows, exactly as it does when this claim's own record is appended.
+    store.append(_record("SG-05"))
+    store.append(_record("SG-08"))
+
+    today = claim_seed_provenance(tmp_path)
+    assert today.verdict.rate is not None
+    assert (today.verdict.rate.successes, today.verdict.rate.trials) == (5, 5), (
+        "with no head named, the claim is about the chain now - which is the behaviour "
+        "`make evidence` wants and the reason the old definition could not reproduce"
+    )
+
+    again = claim_seed_provenance(tmp_path, up_to=head)
+    assert again.verdict.rate is not None
+    assert (again.verdict.rate.successes, again.verdict.rate.trials) == measured, (
+        "re-running SG-06 against the head its record names must ask the same question and "
+        "get the same answer, however much the chain has grown since"
+    )
+
+
+def test_sg06_fails_when_the_head_it_named_is_no_longer_in_the_chain(tmp_path: Path) -> None:
+    """A head that has vanished is not a missing input, it is the rewrite the chain exists to
+    make visible: the history no longer contains the record this claim was measured over."""
+    _chain_of(tmp_path, ("SG-01", "SG-02"))
+    verdict = claim_seed_provenance(tmp_path, up_to="0" * 32).verdict
+    assert not verdict.ok
+    assert "rewritten rather than appended" in str(verdict.to_json())
+
+
+def test_sg06_over_an_empty_history_names_no_head_and_does_not_pretend_to(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "runs").mkdir(parents=True, exist_ok=True)
+    record = claim_seed_provenance(tmp_path)
+    assert record.artifacts["chain_head"] == ""
+    assert record.verdict.ok, "an empty history verifies vacuously"

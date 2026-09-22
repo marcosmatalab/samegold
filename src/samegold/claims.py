@@ -1025,15 +1025,35 @@ def claim_dimension_invariants(
 # --------------------------------------------------------------------- SG-06
 
 
-def claim_seed_provenance(evidence_dir: Path | None = None) -> EvidenceRecord:
-    """SG-06. Every record in the history derives its seeds from the commit it names, and the
-    chain has not been edited.
+def claim_seed_provenance(
+    evidence_dir: Path | None = None, up_to: str | None = None
+) -> EvidenceRecord:
+    """SG-06. Every record up to a NAMED HEAD derives its seeds from its commit, and the chain
+    to that head has not been edited.
 
     The first version of this claim was circular: it recomputed the seeds and compared them
     with themselves. It passed on a repository whose evidence could be, and was, forged by
-    appending a line to a JSON file. This version verifies the artefact instead of the
-    function: the hash chain over history.jsonl, and the seed derivation of every record in
-    it, including the ones written before this claim ran.
+    appending a line to a JSON file. The second verified the artefact instead of the function -
+    the hash chain over history.jsonl - and was right about everything except its own
+    denominator.
+
+    WHY IT NAMES A HEAD, which is the third version and the reason this docstring is long.
+    "The chain verifies" was measured over the chain AS IT STOOD, and the chain grows: this
+    claim's own record is appended the moment it finishes. Re-running it therefore verified a
+    longer history and published a bigger number, so `samegold verify-latest` reported
+    203/203 against 204/204 and always would have. That is not a claim failing to reproduce,
+    it is a claim that was never about a fixed thing - a measurement whose denominator is "now"
+    cannot be checked by anybody, including its author, and "not reproducible, with a reason
+    attached" was the answer for about an hour before it was correctly called a badly defined
+    claim rather than a limitation.
+
+    So the record names the head it verified, in `chain_head`, and re-running it against that
+    head asks the same question and gets the same answer. Re-running it with no head asks about
+    today, which is what `make evidence` wants.
+
+    A head that is not in the chain is a FAILURE and not an error: it means the history no
+    longer contains the record this claim was measured over, which is precisely the rewrite the
+    chain exists to make visible.
 
     Why it exists at all: every other number in this repository is worthless if the author
     can choose the seed or edit the record afterwards.
@@ -1048,11 +1068,39 @@ def claim_seed_provenance(evidence_dir: Path | None = None) -> EvidenceRecord:
     breaks = store.verify_chain(repo_root)
     records = list(store.read_history())
     runset = _runset(seeds, "n/a", started, "oss-local", "provenance")
+
+    missing_head = False
+    if up_to is not None:
+        hashes = [str(record.get("hash", "")) for record in records]
+        if up_to in hashes:
+            # Records are one per line, so the index into the history is the line number, which
+            # is what a ChainBreak carries. Everything after the named head is a record this
+            # claim was never measured over.
+            kept = hashes.index(up_to) + 1
+            records = records[:kept]
+            breaks = [b for b in breaks if b.line <= kept]
+        else:
+            missing_head = True
+
+    verdict: Verdict
     # A history with no records verifies vacuously; saying 0/1 would report a healthy chain
     # as a failure.
     rate = Rate(len(records) - len(breaks), len(records)) if records else Rate(1, 1)
-    verdict: Verdict
-    if breaks:
+    if missing_head:
+        verdict = Fail(
+            "SG-06",
+            runset,
+            Counterexample(
+                "SG-06",
+                seeds[0],
+                f"the chain no longer contains the head this claim was measured over "
+                f"({str(up_to)[:16]}...), so the history has been rewritten rather than "
+                f"appended to",
+                {"head": up_to, "records_now": len(records)},
+            ),
+            rate,
+        )
+    elif breaks:
         verdict = Fail(
             "SG-06",
             runset,
@@ -1078,6 +1126,16 @@ def claim_seed_provenance(evidence_dir: Path | None = None) -> EvidenceRecord:
             "seed_source": seed_source(),
             "records_verified": len(records),
             "chain_breaks": [str(b) for b in breaks],
+            # THE HEAD THIS CLAIM WAS MEASURED OVER, which is what makes it reproducible. The
+            # chain grows - this record is appended to it a moment from now - so without a
+            # named head the claim means "however many there were when somebody looked", and
+            # nobody can check that, including whoever looked. `verify-latest` passes this
+            # back in and gets the same denominator.
+            #
+            # Empty on the first record of a history, which verifies vacuously and has no head
+            # to name. `None` rather than the empty string would render as `n/a` in an anchor,
+            # and there is nothing here for an anchor to be wrong about yet.
+            "chain_head": (records[-1].get("hash", "") if records else ""),
         },
         not_claimed=(
             "that a record marked as produced in CI really was: nothing offline can check "
