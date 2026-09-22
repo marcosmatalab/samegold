@@ -112,6 +112,15 @@ check: install ## fail if the documents and the evidence disagree
 refute: install ## run every claim with a seed of your choosing: make refute SEED=12345
 	$(BIN)/samegold refute --seed $(SEED) --profile ci
 
+.PHONY: gif
+gif: ## re-record docs/img/refute.gif by RUNNING make refute, not by drawing it
+	# `vhs` drives a real terminal and films what comes out, so the GIF on the front page is
+	# an execution. It needs vhs, ttyd and ffmpeg, which are NOT dependencies of this project
+	# and are not installed by `make install`: nothing in CI runs this target, the artifact is
+	# committed, and this is how it is redone when `make refute` starts printing something
+	# else. Recorded on WSL2; the Spark lanes want the same machine.
+	vhs docs/refute.tape
+
 .PHONY: report
 report: install ## render the close as one self-contained HTML page
 	$(BIN)/samegold report --out close-report.html

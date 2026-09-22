@@ -14,6 +14,11 @@ will see.
 The first tagged close. Ten claims, every published figure recomputed from the seeds its own
 record names, and no number on the front page typed by a person.
 
+The short version, which is what the GitHub release carries, is
+[`docs/release-notes-v0.1.0.md`](docs/release-notes-v0.1.0.md): what this is in three lines,
+the three figures from the front page, and what the version does NOT contain. This file is the
+long version.
+
 ### Added
 
 - **`samegold verify-latest`**, the gate that recomputes a record instead of validating it.

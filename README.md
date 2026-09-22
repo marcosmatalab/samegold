@@ -1,3 +1,5 @@
+**English** | [Español](README.es.md)
+
 # samegold
 
 **How you prove a data pipeline does what it says.** The pipeline is a bitemporal month-end
@@ -60,6 +62,13 @@ because the seeds derive from the commit sha and a transcript is stale the momen
 favourable one requires changing the code, which changes the seed. `make refute` lets you pick
 one anyway, and the chain refuses the result as evidence. **A claim that fails under your seed
 is the most useful issue anyone can open here.**
+
+![make refute on seed 424242: the seven claims about the data run again, and printed as each one passes](docs/img/refute.gif)
+
+**That GIF is a recording, not a drawing.** [`docs/refute.tape`](docs/refute.tape) is the
+script `vhs` executes, `make gif` regenerates it, and what scrolls past is the program's own
+output at the speed it came out. A drawn one would be the transcript this page already removed
+once, in colour.
 
 `make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->694<!--/sg--> tests in
 <!--sg:SG-00.artifact.fast_lane_seconds-->78.5<!--/sg--> s, no JVM, no credentials), `make

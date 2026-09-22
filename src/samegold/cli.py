@@ -34,6 +34,13 @@ PROFILES = {"fast": FAST, "ci": CI, "full": FULL}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERED_FILES = (
     "README.md",
+    # The Spanish front page is RENDERED, not translated once. It carries the same evidence
+    # anchors as the English one, so `make readme` writes both figures from the same record
+    # and neither can be a commit behind the other. A translation kept up to date by hand is
+    # the oldest version of the defect this repository is about.
+    # `samegold.evidence.translation` is the other half: it fails the fast lane when the two
+    # pages stop carrying the same figures, commands, links and assertions.
+    "README.es.md",
     "CLAIMS.md",
     # The post-mortem quotes SG-04's euro figures. Seeds derive from the commit SHA, so those
     # figures change on every commit, and hand-typed ones are stale by the next one: they
@@ -245,6 +252,7 @@ DBX_DOCUMENTS = (
     "docs/databricks-run.md",
     "docs/databricks-run-evidence.md",
     "README.md",
+    "README.es.md",
 )
 DBX_RECORD = "evidence/databricks/SG-DBX-01.json"
 #: The row-level capture the same workspace task wrote, beside the record. Rendered from a

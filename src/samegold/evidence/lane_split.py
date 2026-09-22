@@ -67,6 +67,8 @@ REPOSITORY_TESTS = {
     "test_faults.py",
     "test_preflight.py",
     "test_prose_gate.py",
+    # The two front pages agreeing is paperwork about this repository, not about the close.
+    "test_readme_parity.py",
     "test_reproduce.py",
     "test_seeds.py",
 }

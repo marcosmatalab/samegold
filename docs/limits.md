@@ -342,6 +342,28 @@ nobody has written.
 What found it was reading the workflow. `docs/findings/the-gate-found-three-things-and-two-were-its-own.md`
 is the write-up.
 
+## The two front pages are checked for the same figures, not for the same meaning
+
+`samegold.evidence.translation` fails the fast lane when `README.md` and `README.es.md` stop
+carrying the same evidence anchors, numbers, commands, links, claim ids and count of bold
+assertions, section by section. Measured on the pair as it stands: 10 sections and 328
+compared items, and each of the fourteen ways a translation is known to rot has a test that
+breaks the Spanish page in that way and requires the rule that should catch it to be the rule
+that does.
+
+**It cannot read Spanish.** A sentence translated into the opposite of what the English one
+says, keeping its figures, its links and its emphasis, passes. Nothing short of a reader who
+has both languages catches that, and this repository has one. What the gate removes is the
+failure that does not need a mistake to happen: the English page changing and the Spanish one
+staying where it was.
+
+**And it has a price, paid on purpose.** `14.198.046` is how that figure is written in
+Spanish, and the rule refuses it, because the English page writes `14 198 046` and the
+comparison is identity. A normalising comparison would also accept `14.198.046` where the
+record says `14 198 046` - a published figure differing between two front pages of the same
+repository, which is the defect, not the inconvenience.
+`tests/fast/test_readme_parity.py` states both halves of that trade as tests.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not
