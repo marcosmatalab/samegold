@@ -26,6 +26,7 @@ from typing import Any
 
 from samegold.domain.bitemporal import accounting_month_of, versions_from_snapshots
 from samegold.domain.money import euros, signed_euros
+from samegold.evidence.lane_split import code_split
 from samegold.evidence.lane_split import split as lane_split
 from samegold.evidence.record import EvidenceRecord, artifact_digest
 from samegold.evidence.registry import CLAIM_TITLES
@@ -408,6 +409,16 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     # Published so a reader can see the classification is complete rather than trusting it. The
     # test is what fails on a non-empty list; this only records what was true for this run.
     facts["fast_lane_unclassified_files"] = len(unclassified)
+    # THE SAME QUESTION IN LINES, which is the one a reviewer counts. The README says in its
+    # own words that about a quarter of this repository is Spark, Delta and Databricks and
+    # three quarters is the harness; the classification behind those two numbers is in
+    # `evidence/lane_split.py` where it can be argued with, and the addition happens here so
+    # that it cannot be typed. It moved by two points during the round that wrote the section.
+    platform_lines, harness_lines = code_split(root)
+    facts["platform_lines"] = platform_lines
+    facts["harness_lines"] = harness_lines
+    facts["platform_share_pct"] = round(100 * platform_lines / (platform_lines + harness_lines), 1)
+    facts["harness_share_pct"] = round(100 * harness_lines / (platform_lines + harness_lines), 1)
     coverage_pct = _line_coverage(root)
     if coverage_pct is not None:
         facts["line_coverage_pct"] = coverage_pct

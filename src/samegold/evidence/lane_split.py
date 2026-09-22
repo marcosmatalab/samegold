@@ -139,3 +139,66 @@ def split(repo: Path) -> tuple[int, int, list[str]]:
     repository = sum(n for name, n in counts.items() if name in REPOSITORY_TESTS)
     domain = sum(n for name, n in counts.items() if name in DOMAIN_TESTS)
     return repository, domain, unclassified
+
+
+# ---------------------------------------------------------------- the same question, in lines
+#
+# The README says in its own section that 26% of this repository is Spark, Delta and Databricks
+# and 74% is the harness that tries to break it. That is the sentence a reviewer is most likely
+# to check by counting, and it was going to be a hand-typed pair of numbers in the one
+# repository whose thesis is that those rot. It rotted before it was even published: the round
+# that wrote the section added three test modules to the harness and moved the ratio from
+# 27.9/72.1 to what it is now.
+#
+# The classification is a JUDGEMENT, exactly like the one above, and it is written out here so
+# it can be argued with rather than inferred from a number.
+
+#: Spark, Delta, Databricks: the pipeline, the notebooks that run in a workspace, the bundle
+#: that deploys them, and the tests that need a JVM to say anything.
+PLATFORM_PATHS = (
+    "src/samegold/pipelines",
+    "src/samegold/ingest",
+    "databricks",
+    "pipelines",
+    "tests/spark",
+    "tests/delta",
+)
+
+#: Everything else under `src/` and `tests/`: the contract, the generator, the DuckDB
+#: reference, the mutation engine, the evidence chain, the crash harness, and the fast lane.
+HARNESS_PATHS = ("src/samegold", "tests/fast")
+
+#: What counts as code. `scripts/` and the markdown are deliberately outside BOTH sides rather
+#: than assigned to one: `scripts/databricks_run.sh` is 1 212 lines of bash that would move the
+#: ratio by four points on its own, and which side it belongs to is a real argument. A figure
+#: that depends on an unargued call is a figure with a thumb on it.
+CODE_SUFFIXES = (".py", ".yml", ".yaml", ".json", ".sql")
+
+
+def _code_files(repo: Path, roots: tuple[str, ...]) -> set[Path]:
+    out: set[Path] = set()
+    for root in roots:
+        base = repo / root
+        if not base.exists():
+            continue
+        for path in base.rglob("*"):
+            if path.is_file() and path.suffix in CODE_SUFFIXES and "__pycache__" not in str(path):
+                out.add(path.resolve())
+    return out
+
+
+def code_split(repo: Path) -> tuple[int, int]:
+    """(platform lines, harness lines) over the files each side declares.
+
+    A file under a platform path is platform even when it also sits under `src/samegold`, which
+    is why the harness set is the difference rather than a second walk: `src/samegold/pipelines`
+    is inside `src/samegold`, and counting it on both sides would publish a total larger than
+    the tree.
+    """
+    platform = _code_files(repo, PLATFORM_PATHS)
+    harness = _code_files(repo, HARNESS_PATHS) - platform
+
+    def lines(paths: set[Path]) -> int:
+        return sum(len(p.read_text(encoding="utf-8", errors="replace").splitlines()) for p in paths)
+
+    return lines(platform), lines(harness)

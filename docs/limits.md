@@ -297,6 +297,35 @@ the workspace is compromised, and rotating it is the only remedy. `docs/runbook.
 what to do the day it expires - which will happen, and is the expected end of its life rather
 than an incident.
 
+## The recompute gate has a hole, and it is narrower than what it replaced
+
+`samegold verify-latest` re-runs each claim from the seeds its own record names and compares
+the result, which is what closed the fifth attack in ADR 0011: appending one well-formed record
+with a rate nobody computed. It does not close it completely, and the residue is here rather
+than left to be found.
+
+**A record is not recomputed when the code under it has moved.** If `src/samegold` differs
+between the commit a record names and `HEAD`, a different answer is a different measurement
+rather than a disagreement, so the run reports "not recomputed", names the files that moved,
+and says that `make evidence` re-measures it. The alternative - calling it a failure - turns
+the lane red on every commit that touches the generator, and a gate that is red by default is
+a gate somebody switches off.
+
+**So a forger who appends a bad record AND edits a file under `src/samegold` in the same commit
+gets "not recomputed" instead of "MISMATCH" from that gate.** What still catches them is the
+cheap half: `tests/fast/test_evidence_gate.py::test_no_published_rate_disagrees_with_its_own_record`
+compares each published rate against the artifacts of its own record, needs no run at all, and
+does not care what the code did. To get past both, a forgery has to rewrite the artifacts
+consistently as well as the rate - and `CLAIMS.md` and `FINDINGS.md` are written from those
+artifacts, so that is a document to rewrite too.
+
+**Two claims are not recomputed by default**, named in `reproduce.NOT_BY_DEFAULT` with their
+reason and in the command's own output: `SG-00`, because recomputing it runs the entire fast
+lane a second time inside the lane already running it, and `SG-07`, because the crash campaign
+needs a JVM and about ten minutes. Both can be forced with `--claims`. The summary line counts
+what it recomputed before it says anything reassuring, so a run that recomputed nothing cannot
+print "every published figure reproduces".
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not
