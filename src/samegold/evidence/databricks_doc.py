@@ -119,7 +119,12 @@ def _table(rows: list[dict[str, Any]], columns: list[str], headings: list[str]) 
 
 
 def tables_from(record: dict[str, Any]) -> dict[str, str]:
-    """The two anchors whose value is a whole table rather than a scalar."""
+    """The anchors whose value is a whole table rather than a scalar.
+
+    Each one is offered only when the record carries its rows, for the same reason every
+    scalar is: a table rendered from an absent list is an empty table, and an empty table on a
+    page about a run reads as "nothing went wrong" rather than as "this did not report".
+    """
     out: dict[str, str] = {}
     expectations = record.get("expectations")
     if isinstance(expectations, list) and expectations:
@@ -131,7 +136,96 @@ def tables_from(record: dict[str, Any]) -> dict[str, str]:
     quarantine = record.get("quarantine_by_reason")
     if isinstance(quarantine, list) and quarantine:
         out["quarantine.table"] = _table(quarantine, ["reason", "n"], ["quarantine reason", "rows"])
+    closed = record.get("revenue_closed")
+    if isinstance(closed, list) and closed:
+        out["revenue_closed.table"] = _table(
+            closed,
+            [
+                "accounting_month",
+                "close_version",
+                "gross_cents",
+                "returns_cents",
+                "net_cents",
+                "line_count",
+                "restatement_reason",
+            ],
+            ["month", "version", "gross", "returns", "net", "lines", "why this version exists"],
+        )
+    verification = record.get("close_verification")
+    if isinstance(verification, list) and verification and _verification_reported(record):
+        out["close_verification.table"] = _table(
+            verification,
+            ["accounting_month", "close_version", "check_name", "ok", "detail"],
+            ["month", "version", "check", "ok", "detail"],
+        )
+    bad = record.get("bad_events")
+    if isinstance(bad, list) and bad:
+        out["bad_events.table"] = _table(
+            # `None` is Python's word for what the column holds, and the column holds SQL
+            # NULL - which is the whole finding for two of these four rows, so it is written
+            # the way the column writes it.
+            [
+                {key: ("null" if value is None else value) for key, value in row.items()}
+                for row in bad
+                if isinstance(row, dict)
+            ],
+            ["event_id", "quarantine_reason", "qty", "unit_price_cents"],
+            ["event id", "why it was refused", "qty", "unit_price_cents"],
+        )
+    history = record.get("update_history")
+    if isinstance(history, list) and history:
+        # No `started_at` column: the event log gives one for the CURRENT update and not for
+        # the ones before it, so the column would be empty on nine rows out of ten, and an
+        # empty cell reads as "not populated" rather than "not recorded".
+        out["update_history.table"] = _table(
+            history,
+            ["update_id", "final_state", "ended_at"],
+            ["pipeline update", "final state", "ended"],
+        )
     return out
+
+
+#: How many customers of the Type 2 dimension the rendered page shows in full. The capture
+#: holds every row; a markdown table of a hundred of them is a table nobody reads, and the
+#: point being made needs a handful - a customer whose history has a CLOSED row and an open
+#: one is what makes the dimension Type 2 rather than a snapshot.
+SCD2_CUSTOMERS_SHOWN = 6
+
+
+def capture_tables_from(capture: dict[str, Any]) -> dict[str, str]:
+    """The dimension, row by row, from the capture the same task wrote.
+
+    A separate function from `tables_from` because it reads a separate file, and separate
+    rather than merged so that a page can be rendered from a record with no capture beside it
+    and say NOT RUN for this one alone.
+    """
+    rows = capture.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return {}
+    by_customer: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if isinstance(row, dict) and row.get("customer_id") is not None:
+            by_customer.setdefault(str(row["customer_id"]), []).append(row)
+    # The customers whose history has more than one version, in the capture's own order, which
+    # the query fixed with an ORDER BY. Deterministic, or re-rendering would be a diff.
+    versioned = [cid for cid in by_customer if len(by_customer[cid]) > 1]
+    printed = versioned[:SCD2_CUSTOMERS_SHOWN]
+    shown = [row for cid in printed for row in by_customer[cid]]
+    if not shown:
+        return {}
+    return {
+        "scd2.table": _table(
+            # An open row carries `__END_AT: null`, and markdown renders that as an empty
+            # cell, which reads as "this column is not populated" rather than "this version
+            # is the current one". The word, not the blank - the same rule as `NOT RUN`.
+            [{**row, "__END_AT": row.get("__END_AT") or "(open)"} for row in shown],
+            ["customer_id", "segment", "country", "__START_AT", "__END_AT"],
+            ["customer_id", "segment", "country", "__START_AT", "__END_AT"],
+        ),
+        "scd2.customers_with_history": str(len(versioned)),
+        "scd2.customers_shown": str(len(printed)),
+        "scd2.rows_captured": str(len(rows)),
+    }
 
 
 def _keep_spacing(previous: str, value: str) -> str:
@@ -149,11 +243,15 @@ def _keep_spacing(previous: str, value: str) -> str:
     return " ".join(digits[i : i + 3] for i in range(0, len(digits), 3))[::-1]
 
 
-def render(text: str, record: dict[str, Any] | None) -> tuple[str, list[str]]:
+def render(
+    text: str, record: dict[str, Any] | None, capture: dict[str, Any] | None = None
+) -> tuple[str, list[str]]:
     """Return the document with every dbx anchor filled, and the names it could not answer."""
     known: dict[str, Any] = {}
     if record is not None:
         known = {**scalars_from(record), **tables_from(record)}
+    if capture is not None:
+        known.update(capture_tables_from(capture))
     unanswerable: list[str] = []
 
     def replace(match: re.Match[str]) -> str:
@@ -172,18 +270,26 @@ def render(text: str, record: dict[str, Any] | None) -> tuple[str, list[str]]:
     return ANCHOR.sub(replace, text), unanswerable
 
 
-def render_files(repo: Path, record_path: Path, documents: tuple[str, ...]) -> list[str]:
+def render_files(
+    repo: Path,
+    record_path: Path,
+    documents: tuple[str, ...],
+    capture_path: Path | None = None,
+) -> list[str]:
     """Render each document in place. Returns one report line per file."""
     record = None
     if record_path.exists():
         record = json.loads(record_path.read_text(encoding="utf-8"))
+    capture = None
+    if capture_path is not None and capture_path.exists():
+        capture = json.loads(capture_path.read_text(encoding="utf-8"))
     lines = []
     for name in documents:
         path = repo / name
         if not path.exists():
             continue
         text = path.read_text(encoding="utf-8")
-        rendered, unanswerable = render(text, record)
+        rendered, unanswerable = render(text, record, capture)
         anchors = len(ANCHOR.findall(text))
         if rendered != text:
             path.write_text(rendered, encoding="utf-8", newline="\n")

@@ -108,10 +108,16 @@ def _versioned_rows(bronze: Path, closes: list[dt.datetime]) -> list[dict[str, A
     return revenue_versions(bronze, closes)
 
 
-def _collected(root: Path, path: str) -> int:
-    """How many tests a directory contributes, from pytest's own collection."""
+def _collected(root: Path, *paths: str) -> int:
+    """How many tests these paths contribute, from pytest's own collection.
+
+    Variadic because one published figure is over two files rather than a directory. They are
+    separate argv entries: a single string of two paths separated by a space is one path that
+    does not exist, and pytest collects nothing from it - which would publish a 0 rather than
+    an error.
+    """
     out = subprocess.run(
-        [sys.executable, "-m", "pytest", path, "--collect-only", "-q", "--no-header"],
+        [sys.executable, "-m", "pytest", *paths, "--collect-only", "-q", "--no-header"],
         capture_output=True,
         text=True,
         cwd=root,
@@ -374,6 +380,14 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
         "tests_fast": _collected(root, "tests/fast"),
         "tests_spark": _collected(root, "tests/spark"),
         "tests_delta": _collected(root, "tests/delta"),
+        # The two files that drive `databricks/` and `scripts/databricks_run.sh` against a
+        # stub CLI on PATH, with no workspace. The README's Databricks section quotes this
+        # count, and it was the last hand-typed figure on that page.
+        "tests_databricks_bundle": _collected(
+            root,
+            "tests/fast/test_databricks_bundle.py",
+            "tests/fast/test_databricks_catalog_step.py",
+        ),
         "fast_lane_seconds": round(fast_seconds, 1),
         "fast_lane_green": fast_run.returncode == 0,
         "python_modules": len(python_files),

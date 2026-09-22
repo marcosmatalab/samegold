@@ -26,7 +26,12 @@ from typing import Any
 import pytest
 import yaml
 
-from samegold.evidence.databricks_doc import NOT_RUN, scalars_from, tables_from
+from samegold.evidence.databricks_doc import (
+    NOT_RUN,
+    capture_tables_from,
+    scalars_from,
+    tables_from,
+)
 from samegold.generator.late import (
     BRONZE_DIGEST_BIGINT_COLUMNS,
     BRONZE_DIGEST_COLUMNS,
@@ -1193,7 +1198,19 @@ REQUIRED_ANCHORS = {
 # check never looked at them, because that check fires on lines carrying an `SG-nn` claim id and
 # `SG-DBX-01` is not one. So the most-read page in the repository was the one place a run's
 # figures could go stale silently.
-QUOTING_DOCUMENTS = (RUN_DOC, REPO / "README.md")
+# `docs/databricks-run-evidence.md` renders the whole of what the workspace measured, for a
+# reader who has no credentials for it. It is the third document that quotes the record and
+# it is held to it exactly like the other two: it carries more anchors than the run document
+# does, because it prints the dimension and the closed versions row by row.
+EVIDENCE_DOC = REPO / "docs" / "databricks-run-evidence.md"
+QUOTING_DOCUMENTS = (RUN_DOC, EVIDENCE_DOC, REPO / "README.md")
+
+
+def _capture_tables() -> dict[str, str]:
+    """The dimension tables, from the capture beside the record. Empty when it is absent."""
+    if not CAPTURE.exists():
+        return {}
+    return capture_tables_from(json.loads(CAPTURE.read_text(encoding="utf-8")))
 
 
 def _anchors(document: Path = RUN_DOC) -> dict[str, str]:
@@ -1408,7 +1425,11 @@ def test_the_run_document_agrees_with_the_record() -> None:
 
     for document in QUOTING_DOCUMENTS:
         anchors = _anchors(document)
-        unknown = sorted(set(anchors) - set(scalars) - {"expectations.table", "quarantine.table"})
+        # The table names come from the renderer, not from a list written out here. A
+        # hand-maintained copy of that set is how a new table gets reported as an anchor
+        # the record cannot answer, and the fix would be to add it to the copy.
+        table_names = set(tables_from(record)) | set(_capture_tables())
+        unknown = sorted(set(anchors) - set(scalars) - table_names)
         assert not unknown, (
             f"{document.name} carries dbx anchors the record cannot answer: {unknown}. An "
             f"anchor nothing checks is a hand-typed number with extra punctuation."

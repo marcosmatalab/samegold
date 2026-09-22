@@ -228,19 +228,39 @@ def cmd_readme(args: argparse.Namespace) -> int:
     return 0
 
 
-# The two documents that quote the Databricks record. The run document carries the whole closed
-# set of anchors; the README carries a subset. Both are RENDERED from the record and neither is
-# filled by hand: they were, twice - once by typing and once by a script in a scratch directory
-# - and the second time the lane ran again, the record changed, and `docs/databricks-run.md`
-# went on describing a run that no longer existed until a test caught it.
-DBX_DOCUMENTS = ("docs/databricks-run.md", "README.md")
+# The documents that quote the Databricks record. The run document carries the whole closed
+# set of anchors; the others carry a SUBSET. All of them are RENDERED from the record and none
+# is filled by hand: two of them were, once by typing and once by a script in a scratch
+# directory - and the second time the lane ran again, the record changed, and
+# `docs/databricks-run.md` went on describing a run that no longer existed until a test caught
+# it.
+#
+# `docs/databricks-run-evidence.md` is the third, and it exists because a reviewer cannot get
+# into that workspace. It renders what the workspace measured - the Type 2 dimension row by
+# row, the four closed versions of two months, the expectations, the quarantine - out of the
+# committed records, so the one part of this repository that is not reproducible from a clone
+# is at least READABLE from one.
+DBX_DOCUMENTS = (
+    "docs/databricks-run.md",
+    "docs/databricks-run-evidence.md",
+    "README.md",
+)
 DBX_RECORD = "evidence/databricks/SG-DBX-01.json"
+#: The row-level capture the same workspace task wrote, beside the record. Rendered from a
+#: second file because that is where the rows are: the record publishes counts of the
+#: dimension, and a count is not what a reader who wants to see `__END_AT` came for.
+DBX_CAPTURE = "evidence/databricks/dim_customer_scd2.json"
 
 
 def _render_databricks_anchors() -> list[str]:
     from samegold.evidence.databricks_doc import render_files
 
-    return render_files(REPO_ROOT, REPO_ROOT / DBX_RECORD, DBX_DOCUMENTS)
+    return render_files(
+        REPO_ROOT,
+        REPO_ROOT / DBX_RECORD,
+        DBX_DOCUMENTS,
+        capture_path=REPO_ROOT / DBX_CAPTURE,
+    )
 
 
 def cmd_check(args: argparse.Namespace) -> int:

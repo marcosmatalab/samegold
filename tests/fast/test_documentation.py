@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 DOCS = sorted(REPO.glob("*.md")) + sorted((REPO / "docs").rglob("*.md"))
@@ -529,3 +530,88 @@ def test_the_figures_survive_the_markdown_sanitiser() -> None:
             f"when GitHub renders it."
         )
         ET.fromstring(svg)
+
+
+# --------------------------------------------------------------- the job graph, and its YAML
+#
+# The four figures above are checked against `databricks/src/`, which is where the TABLES are.
+# This one draws the JOB - six tasks and a branch - and the job lives in
+# `databricks/resources/jobs.yml`. A picture of an orchestration is exactly the kind of figure
+# that goes stale invisibly: a task renamed in the YAML leaves a drawing that is wrong about a
+# thing nobody re-reads, and the only reader who would notice is the one being convinced by it.
+
+JOB_FIGURES = ("job-graph-light.svg", "job-graph-dark.svg")
+
+
+def _job_tasks_and_edges() -> tuple[set[str], set[tuple[str, str]]]:
+    """Every task key the bundle declares, and every dependency between them.
+
+    Parsed from the YAML rather than grepped, and it reaches into `for_each_task.task` the way
+    `test_databricks_bundle.py::_all_tasks` does, because a `for_each` carries its work one
+    level down and a walk that stops at `job["tasks"]` is a walk that a new task type leaves.
+    """
+    document = yaml.safe_load(
+        (REPO / "databricks" / "resources" / "jobs.yml").read_text(encoding="utf-8")
+    )
+    names: set[str] = set()
+    edges: set[tuple[str, str]] = set()
+    for job in (document.get("resources", {}).get("jobs") or {}).values():
+        for task in job.get("tasks", []):
+            key = task.get("task_key")
+            if not key:
+                continue
+            names.add(str(key))
+            for upstream in task.get("depends_on") or []:
+                if upstream.get("task_key"):
+                    edges.add((str(upstream["task_key"]), str(key)))
+    return names, edges
+
+
+def test_the_job_graph_is_parsed_from_the_bundle() -> None:
+    """The guard on the guard: a reader that finds nothing makes the two tests below vacuous."""
+    names, edges = _job_tasks_and_edges()
+    assert len(names) >= 5, f"only {sorted(names)} parsed out of jobs.yml; the reader broke"
+    assert len(edges) >= 4, f"only {sorted(edges)} parsed out of jobs.yml; the reader broke"
+
+
+@pytest.mark.parametrize("figure", JOB_FIGURES)
+def test_the_job_graph_names_no_task_the_bundle_does_not_declare(figure: str) -> None:
+    """Figure -> bundle, like the four above: a drawing may leave a task out and may not
+    invent one. Omission is editorial; invention is a false statement with better typography."""
+    names, _ = _job_tasks_and_edges()
+    drawn = {
+        text
+        for text in _boxes(_figure(figure))
+        if "_" in text and re.fullmatch(r"[a-z][a-z0-9_]*", text)
+    }
+    invented = sorted(drawn - names)
+    assert not invented, (
+        f"{figure} names {invented}, which databricks/resources/jobs.yml does not declare. "
+        f"The job's tasks are {sorted(names)}."
+    )
+    assert drawn, f"{figure} names no task at all; the box reader found nothing to check"
+
+
+@pytest.mark.parametrize("figure", JOB_FIGURES)
+def test_the_job_graph_draws_no_dependency_the_bundle_does_not_have(figure: str) -> None:
+    """An arrow between two task boxes is a claim about what waits for what."""
+    names, edges = _job_tasks_and_edges()
+    wrong = sorted(_drawn_edges(_figure(figure), names) - edges)
+    assert not wrong, (
+        f"{figure} draws {wrong}, which is not a dependency in the job. The ones it declares "
+        f"are {sorted(edges)}."
+    )
+
+
+@pytest.mark.parametrize("figure", JOB_FIGURES)
+def test_the_job_graph_draws_the_branch_that_is_the_reason_for_it(figure: str) -> None:
+    """The condition task and both of its outcomes.
+
+    Without this the two tests above pass on a figure that drew a straight line through six
+    boxes, which would be wrong about the one thing the picture exists to say: the close takes
+    a different verification depending on whether it restated anything.
+    """
+    svg = _figure(figure)
+    assert "did_the_close_restate" in svg, f"{figure} leaves out the condition task"
+    for outcome in ("true", "false"):
+        assert f">{outcome}<" in svg, f"{figure} does not label the {outcome} branch"

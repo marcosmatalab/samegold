@@ -128,6 +128,40 @@ it agrees with the open-source lane **to the cent** - which computes it with no 
 incident; the cloud figures are anchored to `evidence/databricks/SG-DBX-01.json` and checked on
 every run of the fast lane.
 
+## The Databricks lane: what you can check, and what you have to take on trust
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/job-graph-dark.svg">
+  <img alt="The samegold monthly close job: ingest_and_transform runs the Lakeflow pipeline, close_month writes the versioned close, and the condition task did_the_close_restate sends a close that restated a month to verify_each_restated_month, once per month, and a close that restated nothing to verify_no_restatement. publish_evidence runs after either of them." src="docs/img/job-graph-light.svg">
+</picture>
+
+**The bundle is checked from a clone; the workspace is not.** Those are different claims and
+mixing them is how a repository ends up sounding better than it is.
+
+**Checkable here, with no account:**
+<!--sg:SG-00.artifact.tests_databricks_bundle-->121<!--/sg--> tests drive `databricks/` and
+`scripts/databricks_run.sh` against a stub CLI on `PATH` - every notebook path, every widget,
+every job parameter, the concurrent-task ceiling computed as the width of the dependency graph
+above, and the guard that refuses to run a job deployed from a commit that is not `HEAD`. The
+figure above is checked against `databricks/resources/jobs.yml` by
+`tests/fast/test_documentation.py`: a task renamed in the YAML turns it red.
+
+**Not checkable here:** the workspace. The lane ran four times between 3 and 6 September 2026
+against a Databricks Free Edition workspace, and the records are committed under
+[`evidence/databricks/`](evidence/databricks/) with their job run, pipeline and update ids.
+**This repository holds no credentials for it** - measured: zero repository secrets, zero
+environments, and `databricks.yml` is `workflow_dispatch` only - so nobody with a clone can
+re-run it, and those records are the one thing here you have to take on trust. They say so
+themselves: `"chain": {"chained": false}`.
+
+What that buys instead of a screenshot:
+[**`docs/databricks-run-evidence.md`**](docs/databricks-run-evidence.md) renders what the
+workspace measured out of those records - the Type 2 dimension row by row with its `__START_AT`
+and `__END_AT`, the four closed versions of two months, the expectations with their pass and
+fail counts, and the four events the contract refused with the value that did it. It is
+rendered by `samegold readme`, and `samegold check` fails if one figure on it stops matching
+the records. Every other figure in this repository is reproducible without an account.
+
 ## Where to go next
 
 - [`FINDINGS.md`](FINDINGS.md) - every defect this repository found in itself, by what it teaches
