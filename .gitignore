@@ -44,3 +44,4 @@ node_modules/
 # left in the checkout makes every evidence record produced beside it claim `tree_dirty`, which
 # is the caveat this repository's provenance field exists to mean something else by.
 close-report.html
+.databricks/

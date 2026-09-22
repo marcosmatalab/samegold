@@ -62,6 +62,8 @@ REPOSITORY_TESTS = {
     "test_contract_documents.py",
     "test_databricks_bundle.py",
     "test_databricks_catalog_step.py",
+    # Whether a deploy came from a clean tree is paperwork about this repository.
+    "test_deploy_tree_dirty.py",
     "test_documentation.py",
     "test_evidence_gate.py",
     "test_faults.py",

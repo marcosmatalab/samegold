@@ -972,9 +972,21 @@ conflict the refresh was supposed to clear."
 # not look one file further. `substr($0, 4)` is the porcelain layout - two status characters
 # and a space - and unlike the Python side there is no upstream `.strip()` to eat the first
 # line's leading space.
+#
+# AND THAT COMMENT WAS RIGHT ABOUT ITSELF. "Did not look one file further" was written on
+# 7 September 2026, and the file it had not looked at was `.databricks/`, which the CLI
+# writes during `bundle validate` - one step before this function runs, in the same
+# subcommand. On 22 September the first deploy from CI reported `tree_dirty=true` on a runner
+# whose checkout is clean by construction, and the dirt was the tool's own scratch directory.
+# A third time for the same shape, so the exclusions are a NAMED LIST rather than one more
+# prefix bolted on: `samegold.generator.seeds._OUTPUT_PREFIXES` is that list on the Python
+# side, and FINDINGS.md carries the round.
+#
+# Untracked files still count, and that is the point of the check: code in no commit is what
+# it is looking for. What does not count is a directory this repository's own tools write.
 code_changes() {
     git -C "$REPO" status --porcelain 2>/dev/null \
-        | awk '{ p = substr($0, 4); if (p !~ /^"?evidence\//) print p }'
+        | awk '{ p = substr($0, 4); if (p !~ /^"?(evidence|\.databricks)\//) print p }'
 }
 
 # What the record says about the tree it was deployed from, read back out of the file that

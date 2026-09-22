@@ -140,3 +140,25 @@ def test_nothing_the_fast_lane_writes_is_tracked() -> None:
         + "\n".join(f"  {name} ({why}): {found}" for name, (why, found) in offenders.items())
         + "\n\nRemove them with `git rm --cached` and ignore them; they are output, not source."
     )
+
+
+def test_a_tool_scratch_directory_is_not_a_dirty_tree() -> None:
+    """The third time this rule was one prefix short, and the first two are in its comment.
+
+    `databricks bundle validate` writes `.databricks/` into the checkout, `git status
+    --porcelain` lists untracked directories, and on 22 September 2026 the databricks
+    workflow's first deploy from CI published `tree_dirty=true` from a runner whose checkout is
+    clean by construction. The tree was clean; what was in it was the tool's own output, one
+    step after the tool wrote it.
+
+    The exclusions are a named list now, and `scripts/databricks_run.sh` holds the same one.
+    """
+    from samegold.generator.seeds import _code_changes
+
+    assert _code_changes("?? .databricks/") == []
+    assert _code_changes("?? .databricks/bundle/free/terraform/bundle.tf.json") == []
+    # And the half that must NOT be lost: an untracked file that is code still counts. This is
+    # the property the check exists for, and the fix above is one careless prefix from
+    # deleting it.
+    assert _code_changes("?? src/samegold/new_module.py") == ["src/samegold/new_module.py"]
+    assert _code_changes("?? .databricks/\n M src/samegold/cli.py") == ["src/samegold/cli.py"]

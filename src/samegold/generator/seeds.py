@@ -44,6 +44,20 @@ import subprocess
 # in no commit" a repository under review is most likely to have, and it is what caught an
 # untracked test module moving a published test count by five.
 _EVIDENCE_PREFIX = "evidence/"
+#: Every directory a TOOL of this repository writes into. A file here is output of a run, so it
+#: cannot be code the run did not contain, which is the only question `tree_dirty` asks.
+#:
+#: THE LIST EXISTS BECAUSE ONE PREFIX WAS NOT ENOUGH, TWICE. Round 19 excluded `evidence/` and
+#: the comment in `scripts/databricks_run.sh` that copied this rule wrote, of that round, "did
+#: not look one file further". It was right: on 22 September 2026 the databricks workflow's
+#: first deploy from CI published `tree_dirty=true` from a runner whose checkout was clean by
+#: construction, because `databricks bundle validate` had written `.databricks/` one step
+#: earlier and `git status --porcelain` lists untracked directories.
+#:
+#: Untracked files still count in general, and deliberately - "code that is in no commit" is
+#: the shape a repository under review is most likely to have, and it caught an untracked test
+#: module moving a published test count by five. What does not count is a directory named here.
+_OUTPUT_PREFIXES = (_EVIDENCE_PREFIX, ".databricks/")
 
 
 def _code_changes(status: str) -> list[str]:
@@ -69,7 +83,7 @@ def _code_changes(status: str) -> list[str]:
         # A rename is "old -> new"; the destination is what exists now.
         if " -> " in path:
             path = path.split(" -> ", 1)[1].strip().strip('"')
-        if path.replace("\\", "/").startswith(_EVIDENCE_PREFIX):
+        if path.replace("\\", "/").startswith(_OUTPUT_PREFIXES):
             continue
         out.append(path)
     return out
