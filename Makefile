@@ -66,7 +66,7 @@ demo: install ## 0.4 s in the container / 4.0 s on Windows, once installed; one 
 
 .PHONY: fast
 fast: install ## the fast lane: no JVM, no network, no credentials
-	$(BIN)/pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58
+	$(BIN)/pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=65
 
 .PHONY: spark
 spark: install-spark ## the Spark lane without Delta (works with no route to Maven Central)

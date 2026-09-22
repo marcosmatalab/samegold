@@ -31,10 +31,17 @@ jobs:
       - name: tests
         # THE COVERAGE GATE, set just below the first pass rather than at a round number.
         # 60% was what the fast lane measured on 6 September 2026, the first time this
-        # repository measured coverage at all; 58 is under it by enough that a platform
-        # difference cannot turn it red and not enough that a real regression can hide. What
-        # the number does and does not cover is written in pyproject.toml.
-        run: pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58
+        # repository measured coverage at all; 58 was under it by enough that a platform
+        # difference could not turn it red and not enough that a real regression could hide.
+        # What the number does and does not cover is written in pyproject.toml.
+        #
+        # Raised to 65 on 22 September 2026, and the reason is a package rather than a round
+        # number: `src/samegold/faults/` was 198 statements at 0%, with no test in any lane.
+        # The crash harness - the hardest code here, the arm that kills a process at a named
+        # instant and decides whether what came back is the same data - had nothing checking
+        # it. tests/fast/test_faults.py takes it to 84%, and the gate moves so that it cannot
+        # go back to nothing without somebody deciding to let it.
+        run: pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=65
       - name: lint and types
         # Every directory that holds code, not just the two the command used to name. A
         # formatting error sat in `databricks/` while this step printed "All checks passed":
@@ -45,6 +52,21 @@ jobs:
           mypy
       - name: the evidence chain verifies and the documents match it
         run: samegold check
+      - name: every published figure recomputes from the seeds its own record names
+        # `samegold check` asks whether each record is WELL FORMED - hashed, linked, ordered,
+        # seeded from its commit. It never asked whether the number inside was TRUE, and on
+        # 20 September 2026 an adversarial review published `SG-03 | PASS | 999/999` on the
+        # front page by APPENDING one well-formed record, with real seeds and a hash computed
+        # by this repository's own hasher. `samegold check` exited 0 on it and the whole fast
+        # lane was green. Four layers of "is this well formed" do not add up to one layer of
+        # "is this true".
+        #
+        # This re-runs each claim from the seeds its record names and compares the result.
+        # Budget: `make refute` measured 236 s for the whole battery and this does less, on a
+        # job with timeout-minutes: 10 that spends about 150 s today. ADR 0011 has the rest,
+        # including which two claims it does not recompute by default and why it says so out
+        # loud instead of counting them as reproduced.
+        run: samegold verify-latest
       - name: the diagrams are diagrams
         # mermaid's own parser, not an approximation of it. A flowchart that does not parse
         # renders on GitHub as a raw code block - something that announces itself as a diagram

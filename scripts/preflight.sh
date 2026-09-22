@@ -87,11 +87,14 @@ case "$(uname -s)" in
 esac
 
 # ------------------------------------------------------------------ .github/workflows/fast.yml
-run "fast/tests"        "pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=58"
+run "fast/tests"        "pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=65"
 run "fast/lint"         "ruff check src tests databricks pipelines"
 run "fast/format"       "ruff format --check src tests databricks pipelines"
 run "fast/types"        "mypy"
 run "fast/check"        "samegold check"
+# The gate that recomputes rather than validating (ADR 0011). It costs minutes, which is why
+# it is here and in CI and not inside the fast lane's pytest.
+run "fast/reproduce"    "samegold verify-latest"
 
 # ------------------------------------------------------------------ .github/workflows/spark.yml
 #
@@ -119,6 +122,24 @@ jvm_lanes_can_run() {
     return 0
 }
 
+# WHETHER THE JARS CAN BE FETCHED, asked before the lane is run rather than deduced from its
+# wreckage afterwards.
+#
+# `jvm_lanes_can_run` used to check for `java` on PATH and stop there, and behind a proxy that
+# blocked repo1.maven.org this script reported `FAILED delta/spark` with 143 errors. Every one
+# of those errors was "unresolved dependency: io.delta#delta-spark_4.2_2.13;4.4.0", a hundred
+# lines below a `JAVA_GATEWAY_EXITED` that looks like a broken JVM. A reader behind a corporate
+# proxy reads `FAILED` as "this repository is broken", and it is not: their network cannot
+# reach the jars. This script exists to tell "could not run" from "ran and failed", and that
+# was the one place it got that distinction wrong.
+#
+# The Delta lane still cannot go green without the jars, and this does not pretend otherwise:
+# a not-run lane keeps the verdict non-zero. What changes is the word, and the word is the
+# whole content of a diagnostic.
+maven_central_reachable() {
+    curl -fsS --max-time 8 -o /dev/null https://repo1.maven.org/maven2/io/delta/ 2>/dev/null
+}
+
 if jvm_lanes_can_run; then
     # NO `-m spark` FILTER, and that is a fix rather than a tidy-up. Every command in this
     # repository that ran tests/spark ran it with `-m spark`, so a test in that directory
@@ -132,8 +153,15 @@ if jvm_lanes_can_run; then
     # A marker that decides what runs is a way to hide a test by forgetting one line. The
     # directory is the selection now: everything under tests/spark runs in the spark lane.
     run "spark-no-delta" "SAMEGOLD_STORAGE=parquet pytest tests/spark -q"
-    run "delta/spark" "pytest tests/spark -q"
-    run "delta/delta" "pytest tests/delta -q"
+    # The two lanes that need the Delta jars are guarded separately from the one that does
+    # not: `spark-no-delta` runs with SAMEGOLD_STORAGE=parquet and needs no network at all, so
+    # a machine with no route to Maven Central still gets a real answer out of it.
+    if maven_central_reachable; then
+        run "delta/spark" "pytest tests/spark -q"
+        run "delta/delta" "pytest tests/delta -q"
+    else
+        skipped+=("delta/spark and delta/delta: Maven Central is unreachable (https://repo1.maven.org/maven2/io/delta/), so the Delta jars cannot be resolved and the Delta claims are NOT verified here. This is a network result, not a defect in this repository - see docs/adr/0013-the-delta-lane-fails-when-it-cannot-verify.md")
+    fi
 fi
 
 # ------------------------------------------------------------------ the verdict
