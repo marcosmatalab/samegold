@@ -76,8 +76,8 @@ samegold demo - 780 events, 284 files, seed 6569293562773694097
   2.8s, no account, no credentials, nothing installed beyond this package.
 ```
 
-`make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->581<!--/sg--> tests in
-<!--sg:SG-00.artifact.fast_lane_seconds-->230.9<!--/sg--> s, no JVM, no credentials), `make
+`make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->596<!--/sg--> tests in
+<!--sg:SG-00.artifact.fast_lane_seconds-->55.0<!--/sg--> s, no JVM, no credentials), `make
 preflight` the gate before a push, `make doctor` what this machine can run.
 
 ## The claims
@@ -92,16 +92,16 @@ full policy.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 535/535 (95% CI 99.3%-100.0%) | oss-local | local run, not reproduced in CI, 98c980b44 |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 180/180 (95% CI 97.9%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | CI, 4200be34b |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | CI, 4200be34b |
+| `SG-00` what this repository contains, counted | PASS | 585/585 (95% CI 99.3%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 193/193 (95% CI 98.0%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | CI, 9e52f158e |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | CI, 9e52f158e |
 
 <!-- samegold:end claims -->
 

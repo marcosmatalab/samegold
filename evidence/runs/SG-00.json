@@ -5,38 +5,38 @@
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
-    "fast_lane_repository_tests": 406,
-    "fast_lane_seconds": 230.9,
+    "fast_lane_repository_tests": 421,
+    "fast_lane_seconds": 55.0,
     "fast_lane_unclassified_files": 0,
-    "line_coverage_pct": 61.79,
-    "markdown_documents": 24,
+    "line_coverage_pct": 61.95,
+    "markdown_documents": 25,
     "python_modules": 56,
-    "source_lines": 11565,
-    "test_lines": 11498,
+    "source_lines": 11654,
+    "test_lines": 11869,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 581,
-    "tests_passed": 535,
+    "tests_fast": 596,
+    "tests_passed": 585,
     "tests_spark": 148
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
   "claim_id": "SG-00",
   "environment": {
-    "delta_rs": "1.6.3",
+    "delta_rs": "1.6.4",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Windows-11-10.0.26200-SP0",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.13.2",
-    "sqlglot": "30.17.0"
+    "python": "3.11.16",
+    "sqlglot": "30.18.0"
   },
-  "hash": "3d1772d0d480f5ecd20f97e241345fa0",
+  "hash": "5420dfad18e428ce6c0fc5a832887ad1",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "c377a0a16728a54148daf1003859d634",
+  "prev": "fd207ef7efc7c73bca4a8b1cd0245609",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -45,27 +45,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 535,
-      "trials": 535,
+      "successes": 585,
+      "trials": 585,
       "wilson95": [
-        0.992871,
+        0.993476,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "98c980b4455831086fb57b5c0023945a4965e2ac",
-      "duration_s": 242.081,
+      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
+      "duration_s": 57.521,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        17007379577244945248
+        4388807561024108564
       ],
-      "started_at": "2026-09-07T23:05:22+00:00",
+      "started_at": "2026-09-21T10:05:14+00:00",
       "tree_dirty": false,
-      "tree_sha": "4fd5ff53eec6a0b04990cfaee38bfb9388e475a2"
+      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
     }
   }
 }
