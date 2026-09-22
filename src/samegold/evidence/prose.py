@@ -81,6 +81,62 @@ NO_SUCH_PATH = re.compile(
     re.IGNORECASE,
 )
 
+# ---------------------------------------------------------------- an ADR that describes a
+# change it did not make
+#
+# ADR 0014 was written in the same round as the change it describes, the change was refused at
+# commit time, and the ADR went in anyway saying `gh pr merge --auto --squash --delete-branch`
+# had been added "immediately after the `gh pr create` that is already there". It had not. An
+# accepted ADR is the most load-bearing prose in this repository - it is what a reader consults
+# to find out why something is the way it is - and the three rules above all walked past it,
+# not because they do not read `docs/adr/` (they do, all fourteen, through the `docs/**/*.md`
+# glob) but because none of them has anything to say about this shape.
+#
+# WHAT THIS RULE CAN AND CANNOT DO, said plainly because the gap is the interesting part.
+# "Does this paragraph describe a change that exists" is not computable. What IS computable is
+# the narrow case the failure took: an accepted ADR that QUOTES A COMMAND as part of what it
+# decided, where that command appears nowhere in the implementation. Everything else an ADR
+# claims is still unguarded, and `docs/limits.md` says so.
+#
+# Every parameter below was chosen by measuring it against the fourteen ADRs already in the
+# tree rather than by taste, because a rule that fires on what is already there is a rule
+# somebody turns off:
+#
+#   * INLINE CODE SPANS, of which the fourteen hold 96. Filtering to command shapes leaves 25;
+#     restricting to the asserting sections leaves 10, of which exactly one - 0014's - is
+#     absent from the tree. Zero false positives at every step.
+#   * A COMMAND is a span whose first token is a tool this repository drives and which has at
+#     least one argument. `git` on its own is a word in a sentence; `gh pr merge --auto` is a
+#     claim that something was wired up.
+#   * THE ASSERTING SECTIONS ONLY. "Alternatives rejected" quotes commands the repository
+#     deliberately does NOT run, and "Context" quotes measurements taken before the decision;
+#     neither asserts that the tree contains anything. Decision and Consequences do.
+#   * THE EVIDENCE EXCLUDES PROSE. This is the whole of why the first version of this rule
+#     found nothing: a command quoted in an ADR appears in the tracked tree, in that ADR. A
+#     document cannot be its own proof, so only the implementation counts.
+ADR_TOOLS = (
+    "gh",
+    "git",
+    "make",
+    "samegold",
+    "pytest",
+    "ruff",
+    "mypy",
+    "databricks",
+    "python",
+    "npm",
+    "curl",
+)
+#: The sections in which an ADR asserts that the tree now contains something.
+ADR_ASSERTING_SECTION = re.compile(
+    r"^##\s+(?:Decision|Consequences)\b.*?$(?P<body>.*?)(?=^##\s|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+ADR_STATUS = re.compile(r"^\*\*Status\*\*\s*(?P<status>[\w-]+)", re.MULTILINE)
+#: Where an ADR's claim may be honoured. Prose is absent on purpose; see above.
+IMPLEMENTATION_ROOTS = ("src/", "tests/", "scripts/", ".github/", "databricks/", "pipelines/")
+IMPLEMENTATION_FILES = ("Makefile", "pyproject.toml")
+
 
 class Kind(Enum):
     """WHY a sentence is exempt, because there are two reasons and they expire differently.
@@ -242,6 +298,46 @@ def _tracked_files(repo: Path) -> frozenset[str]:
     return frozenset(path for path in out.stdout.split("\x00") if path)
 
 
+def implementation_text(repo: Path) -> str:
+    """Everything an ADR's claim may be honoured by, with whitespace flattened.
+
+    PROSE IS NOT IN HERE, and that exclusion is the rule rather than an optimisation. The first
+    version of this check read every tracked file and found nothing wrong with ADR 0014,
+    because the command ADR 0014 claims to have added appears in the tracked tree - inside ADR
+    0014. A document that counts as its own evidence is a check that cannot fail.
+
+    Whitespace is flattened on both sides so that a command wrapped across two lines of YAML
+    still matches the one-line form an ADR quotes. What it does NOT survive is a command split
+    by a shell continuation, which stays a false positive and is what `EXEMPTIONS` is for.
+    """
+    tracked = _tracked_files(repo)
+    wanted = sorted(
+        name
+        for name in tracked
+        if (name.startswith(IMPLEMENTATION_ROOTS) or name in IMPLEMENTATION_FILES)
+        and not name.endswith(".md")
+    )
+    chunks: list[str] = []
+    for name in wanted:
+        path = repo / name
+        try:
+            chunks.append(" ".join(path.read_text(encoding="utf-8", errors="replace").split()))
+        except OSError:
+            continue
+    return " ".join(chunks)
+
+
+def adr_commands(text: str) -> list[str]:
+    """The commands an ADR asserts, in the sections where it asserts rather than recounts."""
+    out: list[str] = []
+    for section in ADR_ASSERTING_SECTION.finditer(text):
+        for span in BACKTICKED.findall(section.group("body")):
+            tokens = span.split()
+            if len(tokens) >= 2 and tokens[0] in ADR_TOOLS:
+                out.append(" ".join(tokens))
+    return out
+
+
 def _run_records(repo: Path) -> list[Path]:
     """The committed evidence that the Databricks lane has run: one file per fetched run."""
     return sorted((repo / "evidence" / "databricks").glob("SG-DBX-01*.json"))
@@ -265,8 +361,13 @@ class Drift:
         return f"{self.document}:{self.line}: {self.quote}\n    {self.why}"
 
 
-def check_document(path: Path, repo: Path) -> list[Drift]:
-    """Every falsifiable sentence in one document that the repository contradicts today."""
+def check_document(path: Path, repo: Path, implementation: str | None = None) -> list[Drift]:
+    """Every falsifiable sentence in one document that the repository contradicts today.
+
+    `implementation` is the flattened implementation text, passed in by `check_documents` so
+    that a sweep of twenty-three documents reads the tree once rather than once per ADR. Left
+    out, it is computed on demand and only when an ADR actually asserts a command.
+    """
     text = path.read_text(encoding="utf-8")
     name = path.relative_to(repo).as_posix()
     exempted = [e.fragment for e in EXEMPTIONS if e.document == name]
