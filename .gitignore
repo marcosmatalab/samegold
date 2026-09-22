@@ -38,3 +38,9 @@ derby.log
 # in this repository is a node package; the directory is a tool's scratch space, and an
 # untracked one is enough to make `git status --porcelain` call the tree dirty.
 node_modules/
+
+# `make report` writes this, and the release carries it as an asset rather than the tree.
+# Untracked is not harmless here: `current_tree()` counts untracked files, so a build artifact
+# left in the checkout makes every evidence record produced beside it claim `tree_dirty`, which
+# is the caveat this repository's provenance field exists to mean something else by.
+close-report.html
