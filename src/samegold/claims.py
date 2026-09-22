@@ -108,6 +108,141 @@ def _versioned_rows(bronze: Path, closes: list[dt.datetime]) -> list[dict[str, A
     return revenue_versions(bronze, closes)
 
 
+def _collected(root: Path, path: str) -> int:
+    """How many tests a directory contributes, from pytest's own collection."""
+    out = subprocess.run(
+        [sys.executable, "-m", "pytest", path, "--collect-only", "-q", "--no-header"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=False,
+    )
+    for line in reversed(out.stdout.splitlines()):
+        if "test" in line and "collected" in line:
+            return int(line.split()[0])
+        if line.strip().endswith("tests collected") or line.strip().endswith("test collected"):
+            return int(line.split()[0])
+    return sum(1 for line in out.stdout.splitlines() if "::" in line)
+
+
+def _run_the_fast_lane(root: Path) -> tuple[subprocess.CompletedProcess[str], float, str]:
+    """The lane, timed, with the marker it deselects. Lifted out of SG-00 so that the
+    claim reads as what it publishes rather than as how it measured it.
+    """
+    fast_started = time.monotonic()
+    # One test is deselected, and it has to be: it asserts that the documents match the
+    # evidence, and this claim runs while that evidence is being written. The CI order is
+    # `evidence`, then `readme`, then `fast` with nothing deselected, so the check does run -
+    # just not inside the thing it checks.
+    # Deselected by MARKER, not by name. Two tests compare the documents with the evidence,
+    # and this claim writes evidence: running them inside it asks whether the documents match
+    # a record that does not exist yet. The first version deselected one of them by its full
+    # node id, the second test was added later, and SG-00 then recorded `fast_lane_green:
+    # false` on every commit whose figures moved - which is every commit, because the seeds
+    # derive from the commit. A deselection list that has to be maintained by hand is a
+    # deselection list that will be wrong.
+    #
+    # `make preflight` and the fast workflow run the marked tests with nothing deselected, so
+    # the comparison does happen - just not inside the thing it is comparing against.
+    deselected = "evidence_dependent"
+    # COVERAGE IS MEASURED BY THIS RUN, because the alternative was a number typed into
+    # CLAIMS.md. It said 60% while the lane measured 61.87%, in the same paragraph as a split
+    # that recomputes itself, and it would have drifted again the week after anybody corrected
+    # it by hand. `--cov-report=` asks for no report: the figure is read from the data file
+    # afterwards by `_line_coverage`.
+    #
+    # The data file is `.coverage`, which is IGNORED and no longer tracked. It was committed
+    # once, and a tracked file that this run rewrites made every record after it say
+    # `tree_dirty: true` - see tests/fast/test_seeds.py.
+    fast_run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/fast",
+            "-q",
+            "--no-header",
+            "-m",
+            f"not {deselected}",
+            "--cov=src/samegold",
+            "--cov-report=",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=False,
+    )
+    return fast_run, time.monotonic() - fast_started, deselected
+
+
+def _closed_series(
+    revenue: dict[tuple[str, str], dict[str, int]],
+) -> dict[str, list[tuple[str, dict[str, int]]]]:
+    """Per month, the closes that can be compared: its own and everything after it.
+
+    A month's baseline is its OWN close, not the first close in which it happens to
+    appear. At the close of January, February exists with one day of data in it;
+    measuring how much February "moved" from that partial figure produces percentages
+    over 100% that mean nothing. The baseline is the first close after the month ends.
+    In the accounting timezone, like every other month key in this project: a close
+    just after midnight in Madrid is still the previous month in UTC, and the string
+    prefix would drop a real close.
+    """
+    series: dict[str, list[tuple[str, dict[str, int]]]] = {}
+    for (month, as_of), values in sorted(revenue.items()):
+        if accounting_month_of(as_of) <= month:
+            continue
+        series.setdefault(month, []).append((as_of, values))
+    return {m: rows for m, rows in series.items() if len(rows) >= 2}
+
+
+def _restatement_disagreements(
+    root: Path,
+    result: Any,
+    by_month: dict[str, list[tuple[str, dict[str, int]]]],
+) -> tuple[list[tuple[str, int]], dict[tuple[str, int], int], dict[tuple[str, int], int]]:
+    """The (month, version) figures the ledger and the DuckDB reference disagree about.
+
+    Both sides are returned, not only the list: a counterexample that names a key without
+    naming the two numbers under it sends its reader back to re-run the thing that already
+    ran.
+    """
+    # A measurement still has to be able to FAIL, or the "result" column is a decoration.
+    #
+    # The first attempt at a failure condition was worse than none: it built a version history
+    # with `versions_from_snapshots` and then asked `restatement_monotonic` whether that
+    # history was dense and monotonic - two properties the producer constructs. Twenty
+    # thousand randomised inputs, including duplicate instants, reversed order and mixed UTC
+    # offsets, produced zero violations. It was the same shape as the conservation identity
+    # three rounds earlier: a check whose two sides come from one derivation.
+    #
+    # This one compares two DERIVATIONS. The measurement above reads the generator's ledger,
+    # which knows what each close reported because it wrote the events; the check recomputes
+    # the same versioned close from the bronze FILES with the DuckDB reference. A restatement
+    # the reference does not see is not a restatement, and this can fail: it did, on the
+    # first run, until the comparison was restricted to closed months (the ledger records the
+    # month in progress and the reference does not publish a version for it).
+    closes = [dt.datetime.fromisoformat(instant) for instant in result.ledger.closes]
+    reference = _versioned_rows(root / "bronze", closes)
+    from_reference = {
+        (str(row["accounting_month"]), int(row["close_version"])): int(row["net_cents"])
+        for row in reference
+    }
+    from_ledger: dict[tuple[str, int], int] = {}
+    for month, series in by_month.items():
+        snapshots = [(as_of, {month: values}) for as_of, values in series]
+        for row in versions_from_snapshots(snapshots):
+            from_ledger[(month, int(row["close_version"]))] = int(row["net_cents"])
+    disagreements = sorted(
+        {
+            key
+            for key in set(from_ledger) | set(from_reference)
+            if from_ledger.get(key) != from_reference.get(key)
+        }
+    )
+    return disagreements, from_ledger, from_reference
+
+
 # --------------------------------------------------------------------- SG-00
 
 
@@ -227,65 +362,7 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     root = repo_root or Path(__file__).resolve().parents[2]
     seeds = seeds_from_commit(1, purpose="facts")
 
-    def collected(path: str) -> int:
-        out = subprocess.run(
-            [sys.executable, "-m", "pytest", path, "--collect-only", "-q", "--no-header"],
-            capture_output=True,
-            text=True,
-            cwd=root,
-            check=False,
-        )
-        for line in reversed(out.stdout.splitlines()):
-            if "test" in line and "collected" in line:
-                return int(line.split()[0])
-            if line.strip().endswith("tests collected") or line.strip().endswith("test collected"):
-                return int(line.split()[0])
-        return sum(1 for line in out.stdout.splitlines() if "::" in line)
-
-    fast_started = time.monotonic()
-    # One test is deselected, and it has to be: it asserts that the documents match the
-    # evidence, and this claim runs while that evidence is being written. The CI order is
-    # `evidence`, then `readme`, then `fast` with nothing deselected, so the check does run -
-    # just not inside the thing it checks.
-    # Deselected by MARKER, not by name. Two tests compare the documents with the evidence,
-    # and this claim writes evidence: running them inside it asks whether the documents match
-    # a record that does not exist yet. The first version deselected one of them by its full
-    # node id, the second test was added later, and SG-00 then recorded `fast_lane_green:
-    # false` on every commit whose figures moved - which is every commit, because the seeds
-    # derive from the commit. A deselection list that has to be maintained by hand is a
-    # deselection list that will be wrong.
-    #
-    # `make preflight` and the fast workflow run the marked tests with nothing deselected, so
-    # the comparison does happen - just not inside the thing it is comparing against.
-    deselected = "evidence_dependent"
-    # COVERAGE IS MEASURED BY THIS RUN, because the alternative was a number typed into
-    # CLAIMS.md. It said 60% while the lane measured 61.87%, in the same paragraph as a split
-    # that recomputes itself, and it would have drifted again the week after anybody corrected
-    # it by hand. `--cov-report=` asks for no report: the figure is read from the data file
-    # afterwards by `_line_coverage`.
-    #
-    # The data file is `.coverage`, which is IGNORED and no longer tracked. It was committed
-    # once, and a tracked file that this run rewrites made every record after it say
-    # `tree_dirty: true` - see tests/fast/test_seeds.py.
-    fast_run = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "tests/fast",
-            "-q",
-            "--no-header",
-            "-m",
-            f"not {deselected}",
-            "--cov=src/samegold",
-            "--cov-report=",
-        ],
-        capture_output=True,
-        text=True,
-        cwd=root,
-        check=False,
-    )
-    fast_seconds = time.monotonic() - fast_started
+    fast_run, fast_seconds, deselected = _run_the_fast_lane(root)
 
     python_files = sorted(p for p in (root / "src").rglob("*.py") if "__pycache__" not in str(p))
     test_files = sorted(p for p in (root / "tests").rglob("*.py") if "__pycache__" not in str(p))
@@ -294,9 +371,9 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     docs = sorted(root.glob("*.md")) + sorted((root / "docs").rglob("*.md"))
 
     facts: dict[str, Any] = {
-        "tests_fast": collected("tests/fast"),
-        "tests_spark": collected("tests/spark"),
-        "tests_delta": collected("tests/delta"),
+        "tests_fast": _collected(root, "tests/fast"),
+        "tests_spark": _collected(root, "tests/spark"),
+        "tests_delta": _collected(root, "tests/delta"),
         "fast_lane_seconds": round(fast_seconds, 1),
         "fast_lane_green": fast_run.returncode == 0,
         "python_modules": len(python_files),
@@ -701,26 +778,6 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
     shutil.rmtree(root, ignore_errors=True)
     result = generate(root, seed=seeds[0], profile=PROFILES[profile_name])
 
-    def _closed_series(
-        revenue: dict[tuple[str, str], dict[str, int]],
-    ) -> dict[str, list[tuple[str, dict[str, int]]]]:
-        """Per month, the closes that can be compared: its own and everything after it.
-
-        A month's baseline is its OWN close, not the first close in which it happens to
-        appear. At the close of January, February exists with one day of data in it;
-        measuring how much February "moved" from that partial figure produces percentages
-        over 100% that mean nothing. The baseline is the first close after the month ends.
-        In the accounting timezone, like every other month key in this project: a close
-        just after midnight in Madrid is still the previous month in UTC, and the string
-        prefix would drop a real close.
-        """
-        series: dict[str, list[tuple[str, dict[str, int]]]] = {}
-        for (month, as_of), values in sorted(revenue.items()):
-            if accounting_month_of(as_of) <= month:
-                continue
-            series.setdefault(month, []).append((as_of, values))
-        return {m: rows for m, rows in series.items() if len(rows) >= 2}
-
     # The close, for the check; the shop, for the number. See the docstring.
     by_month = _closed_series(result.ledger.revenue)
     business_by_month = _closed_series(result.ledger.business_revenue)
@@ -775,39 +832,11 @@ def claim_restatement_magnitude(work: Path, profile_name: str = "fast") -> Evide
             "worst_delta_eur": euros(abs(int(heaviest["delta_cents"]))),
             "worst_versions": int(heaviest["versions"]),
         }
-    # A measurement still has to be able to FAIL, or the "result" column is a decoration.
-    #
-    # The first attempt at a failure condition was worse than none: it built a version history
-    # with `versions_from_snapshots` and then asked `restatement_monotonic` whether that
-    # history was dense and monotonic - two properties the producer constructs. Twenty
-    # thousand randomised inputs, including duplicate instants, reversed order and mixed UTC
-    # offsets, produced zero violations. It was the same shape as the conservation identity
-    # three rounds earlier: a check whose two sides come from one derivation.
-    #
-    # This one compares two DERIVATIONS. The measurement above reads the generator's ledger,
-    # which knows what each close reported because it wrote the events; the check recomputes
-    # the same versioned close from the bronze FILES with the DuckDB reference. A restatement
-    # the reference does not see is not a restatement, and this can fail: it did, on the
-    # first run, until the comparison was restricted to closed months (the ledger records the
-    # month in progress and the reference does not publish a version for it).
-    closes = [dt.datetime.fromisoformat(instant) for instant in result.ledger.closes]
-    reference = _versioned_rows(root / "bronze", closes)
-    from_reference = {
-        (str(row["accounting_month"]), int(row["close_version"])): int(row["net_cents"])
-        for row in reference
-    }
-    from_ledger: dict[tuple[str, int], int] = {}
-    for month, series in by_month.items():
-        snapshots = [(as_of, {month: values}) for as_of, values in series]
-        for row in versions_from_snapshots(snapshots):
-            from_ledger[(month, int(row["close_version"]))] = int(row["net_cents"])
-    disagreements = sorted(
-        {
-            key
-            for key in set(from_ledger) | set(from_reference)
-            if from_ledger.get(key) != from_reference.get(key)
-        }
-    )
+    # Two DERIVATIONS compared, in `_restatement_disagreements`: the ledger knows what
+    # each close reported because it wrote the events, and the reference recomputes the
+    # same versioned close from the bronze FILES. A restatement the reference does not
+    # see is not a restatement, and this can fail - it did, on the first run.
+    disagreements, from_ledger, from_reference = _restatement_disagreements(root, result, by_month)
     verdict_04: Verdict = (
         Pass("SG-04", runset, rate, f"largest move {worst:.2f}% of the first close")
         if not disagreements

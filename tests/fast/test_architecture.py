@@ -277,3 +277,66 @@ def test_the_stub_is_only_a_stub() -> None:
             f"{stub.relative_to(REPO)} has grown real declarations: {rendered}. The shadow is "
             f"a parser workaround, not a stub package anyone maintains."
         )
+
+
+# --------------------------------------------------------------- how big a function may get
+#
+# `generate` in src/samegold/generator/events.py was **1 295 lines** with three more functions
+# nested inside it, in a 1 495-line module. It got that way honestly: the seeds derive from
+# the commit sha, so the order in which it consumes the RNG decides every published figure in
+# this repository, and any split that moves one draw moves the front page. The cost of not
+# splitting it was that nobody could read it, and the boundary cases - the part a contributor
+# is most likely to need to extend - were eight hundred lines in.
+#
+# It is nineteen functions now, each a contiguous slice of what it used to be, called in the
+# same order. The split was verified by generating at a FIXED seed before and after and
+# comparing a digest of every byte written, at both the fast and the ci profile.
+#
+# The limit is generous on purpose. This is a ratchet against the next 1 295-line function,
+# not a style rule: a 140-line function with a long comment in it is fine here, and several
+# of the claims are exactly that.
+MAX_FUNCTION_LINES = 150
+
+FUNCTION_ROOTS = ("src", "databricks/src", "pipelines")
+
+
+def _functions() -> list[tuple[str, str, int, int]]:
+    out: list[tuple[str, str, int, int]] = []
+    for root in FUNCTION_ROOTS:
+        base = REPO / root
+        if not base.exists():
+            continue
+        for path in sorted(base.rglob("*.py")):
+            if "__pycache__" in str(path):
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    length = (node.end_lineno or node.lineno) - node.lineno + 1
+                    out.append((str(path.relative_to(REPO)), node.name, node.lineno, length))
+    return out
+
+
+def test_there_are_functions_to_measure() -> None:
+    """The guard on the guard: a walk that finds nothing passes every assertion below it."""
+    functions = _functions()
+    assert len(functions) > 200, (
+        f"only {len(functions)} functions found under {FUNCTION_ROOTS}; the walk is broken "
+        f"and the size gate below it is inspecting nothing"
+    )
+
+
+def test_no_function_is_longer_than_the_limit() -> None:
+    oversized = sorted(
+        ((length, f"{path}:{line} {name}") for path, name, line, length in _functions()),
+        reverse=True,
+    )
+    offenders = [
+        f"{label} ({length} lines)" for length, label in oversized if length > MAX_FUNCTION_LINES
+    ]
+    assert not offenders, (
+        f"these functions are longer than {MAX_FUNCTION_LINES} lines: {offenders}. Split them "
+        f"into contiguous slices called in the same order - and if the function draws from the "
+        f"RNG, verify the split by generating at a fixed seed before and after and comparing a "
+        f"digest of the bytes, because the seeds derive from the commit and a moved draw moves "
+        f"every published figure."
+    )

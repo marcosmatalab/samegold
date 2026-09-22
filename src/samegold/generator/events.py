@@ -198,28 +198,108 @@ def _scopes(entry: dict[str, Any]) -> tuple[str, ...]:
     return ("all",) if "boundary" in entry else ("all", "business")
 
 
-def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationResult:
-    """Write bronze JSONL files under ``out_dir`` and return the ledger.
+@dataclass(slots=True)
+class Population:
+    """Everything one run of the generator builds up, in one place.
 
-    Files are named by arrival batch (``batch=YYYYmmddHHMM/part-*.json``) so that the
-    directory listing order and the arrival order agree, which is what a file-source
-    reader sees in production and what makes the arrival-permutation experiment meaningful.
+    `generate` was a single function of 1 295 lines with three more nested inside it, and the
+    reason it stayed that way is real: the seeds derive from the commit sha, so the order in
+    which this code consumes the RNG decides every published figure in the repository. Any
+    split that moves one draw moves the front page.
+
+    So the split does not move any: each function below holds a contiguous slice of what that
+    function used to be, called in the same order, and this class is the state they used to
+    share as closure variables. The refactor was verified by generating at a FIXED seed before
+    and after and comparing a digest of every byte written, at both the fast and the ci
+    profile.
+
+    Mutable on purpose, and not frozen: the generator's shape is "accumulate intent, then
+    serialise it". `boundary_seq` is the one counter that genuinely spans the boundary cases,
+    which is why it lives here rather than being threaded through eight signatures.
+    """
+
+    rng: random.Random
+    profile: Profile
+    closes: list[dt.datetime]
+    ledger: Ledger
+    base_ts: dt.datetime
+    customers: list[str]
+    skus: list[str]
+    prices: dict[str, int]
+    segments: list[str]
+    countries: list[str]
+    events: list[tuple[dt.datetime, dict[str, Any]]] = field(default_factory=list)
+    # facts[(order_id, sku)] = dict with qty, price, sale_ts, arrival_ts of the sale
+    facts: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    returns: list[dict[str, Any]] = field(default_factory=list)
+    # Returns the contract refuses but that still belong to a month: outside the 45-day
+    # window, or for more units than were sold. They are reported in gold, so a rule that
+    # silently widens or narrows changes a published number instead of vanishing.
+    rejected_returns: list[dict[str, Any]] = field(default_factory=list)
+    quarantine_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    boundary_seq: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _Noise:
+    """What the duplicate and corrupt passes intended, for the ledger to publish beside what
+    was actually written. The two differ, and the difference is informative: a duplicate is
+    drawn with replacement, so drawing the same original twice writes three copies of one
+    event rather than two copies of two."""
+
+    originals: int
+    duplicates_planned: int
+    duplicates_late: int
+    corrupt: int
+
+
+@dataclass(frozen=True, slots=True)
+class _WriteTally:
+    """Counted at WRITE time, over the lines that actually reach the files, because that is
+    the quantity the reference can recount independently."""
+
+    files: list[Path]
+    written: int
+    unique_event_ids: int
+    duplicate_lines: int
+    unparseable_lines: int
+    beyond_bigint_lines: int
+
+
+def _new_population(seed: int, profile: Profile) -> Population:
+    """The cast: customers, skus, prices, and the instant everything is measured from.
+
+    `prices` is the first thing that draws from the RNG, and it has to stay first.
     """
     rng = random.Random(seed)
-    out_dir = Path(out_dir)
-    (out_dir / "bronze").mkdir(parents=True, exist_ok=True)
-
     closes = _close_instants(profile.start_date, profile.days)
     ledger = Ledger(closes=[c.isoformat() for c in closes])
-    events: list[tuple[dt.datetime, dict[str, Any]]] = []  # (arrival_ts, record)
-    quarantine_counts: dict[str, int] = defaultdict(int)
 
     customers = [f"C{idx:06d}" for idx in range(profile.customers)]
     skus = [f"SKU-{idx:05d}" for idx in range(profile.skus)]
     prices = {sku: rng.randrange(199, 24999) for sku in skus}
     segments = ["retail", "pro", "vip"]
     countries = ["ES", "PT", "FR", "IT"]
+    base_ts = dt.datetime.combine(profile.start_date, dt.time(0, 0), tzinfo=dt.UTC)
+    return Population(
+        rng=rng,
+        profile=profile,
+        closes=closes,
+        ledger=ledger,
+        base_ts=base_ts,
+        customers=customers,
+        skus=skus,
+        prices=prices,
+        segments=segments,
+        countries=countries,
+    )
 
+
+def _customer_dimension(pop: Population) -> None:
+    """The SCD2 source: one upsert per customer, then up to three changes each."""
+    rng, profile, base_ts = pop.rng, pop.profile, pop.base_ts
+    customers, segments, countries = pop.customers, pop.segments, pop.countries
+    events, ledger = pop.events, pop.ledger
     # ---- customer dimension (SCD2 source) -------------------------------------------
     base_ts = dt.datetime.combine(profile.start_date, dt.time(0, 0), tzinfo=dt.UTC)
     for cid in customers:
@@ -269,16 +349,131 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         # test body and passed against the buggy version.
         ledger.dim_customer[cid] = collapse_versions(versions)
 
-    # ---- orders, amendments, returns -------------------------------------------------
-    # facts[(order_id, sku)] = dict with qty, price, sale_ts, arrival_ts of the sale
-    facts: dict[tuple[str, str], dict[str, Any]] = {}
-    returns: list[dict[str, Any]] = []
-    # Returns the contract refuses but that still belong to a month: outside the 45-day
-    # window, or for more units than were sold. They are reported in gold, so a rule that
-    # silently widens or narrows changes a published number instead of vanishing.
-    rejected_returns: list[dict[str, Any]] = []
-    order_seq = 0
 
+def _amendments_for_line(
+    pop: Population, order_id: str, sku: str, qty: int, sale_ts: dt.datetime
+) -> None:
+    rng, profile, events, facts = pop.rng, pop.profile, pop.events, pop.facts
+    # Amendments: up to three per line, each replacing the effective quantity.
+    # More than one on purpose. With a single amendment per line the tie-break in
+    # "last amendment wins" is never exercised, and a mutation campaign reported
+    # the ORDER BY of that window as an equivalent mutant - it was not equivalent,
+    # it was untested. All of them land within 72 hours of the sale, which keeps
+    # them ahead of any return (returns start on day 5) and keeps the validity of
+    # a return decidable against a settled quantity.
+    amendments: list[dict[str, Any]] = []
+    current_qty = qty
+    for k in range(3):
+        if rng.random() >= profile.amend_rate:
+            break
+        current_qty = max(1, current_qty + rng.choice([-1, 1, 2]))
+        amend_ts = sale_ts + dt.timedelta(
+            hours=12 * k + rng.randrange(1, 13), minutes=rng.randrange(0, 60)
+        )
+        amend_arrival = amend_ts + _delay(rng, profile)
+        events.append(
+            (
+                amend_arrival,
+                {
+                    "event_id": f"am-{order_id}-{sku}-{k}",
+                    "event_type": "order_line_amended",
+                    "event_ts": amend_ts.isoformat(),
+                    "order_id": order_id,
+                    "sku": sku,
+                    "new_qty": current_qty,
+                },
+            )
+        )
+        amendments.append(
+            {
+                "event_id": f"am-{order_id}-{sku}-{k}",
+                "event_ts": amend_ts,
+                "arrival_ts": amend_arrival,
+                "qty": current_qty,
+            }
+        )
+    if amendments:
+        facts[(order_id, sku)]["qty"] = current_qty
+        facts[(order_id, sku)]["amendments"] = amendments
+
+
+def _return_for_line(
+    pop: Population,
+    order_id: str,
+    sku: str,
+    order_seq: int,
+    price: int,
+    sale_ts: dt.datetime,
+) -> None:
+    rng, profile, events, facts = pop.rng, pop.profile, pop.events, pop.facts
+    returns, rejected_returns = pop.returns, pop.rejected_returns
+    quarantine_counts = pop.quarantine_counts
+    # return: the interesting one
+    if rng.random() < profile.return_rate:
+        if rng.random() < profile.late_return_share:
+            offset_days = rng.randrange(30, 61)  # some fall outside the window
+        else:
+            offset_days = rng.randrange(5, 30)
+        return_ts = sale_ts + dt.timedelta(days=offset_days, hours=rng.randrange(0, 24))
+        r_arrival = return_ts + _delay(rng, profile)
+        eff_qty = int(facts[(order_id, sku)]["qty"])
+        # A small share of returns is for MORE units than were sold, so that
+        # `return_exceeds_sold_qty` is a reason some run actually produces. It
+        # was unreachable by construction: `randrange(1, eff_qty + 1)` makes
+        # `r_qty <= eff_qty` a tautology, so the branch existed in all three
+        # implementations and was exercised by none of them, while the test that
+        # checks "every reason is reachable" passed by grepping the source for
+        # the literal string. A reason nobody can produce is a reason nobody
+        # maintains, and grepping for its name is not producing it.
+        if eff_qty > 0 and rng.random() < profile.over_return_rate:
+            r_qty = eff_qty + rng.randrange(1, 4)
+        else:
+            r_qty = rng.randrange(1, eff_qty + 1) if eff_qty > 0 else 1
+        events.append(
+            (
+                r_arrival,
+                {
+                    "event_id": f"rt-{order_id}-{sku}",
+                    "event_type": "return_registered",
+                    "event_ts": return_ts.isoformat(),
+                    "return_id": f"R{order_seq:08d}-{sku}",
+                    "order_id": order_id,
+                    "sku": sku,
+                    "qty": r_qty,
+                    "reason": rng.choice(["size", "damaged", "changed_mind"]),
+                },
+            )
+        )
+        valid = is_return_within_window(sale_ts, return_ts) and r_qty <= eff_qty
+        if valid:
+            returns.append(
+                {
+                    "order_id": order_id,
+                    "sku": sku,
+                    "qty": r_qty,
+                    "unit_price_cents": price,
+                    "sale_ts": sale_ts,
+                    "arrival_ts": r_arrival,
+                }
+            )
+        else:
+            reason = (
+                QuarantineReason.RETURN_OUTSIDE_WINDOW
+                if not is_return_within_window(sale_ts, return_ts)
+                else QuarantineReason.RETURN_EXCEEDS_SOLD_QTY
+            )
+            quarantine_counts[str(reason)] += 1
+            rejected_returns.append(
+                {"sale_ts": sale_ts, "arrival_ts": r_arrival, "reason": str(reason)}
+            )
+
+
+def _daily_orders(pop: Population) -> None:
+    """Orders, and the amendments and returns that hang off each line."""
+    rng, profile, base_ts = pop.rng, pop.profile, pop.base_ts
+    customers, skus, prices = pop.customers, pop.skus, pop.prices
+    events, facts = pop.events, pop.facts
+    order_seq = 0
     for day in range(profile.days):
         day_start = base_ts + dt.timedelta(days=day)
         for _ in range(profile.orders_per_day):
@@ -318,110 +513,16 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     "sale_ts": sale_ts,
                     "arrival_ts": arrival,
                 }
+                _amendments_for_line(pop, order_id, sku, qty, sale_ts)
+                _return_for_line(pop, order_id, sku, order_seq, price, sale_ts)
 
-                # Amendments: up to three per line, each replacing the effective quantity.
-                # More than one on purpose. With a single amendment per line the tie-break in
-                # "last amendment wins" is never exercised, and a mutation campaign reported
-                # the ORDER BY of that window as an equivalent mutant - it was not equivalent,
-                # it was untested. All of them land within 72 hours of the sale, which keeps
-                # them ahead of any return (returns start on day 5) and keeps the validity of
-                # a return decidable against a settled quantity.
-                amendments: list[dict[str, Any]] = []
-                current_qty = qty
-                for k in range(3):
-                    if rng.random() >= profile.amend_rate:
-                        break
-                    current_qty = max(1, current_qty + rng.choice([-1, 1, 2]))
-                    amend_ts = sale_ts + dt.timedelta(
-                        hours=12 * k + rng.randrange(1, 13), minutes=rng.randrange(0, 60)
-                    )
-                    amend_arrival = amend_ts + _delay(rng, profile)
-                    events.append(
-                        (
-                            amend_arrival,
-                            {
-                                "event_id": f"am-{order_id}-{sku}-{k}",
-                                "event_type": "order_line_amended",
-                                "event_ts": amend_ts.isoformat(),
-                                "order_id": order_id,
-                                "sku": sku,
-                                "new_qty": current_qty,
-                            },
-                        )
-                    )
-                    amendments.append(
-                        {
-                            "event_id": f"am-{order_id}-{sku}-{k}",
-                            "event_ts": amend_ts,
-                            "arrival_ts": amend_arrival,
-                            "qty": current_qty,
-                        }
-                    )
-                if amendments:
-                    facts[(order_id, sku)]["qty"] = current_qty
-                    facts[(order_id, sku)]["amendments"] = amendments
 
-                # return: the interesting one
-                if rng.random() < profile.return_rate:
-                    if rng.random() < profile.late_return_share:
-                        offset_days = rng.randrange(30, 61)  # some fall outside the window
-                    else:
-                        offset_days = rng.randrange(5, 30)
-                    return_ts = sale_ts + dt.timedelta(days=offset_days, hours=rng.randrange(0, 24))
-                    r_arrival = return_ts + _delay(rng, profile)
-                    eff_qty = int(facts[(order_id, sku)]["qty"])
-                    # A small share of returns is for MORE units than were sold, so that
-                    # `return_exceeds_sold_qty` is a reason some run actually produces. It
-                    # was unreachable by construction: `randrange(1, eff_qty + 1)` makes
-                    # `r_qty <= eff_qty` a tautology, so the branch existed in all three
-                    # implementations and was exercised by none of them, while the test that
-                    # checks "every reason is reachable" passed by grepping the source for
-                    # the literal string. A reason nobody can produce is a reason nobody
-                    # maintains, and grepping for its name is not producing it.
-                    if eff_qty > 0 and rng.random() < profile.over_return_rate:
-                        r_qty = eff_qty + rng.randrange(1, 4)
-                    else:
-                        r_qty = rng.randrange(1, eff_qty + 1) if eff_qty > 0 else 1
-                    events.append(
-                        (
-                            r_arrival,
-                            {
-                                "event_id": f"rt-{order_id}-{sku}",
-                                "event_type": "return_registered",
-                                "event_ts": return_ts.isoformat(),
-                                "return_id": f"R{order_seq:08d}-{sku}",
-                                "order_id": order_id,
-                                "sku": sku,
-                                "qty": r_qty,
-                                "reason": rng.choice(["size", "damaged", "changed_mind"]),
-                            },
-                        )
-                    )
-                    valid = is_return_within_window(sale_ts, return_ts) and r_qty <= eff_qty
-                    if valid:
-                        returns.append(
-                            {
-                                "order_id": order_id,
-                                "sku": sku,
-                                "qty": r_qty,
-                                "unit_price_cents": price,
-                                "sale_ts": sale_ts,
-                                "arrival_ts": r_arrival,
-                            }
-                        )
-                    else:
-                        reason = (
-                            QuarantineReason.RETURN_OUTSIDE_WINDOW
-                            if not is_return_within_window(sale_ts, return_ts)
-                            else QuarantineReason.RETURN_EXCEEDS_SOLD_QTY
-                        )
-                        quarantine_counts[str(reason)] += 1
-                        rejected_returns.append(
-                            {"sale_ts": sale_ts, "arrival_ts": r_arrival, "reason": str(reason)}
-                        )
-
-    # ---- noise: duplicates and corrupt records --------------------------------------
-    originals = list(events)
+def _duplicates(
+    pop: Population, originals: list[tuple[dt.datetime, dict[str, Any]]]
+) -> tuple[int, int]:
+    """Byte-identical copies under a different arrival, so a deduplicating pipeline sees none
+    of them and the ledger does not move."""
+    rng, profile, events = pop.rng, pop.profile, pop.events
     n_dup = int(len(originals) * profile.duplicate_rate)
     duplicates_late = 0
     for _ in range(n_dup):
@@ -432,326 +533,352 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         else:
             extra = dt.timedelta(minutes=rng.uniform(1.0, 90.0))
         events.append((arrival + extra, dict(rec)))
+    return n_dup, duplicates_late
 
+
+#: Every shape of bad record the generator emits, in the order the loop cycles through
+#: them. A module constant rather than a local, so a reader can find the list without
+#: reading the loop that consumes it.
+CORRUPT_KINDS: list[tuple[QuarantineReason, str]] = [
+    (QuarantineReason.UNPARSEABLE_JSON, "unparseable"),
+    (QuarantineReason.UNKNOWN_EVENT_TYPE, "unknown_type"),
+    (QuarantineReason.MISSING_REQUIRED_FIELD, "missing_field"),
+    (QuarantineReason.NON_POSITIVE_QUANTITY, "negative_qty"),
+    (QuarantineReason.NEGATIVE_PRICE, "negative_price"),
+    (QuarantineReason.RETURN_WITHOUT_ORDER, "orphan_return"),
+    (QuarantineReason.UNKNOWN_CURRENCY, "bad_currency"),
+    (QuarantineReason.AMOUNT_OUT_OF_RANGE, "huge_amount"),
+    # A number that does not FIT the column, as opposed to one that fits and breaks a
+    # business rule. `huge_amount` above is Long.MaxValue: a legal BIGINT, read into the
+    # column, refused by the contract's bound. This one is Long.MaxValue plus one, and no
+    # rule ever sees it, because the READER cannot put it in a BIGINT column.
+    #
+    # Every lane does the same thing with it, measured rather than assumed: Spark reading
+    # a declared schema in PERMISSIVE mode nulls that ONE column and copies the raw line
+    # into `_rescued_data` (the rest of the record survives); Auto Loader with the schema
+    # hints does the same into its rescued column; DuckDB reads it as JSON, `json_type`
+    # calls it UBIGINT and `TRY_CAST(... AS BIGINT)` returns NULL. So the value is gone and
+    # the column is NULL in all three - and `missing_required_field` catches it, because
+    # after the rescue the field IS missing.
+    #
+    # It is generated for the failure it is one edit away from: the door out of here is a
+    # NULL column, which is the quietest thing a pipeline can produce. Nothing counted the
+    # rescue at all - `claims.py` passed `rescued=0` to the conservation invariant and
+    # called the term structurally zero - so a value that vanished into the rescue column
+    # was accounted for only by the presence rule that happened to be standing behind it.
+    # `values_beyond_bigint` in the ledger is now counted at write time and compared
+    # against the reference's own recount, so the row is counted as WELL as classified.
+    (QuarantineReason.MISSING_REQUIRED_FIELD, "beyond_bigint"),
+]
+
+
+def _corrupt_record(pop: Population, kind: str, eid: str, ts: str, i: int) -> dict[str, Any]:
+    """One additional bad record of a named kind. ADDITIONAL, never a mutation of a good one,
+    so every corrupt line has a known quarantine reason and a known count."""
+    customers, skus = pop.customers, pop.skus
+    # Annotated, because the first branch is the only one whose values are all strings and
+    # mypy would otherwise infer `dict[str, str]` from it and refuse every branch below.
+    rec: dict[str, Any]
+    if kind == "unparseable":
+        # A line that is not valid JSON at all: the closing brace is missing on purpose.
+        rec = {"__raw__": '{"event_id": "' + eid + '", "event_type": "order_placed",'}
+    elif kind == "unknown_type":
+        rec = {"event_id": eid, "event_type": "warehouse_pinged", "event_ts": ts}
+    elif kind == "missing_field":
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "sku": "SKU-00001",
+        }
+    elif kind == "negative_qty":
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "order_id": f"OBAD{i}",
+            "customer_id": customers[0],
+            "sku": skus[0],
+            "qty": -3,
+            "unit_price_cents": 1000,
+            "currency": CURRENCY,
+        }
+    elif kind == "negative_price":
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "order_id": f"OBAD{i}",
+            "customer_id": customers[0],
+            "sku": skus[0],
+            "qty": 1,
+            "unit_price_cents": -500,
+            "currency": CURRENCY,
+        }
+    elif kind == "huge_amount":
+        # A price that is a legal BIGINT and outside the contract's bound. Three of these
+        # in one close used to end it outright: Spark refused to produce any month with an
+        # ARITHMETIC_OVERFLOW and DuckDB published a gross that does not fit its column.
+        # The reason exists because of that, and it is generated so that it is REACHED.
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "order_id": f"OBAD{i}",
+            "customer_id": customers[0],
+            "sku": skus[0],
+            "qty": 1,
+            "unit_price_cents": 9223372036854775807,
+            "currency": CURRENCY,
+        }
+    elif kind == "beyond_bigint":
+        # 2^63, one past the largest BIGINT. Written as a JSON NUMBER on purpose: quoting
+        # it would test the reader's string handling instead, and the shape that reached
+        # production was a number.
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "order_id": f"OBAD{i}",
+            "customer_id": customers[0],
+            "sku": skus[0],
+            "qty": 1,
+            "unit_price_cents": 2**63,
+            "currency": CURRENCY,
+        }
+    elif kind == "orphan_return":
+        rec = {
+            "event_id": eid,
+            "event_type": "return_registered",
+            "event_ts": ts,
+            "return_id": f"RBAD{i}",
+            "order_id": "O99999999",
+            "sku": skus[0],
+            "qty": 1,
+        }
+    else:
+        rec = {
+            "event_id": eid,
+            "event_type": "order_placed",
+            "event_ts": ts,
+            "order_id": f"OBAD{i}",
+            "customer_id": customers[0],
+            "sku": skus[0],
+            "qty": 1,
+            "unit_price_cents": 1000,
+            "currency": "XXX",
+        }
+    return rec
+
+
+def _corrupt_records(pop: Population, originals: list[tuple[dt.datetime, dict[str, Any]]]) -> int:
+    rng, profile, events = pop.rng, pop.profile, pop.events
+    quarantine_counts = pop.quarantine_counts
     n_corrupt = int(len(originals) * profile.corrupt_rate)
-    corrupt_kinds = [
-        (QuarantineReason.UNPARSEABLE_JSON, "unparseable"),
-        (QuarantineReason.UNKNOWN_EVENT_TYPE, "unknown_type"),
-        (QuarantineReason.MISSING_REQUIRED_FIELD, "missing_field"),
-        (QuarantineReason.NON_POSITIVE_QUANTITY, "negative_qty"),
-        (QuarantineReason.NEGATIVE_PRICE, "negative_price"),
-        (QuarantineReason.RETURN_WITHOUT_ORDER, "orphan_return"),
-        (QuarantineReason.UNKNOWN_CURRENCY, "bad_currency"),
-        (QuarantineReason.AMOUNT_OUT_OF_RANGE, "huge_amount"),
-        # A number that does not FIT the column, as opposed to one that fits and breaks a
-        # business rule. `huge_amount` above is Long.MaxValue: a legal BIGINT, read into the
-        # column, refused by the contract's bound. This one is Long.MaxValue plus one, and no
-        # rule ever sees it, because the READER cannot put it in a BIGINT column.
-        #
-        # Every lane does the same thing with it, measured rather than assumed: Spark reading
-        # a declared schema in PERMISSIVE mode nulls that ONE column and copies the raw line
-        # into `_rescued_data` (the rest of the record survives); Auto Loader with the schema
-        # hints does the same into its rescued column; DuckDB reads it as JSON, `json_type`
-        # calls it UBIGINT and `TRY_CAST(... AS BIGINT)` returns NULL. So the value is gone and
-        # the column is NULL in all three - and `missing_required_field` catches it, because
-        # after the rescue the field IS missing.
-        #
-        # It is generated for the failure it is one edit away from: the door out of here is a
-        # NULL column, which is the quietest thing a pipeline can produce. Nothing counted the
-        # rescue at all - `claims.py` passed `rescued=0` to the conservation invariant and
-        # called the term structurally zero - so a value that vanished into the rescue column
-        # was accounted for only by the presence rule that happened to be standing behind it.
-        # `values_beyond_bigint` in the ledger is now counted at write time and compared
-        # against the reference's own recount, so the row is counted as WELL as classified.
-        (QuarantineReason.MISSING_REQUIRED_FIELD, "beyond_bigint"),
-    ]
     for i in range(n_corrupt):
-        reason, kind = corrupt_kinds[i % len(corrupt_kinds)]
+        reason, kind = CORRUPT_KINDS[i % len(CORRUPT_KINDS)]
         arrival, _ = originals[rng.randrange(len(originals))]
         ts = (arrival - dt.timedelta(minutes=1)).isoformat()
         eid = f"bad-{i:07d}"
-        if kind == "unparseable":
-            # A line that is not valid JSON at all: the closing brace is missing on purpose.
-            rec = {"__raw__": '{"event_id": "' + eid + '", "event_type": "order_placed",'}
-        elif kind == "unknown_type":
-            rec = {"event_id": eid, "event_type": "warehouse_pinged", "event_ts": ts}
-        elif kind == "missing_field":
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "sku": "SKU-00001",
-            }
-        elif kind == "negative_qty":
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "order_id": f"OBAD{i}",
-                "customer_id": customers[0],
-                "sku": skus[0],
-                "qty": -3,
-                "unit_price_cents": 1000,
-                "currency": CURRENCY,
-            }
-        elif kind == "negative_price":
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "order_id": f"OBAD{i}",
-                "customer_id": customers[0],
-                "sku": skus[0],
-                "qty": 1,
-                "unit_price_cents": -500,
-                "currency": CURRENCY,
-            }
-        elif kind == "huge_amount":
-            # A price that is a legal BIGINT and outside the contract's bound. Three of these
-            # in one close used to end it outright: Spark refused to produce any month with an
-            # ARITHMETIC_OVERFLOW and DuckDB published a gross that does not fit its column.
-            # The reason exists because of that, and it is generated so that it is REACHED.
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "order_id": f"OBAD{i}",
-                "customer_id": customers[0],
-                "sku": skus[0],
-                "qty": 1,
-                "unit_price_cents": 9223372036854775807,
-                "currency": CURRENCY,
-            }
-        elif kind == "beyond_bigint":
-            # 2^63, one past the largest BIGINT. Written as a JSON NUMBER on purpose: quoting
-            # it would test the reader's string handling instead, and the shape that reached
-            # production was a number.
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "order_id": f"OBAD{i}",
-                "customer_id": customers[0],
-                "sku": skus[0],
-                "qty": 1,
-                "unit_price_cents": 2**63,
-                "currency": CURRENCY,
-            }
-        elif kind == "orphan_return":
-            rec = {
-                "event_id": eid,
-                "event_type": "return_registered",
-                "event_ts": ts,
-                "return_id": f"RBAD{i}",
-                "order_id": "O99999999",
-                "sku": skus[0],
-                "qty": 1,
-            }
-        else:
-            rec = {
-                "event_id": eid,
-                "event_type": "order_placed",
-                "event_ts": ts,
-                "order_id": f"OBAD{i}",
-                "customer_id": customers[0],
-                "sku": skus[0],
-                "qty": 1,
-                "unit_price_cents": 1000,
-                "currency": "XXX",
-            }
+        rec = _corrupt_record(pop, kind, eid, ts, i)
         quarantine_counts[str(reason)] += 1
         events.append((arrival, rec))
+    return n_corrupt
 
-    # ---- boundary cases ---------------------------------------------------------------
-    # These are not decoration. The mutation campaign showed that without them, six
-    # generated mutants survived - not because the gate was weak but because the data never
-    # reached the boundary they moved (a zero quantity, a free line, a return exactly on the
-    # 45th day, an event arriving exactly at the close instant). A generator that never
-    # produces a boundary cannot detect a mistake at that boundary, and the mutation score
-    # was measuring the generator, not the pipeline. See
-    # docs/adr/0006-mutants-are-generated-not-planted.md and the README note on how the score
-    # moved once the boundaries existed.
-    #
-    # Cases 11 to 14 are the same lesson learned a second time, and the way it came back is
-    # the part worth keeping. Contract 1.3.0 added rules - two bounds on the money arithmetic,
-    # and which of two sales sharing a line key is the line - and this block was not extended
-    # with them. Both implementations grew the rules; nothing grew the data that reaches them,
-    # so fifteen mutants of those rules produced the original's numbers exactly and the
-    # campaign fell to 52 of 67. A rule can therefore be correct in both lanes and untested
-    # from the day it lands. The rule this block now follows: a change to the contract that
-    # adds a comparison adds a case here in the same commit, or the campaign quietly stops
-    # measuring the pipeline again.
-    boundary_seq = 0
 
-    def _boundary_order(sale_ts: dt.datetime, qty: int, price: int, tag: str) -> tuple[str, str]:
-        nonlocal boundary_seq
-        boundary_seq += 1
-        order_id = f"B{boundary_seq:06d}"
-        sku = skus[boundary_seq % len(skus)]
-        arrival = sale_ts + dt.timedelta(minutes=5)
-        events.append(
-            (
-                arrival,
-                {
-                    "event_id": f"op-{order_id}-{sku}",
-                    "event_type": "order_placed",
-                    "event_ts": sale_ts.isoformat(),
-                    "order_id": order_id,
-                    "customer_id": customers[0],
-                    "sku": sku,
-                    "qty": qty,
-                    "unit_price_cents": price,
-                    "currency": CURRENCY,
-                    "boundary": tag,
-                },
-            )
-        )
-        # The branches, in the order the contract applies them - the same order as the CASE in
-        # src/samegold/pipelines/transform.py and as the WHERE of the `lines` CTE in
-        # gold_revenue.sql. The first that matches is the reason, so a line that is both
-        # zero-quantity and out of range leaves through `non_positive_quantity`; getting that
-        # order wrong here would make the ledger disagree with both implementations about a
-        # record neither of them accepts.
-        if qty <= 0:
-            quarantine_counts[str(QuarantineReason.NON_POSITIVE_QUANTITY)] += 1
-        elif price < 0:
-            quarantine_counts[str(QuarantineReason.NEGATIVE_PRICE)] += 1
-        elif qty > MAX_LINE_QUANTITY or price > MAX_UNIT_PRICE_CENTS:
-            # The door the bounds opened in contract 1.3.0. Until boundary case 11 below
-            # existed nothing walked through it from this helper, because no boundary case
-            # asked for an amount anywhere near a bound.
-            quarantine_counts[str(QuarantineReason.AMOUNT_OUT_OF_RANGE)] += 1
-        else:
-            facts[(order_id, sku)] = {
+def _add_noise(pop: Population) -> _Noise:
+    """Duplicates and corrupt records, both chosen so they cannot move the ledger."""
+    originals = list(pop.events)
+    n_dup, duplicates_late = _duplicates(pop, originals)
+    n_corrupt = _corrupt_records(pop, originals)
+    return _Noise(len(originals), n_dup, duplicates_late, n_corrupt)
+
+
+def _boundary_order(
+    pop: Population, sale_ts: dt.datetime, qty: int, price: int, tag: str
+) -> tuple[str, str]:
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
+    quarantine_counts = pop.quarantine_counts
+    pop.boundary_seq += 1
+    order_id = f"B{pop.boundary_seq:06d}"
+    sku = skus[pop.boundary_seq % len(skus)]
+    arrival = sale_ts + dt.timedelta(minutes=5)
+    events.append(
+        (
+            arrival,
+            {
+                "event_id": f"op-{order_id}-{sku}",
+                "event_type": "order_placed",
+                "event_ts": sale_ts.isoformat(),
+                "order_id": order_id,
                 "customer_id": customers[0],
-                "qty0": qty,
+                "sku": sku,
+                "qty": qty,
+                "unit_price_cents": price,
+                "currency": CURRENCY,
+                "boundary": tag,
+            },
+        )
+    )
+    # The branches, in the order the contract applies them - the same order as the CASE in
+    # src/samegold/pipelines/transform.py and as the WHERE of the `lines` CTE in
+    # gold_revenue.sql. The first that matches is the reason, so a line that is both
+    # zero-quantity and out of range leaves through `non_positive_quantity`; getting that
+    # order wrong here would make the ledger disagree with both implementations about a
+    # record neither of them accepts.
+    if qty <= 0:
+        quarantine_counts[str(QuarantineReason.NON_POSITIVE_QUANTITY)] += 1
+    elif price < 0:
+        quarantine_counts[str(QuarantineReason.NEGATIVE_PRICE)] += 1
+    elif qty > MAX_LINE_QUANTITY or price > MAX_UNIT_PRICE_CENTS:
+        # The door the bounds opened in contract 1.3.0. Until boundary case 11 below
+        # existed nothing walked through it from this helper, because no boundary case
+        # asked for an amount anywhere near a bound.
+        quarantine_counts[str(QuarantineReason.AMOUNT_OUT_OF_RANGE)] += 1
+    else:
+        facts[(order_id, sku)] = {
+            "customer_id": customers[0],
+            "qty0": qty,
+            "qty": qty,
+            "unit_price_cents": price,
+            "sale_ts": sale_ts,
+            "arrival_ts": arrival,
+            # Marks this line as SCAFFOLDING. It is part of the close like any other line
+            # and every witness must reproduce it; it is kept out of the business
+            # projection of the ledger, because a fixture chosen to sit on a contract
+            # bound describes the contract and not the shop. See Ledger.business_revenue.
+            "boundary": tag,
+        }
+    return order_id, sku
+
+
+def _boundary_amendment(
+    pop: Population,
+    order_id: str,
+    sku: str,
+    suffix: str,
+    amend_ts: dt.datetime,
+    new_qty: int,
+    arrival: dt.datetime,
+    tag: str,
+    outcome: str,
+) -> None:
+    events, facts = pop.events, pop.facts
+    quarantine_counts = pop.quarantine_counts
+    """One amendment, and the outcome the contract gives it, written down rather than
+    derived.
+
+    ``outcome`` is a decision, not a computation. That is the whole design of this file:
+    the ledger records what was INTENDED, so it is an oracle rather than a second copy of
+    the rules that would agree with the pipeline by sharing its mistakes. Every caller
+    says in a comment why the contract gives its event the outcome it passes.
+    """
+    events.append(
+        (
+            arrival,
+            {
+                "event_id": f"am-{order_id}-{sku}-{suffix}",
+                "event_type": "order_line_amended",
+                "event_ts": amend_ts.isoformat(),
+                "order_id": order_id,
+                "sku": sku,
+                "new_qty": new_qty,
+                "boundary": tag,
+            },
+        )
+    )
+    if outcome != "accepted":
+        quarantine_counts[str(outcome)] += 1
+        return
+    fact = facts[(order_id, sku)]
+    fact["qty"] = new_qty
+    fact.setdefault("amendments", []).append(
+        {
+            "event_id": f"am-{order_id}-{sku}-{suffix}",
+            "event_ts": amend_ts,
+            "arrival_ts": arrival,
+            "qty": new_qty,
+        }
+    )
+
+
+def _boundary_return(
+    pop: Population,
+    order_id: str,
+    sku: str,
+    suffix: str,
+    sale_ts: dt.datetime,
+    return_ts: dt.datetime,
+    qty: int,
+    price: int,
+    arrival: dt.datetime,
+    tag: str,
+    outcome: str,
+) -> None:
+    events, quarantine_counts = pop.events, pop.quarantine_counts
+    returns, rejected_returns = pop.returns, pop.rejected_returns
+    """One return, and the outcome the contract gives it. Same rule as above.
+
+    The two kinds of refusal are NOT interchangeable and the branch below is the whole
+    reason this helper exists. A return the RETURN STAGE refuses - outside the window, or
+    past what the line sold - is reported per month in gold, so it belongs in
+    ``rejected_returns`` and is compared against the reference by
+    verify/invariants.returns_accounted_by_reason. One refused at INGEST, for a quantity
+    outside the contract's bounds, never reaches that stage in either implementation, so
+    counting it there would make the generator's accounting disagree with both.
+    """
+    events.append(
+        (
+            arrival,
+            {
+                "event_id": f"rt-{order_id}-{sku}-{suffix}",
+                "event_type": "return_registered",
+                "event_ts": return_ts.isoformat(),
+                "return_id": f"R-{order_id}-{suffix}",
+                "order_id": order_id,
+                "sku": sku,
+                "qty": qty,
+                "reason": "size",
+                "boundary": tag,
+            },
+        )
+    )
+    if outcome == "accepted":
+        returns.append(
+            {
+                "order_id": order_id,
+                "sku": sku,
                 "qty": qty,
                 "unit_price_cents": price,
                 "sale_ts": sale_ts,
                 "arrival_ts": arrival,
-                # Marks this line as SCAFFOLDING. It is part of the close like any other line
-                # and every witness must reproduce it; it is kept out of the business
-                # projection of the ledger, because a fixture chosen to sit on a contract
-                # bound describes the contract and not the shop. See Ledger.business_revenue.
                 "boundary": tag,
             }
-        return order_id, sku
-
-    def _boundary_amendment(
-        order_id: str,
-        sku: str,
-        suffix: str,
-        amend_ts: dt.datetime,
-        new_qty: int,
-        arrival: dt.datetime,
-        tag: str,
-        outcome: str,
-    ) -> None:
-        """One amendment, and the outcome the contract gives it, written down rather than
-        derived.
-
-        ``outcome`` is a decision, not a computation. That is the whole design of this file:
-        the ledger records what was INTENDED, so it is an oracle rather than a second copy of
-        the rules that would agree with the pipeline by sharing its mistakes. Every caller
-        says in a comment why the contract gives its event the outcome it passes.
-        """
-        events.append(
-            (
-                arrival,
-                {
-                    "event_id": f"am-{order_id}-{sku}-{suffix}",
-                    "event_type": "order_line_amended",
-                    "event_ts": amend_ts.isoformat(),
-                    "order_id": order_id,
-                    "sku": sku,
-                    "new_qty": new_qty,
-                    "boundary": tag,
-                },
-            )
         )
-        if outcome != "accepted":
-            quarantine_counts[str(outcome)] += 1
-            return
-        fact = facts[(order_id, sku)]
-        fact["qty"] = new_qty
-        fact.setdefault("amendments", []).append(
-            {
-                "event_id": f"am-{order_id}-{sku}-{suffix}",
-                "event_ts": amend_ts,
-                "arrival_ts": arrival,
-                "qty": new_qty,
-            }
+        return
+    quarantine_counts[str(outcome)] += 1
+    if outcome in (
+        str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
+        str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY),
+    ):
+        rejected_returns.append(
+            {"sale_ts": sale_ts, "arrival_ts": arrival, "reason": outcome, "boundary": tag}
         )
 
-    def _boundary_return(
-        order_id: str,
-        sku: str,
-        suffix: str,
-        sale_ts: dt.datetime,
-        return_ts: dt.datetime,
-        qty: int,
-        price: int,
-        arrival: dt.datetime,
-        tag: str,
-        outcome: str,
-    ) -> None:
-        """One return, and the outcome the contract gives it. Same rule as above.
 
-        The two kinds of refusal are NOT interchangeable and the branch below is the whole
-        reason this helper exists. A return the RETURN STAGE refuses - outside the window, or
-        past what the line sold - is reported per month in gold, so it belongs in
-        ``rejected_returns`` and is compared against the reference by
-        verify/invariants.returns_accounted_by_reason. One refused at INGEST, for a quantity
-        outside the contract's bounds, never reaches that stage in either implementation, so
-        counting it there would make the generator's accounting disagree with both.
-        """
-        events.append(
-            (
-                arrival,
-                {
-                    "event_id": f"rt-{order_id}-{sku}-{suffix}",
-                    "event_type": "return_registered",
-                    "event_ts": return_ts.isoformat(),
-                    "return_id": f"R-{order_id}-{suffix}",
-                    "order_id": order_id,
-                    "sku": sku,
-                    "qty": qty,
-                    "reason": "size",
-                    "boundary": tag,
-                },
-            )
-        )
-        if outcome == "accepted":
-            returns.append(
-                {
-                    "order_id": order_id,
-                    "sku": sku,
-                    "qty": qty,
-                    "unit_price_cents": price,
-                    "sale_ts": sale_ts,
-                    "arrival_ts": arrival,
-                    "boundary": tag,
-                }
-            )
-            return
-        quarantine_counts[str(outcome)] += 1
-        if outcome in (
-            str(QuarantineReason.RETURN_OUTSIDE_WINDOW),
-            str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY),
-        ):
-            rejected_returns.append(
-                {"sale_ts": sale_ts, "arrival_ts": arrival, "reason": outcome, "boundary": tag}
-            )
-
-    mid = base_ts + dt.timedelta(days=max(1, profile.days // 3), hours=9)
-
+def _boundary_window_edges(pop: Population, mid: dt.datetime) -> None:
+    """Cases 1 to 6: the zero-cent line, the zero quantity, and the four returns that sit on
+    or one microsecond past an edge of the 45-day window."""
+    events = pop.events
+    returns, rejected_returns = pop.returns, pop.rejected_returns
+    quarantine_counts = pop.quarantine_counts
     # 1. A line sold for zero cents: legal (a promotional gift), and it must be counted as a
     #    line even though it adds nothing to revenue. Kills the ">= 0 becomes > 0" mutant.
-    _boundary_order(mid, qty=2, price=0, tag="free_line")
+    _boundary_order(pop, mid, qty=2, price=0, tag="free_line")
     # 2. A line with quantity zero: never valid, must be quarantined, must not be counted.
-    _boundary_order(mid, qty=0, price=1999, tag="zero_qty")
+    _boundary_order(pop, mid, qty=0, price=1999, tag="zero_qty")
     # 3. A return exactly on the 45th day: inside the window, by contract.
-    oid, sku = _boundary_order(mid, qty=3, price=5000, tag="return_at_45d")
+    oid, sku = _boundary_order(pop, mid, qty=3, price=5000, tag="return_at_45d")
     r_ts = mid + dt.timedelta(days=45)
     events.append(
         (
@@ -781,7 +908,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         }
     )
     # 4. A return one microsecond past the 45th day: outside, by contract.
-    oid, sku = _boundary_order(mid, qty=3, price=5000, tag="return_past_45d")
+    oid, sku = _boundary_order(pop, mid, qty=3, price=5000, tag="return_past_45d")
     r_ts = mid + dt.timedelta(days=45, microseconds=1)
     events.append(
         (
@@ -809,7 +936,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         }
     )
     # 5. A return at the very instant of the sale: inside, by contract (>=, not >).
-    oid, sku = _boundary_order(mid, qty=1, price=7700, tag="return_at_sale_instant")
+    oid, sku = _boundary_order(pop, mid, qty=1, price=7700, tag="return_at_sale_instant")
     events.append(
         (
             mid + dt.timedelta(minutes=6),
@@ -838,7 +965,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         }
     )
     # 6. A return of quantity zero: never valid.
-    oid, sku = _boundary_order(mid, qty=1, price=1234, tag="zero_qty_return")
+    oid, sku = _boundary_order(pop, mid, qty=1, price=1234, tag="zero_qty_return")
     events.append(
         (
             mid + dt.timedelta(hours=2),
@@ -856,214 +983,228 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         )
     )
     quarantine_counts[str(QuarantineReason.NON_POSITIVE_QUANTITY)] += 1
-    # 7. A sale whose event arrives exactly at a close instant: the close includes it,
-    #    because the as-of cut is inclusive. Kills the "<= becomes <" mutant on that cut.
-    if closes:
-        close0 = closes[0]
-        boundary_seq += 1
-        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
-        sale_ts = close0 - dt.timedelta(days=2)
-        events.append(
-            (
-                close0,
-                {
-                    "event_id": f"op-{oid}-{sku}",
-                    "event_type": "order_placed",
-                    "event_ts": sale_ts.isoformat(),
-                    "order_id": oid,
-                    "customer_id": customers[0],
-                    "sku": sku,
-                    "qty": 1,
-                    "unit_price_cents": 9999,
-                    "currency": CURRENCY,
-                    "boundary": "arrives_at_close_instant",
-                },
-            )
-        )
-        facts[(oid, sku)] = {
-            "customer_id": customers[0],
-            "qty0": 1,
-            "qty": 1,
-            "unit_price_cents": 9999,
-            "sale_ts": sale_ts,
-            "arrival_ts": close0,
-            "boundary": "arrives_at_close_instant",
-        }
 
-        # 8. A sale that HAPPENED before a close but ARRIVED after it. This is the only
-        #    shape of data that can tell an as-of cut on arrival time apart from one on
-        #    event time, and without it specification mutant SPEC-04 survives every witness
-        #    - which is exactly what happened before this case existed. It is also the
-        #    shape that creates a restatement, so it is not an artificial case: it is the
-        #    reason the whole bitemporal model is there.
-        boundary_seq += 1
-        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
-        sale_ts = close0 - dt.timedelta(days=1)
-        events.append(
-            (
-                close0 + dt.timedelta(hours=1),
-                {
-                    "event_id": f"op-{oid}-{sku}",
-                    "event_type": "order_placed",
-                    "event_ts": sale_ts.isoformat(),
-                    "order_id": oid,
-                    "customer_id": customers[0],
-                    "sku": sku,
-                    "qty": 4,
-                    "unit_price_cents": 12345,
-                    "currency": CURRENCY,
-                    "boundary": "arrives_after_close",
-                },
-            )
-        )
-        facts[(oid, sku)] = {
-            "customer_id": customers[0],
-            "qty0": 4,
-            "qty": 4,
-            "unit_price_cents": 12345,
-            "sale_ts": sale_ts,
-            "arrival_ts": close0 + dt.timedelta(hours=1),
-            "boundary": "arrives_after_close",
-        }
 
-        # 9. An AMENDMENT that arrives after a close and changes a quantity that close had
-        #    already reported. This is the only shape that can tell "the quantity known at
-        #    the close" apart from "the final quantity", and without it specification mutant
-        #    SPEC-06 survives at the small profile while dying at the large one - a mutation
-        #    score that depends on how much data you happened to generate is a score that
-        #    measures the data.
-        #
-        #    The comment used to say "after the close OF THE MONTH ITS LINE BELONGS TO",
-        #    which is not what the arithmetic below does: the sale is three days before the
-        #    first close and therefore in the month BEFORE it, whose own close is a month
-        #    later. The case works - the quantity differs between close 0 and close 1, which
-        #    is what SPEC-06 needs - and the sentence explaining it described a different
-        #    case. A comment that is nearly right about a boundary case is the reason the
-        #    next reader trusts the next one.
-        boundary_seq += 1
-        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
-        sale_ts = close0 - dt.timedelta(days=3)
-        events.append(
-            (
-                sale_ts + dt.timedelta(minutes=5),
-                {
-                    "event_id": f"op-{oid}-{sku}",
-                    "event_type": "order_placed",
-                    "event_ts": sale_ts.isoformat(),
-                    "order_id": oid,
-                    "customer_id": customers[0],
-                    "sku": sku,
-                    "qty": 2,
-                    "unit_price_cents": 20000,
-                    "currency": CURRENCY,
-                    "boundary": "amendment_after_close",
-                },
-            )
+def _boundary_sale_at_the_close_instant(pop: Population, close0: dt.datetime) -> None:
+    """Case 7. A sale whose event arrives exactly at a close instant: the close includes it,
+    because the as-of cut is inclusive. Kills the "<= becomes <" mutant on that cut."""
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
+    pop.boundary_seq += 1
+    oid, sku = f"B{pop.boundary_seq:06d}", skus[pop.boundary_seq % len(skus)]
+    sale_ts = close0 - dt.timedelta(days=2)
+    events.append(
+        (
+            close0,
+            {
+                "event_id": f"op-{oid}-{sku}",
+                "event_type": "order_placed",
+                "event_ts": sale_ts.isoformat(),
+                "order_id": oid,
+                "customer_id": customers[0],
+                "sku": sku,
+                "qty": 1,
+                "unit_price_cents": 9999,
+                "currency": CURRENCY,
+                "boundary": "arrives_at_close_instant",
+            },
         )
-        amend_ts = sale_ts + dt.timedelta(hours=6)
+    )
+    facts[(oid, sku)] = {
+        "customer_id": customers[0],
+        "qty0": 1,
+        "qty": 1,
+        "unit_price_cents": 9999,
+        "sale_ts": sale_ts,
+        "arrival_ts": close0,
+        "boundary": "arrives_at_close_instant",
+    }
+
+
+def _boundary_sale_arriving_after_the_close(pop: Population, close0: dt.datetime) -> None:
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
+    # 8. A sale that HAPPENED before a close but ARRIVED after it. This is the only
+    #    shape of data that can tell an as-of cut on arrival time apart from one on
+    #    event time, and without it specification mutant SPEC-04 survives every witness
+    #    - which is exactly what happened before this case existed. It is also the
+    #    shape that creates a restatement, so it is not an artificial case: it is the
+    #    reason the whole bitemporal model is there.
+    pop.boundary_seq += 1
+    oid, sku = f"B{pop.boundary_seq:06d}", skus[pop.boundary_seq % len(skus)]
+    sale_ts = close0 - dt.timedelta(days=1)
+    events.append(
+        (
+            close0 + dt.timedelta(hours=1),
+            {
+                "event_id": f"op-{oid}-{sku}",
+                "event_type": "order_placed",
+                "event_ts": sale_ts.isoformat(),
+                "order_id": oid,
+                "customer_id": customers[0],
+                "sku": sku,
+                "qty": 4,
+                "unit_price_cents": 12345,
+                "currency": CURRENCY,
+                "boundary": "arrives_after_close",
+            },
+        )
+    )
+    facts[(oid, sku)] = {
+        "customer_id": customers[0],
+        "qty0": 4,
+        "qty": 4,
+        "unit_price_cents": 12345,
+        "sale_ts": sale_ts,
+        "arrival_ts": close0 + dt.timedelta(hours=1),
+        "boundary": "arrives_after_close",
+    }
+
+
+def _boundary_amendment_after_the_close(pop: Population, close0: dt.datetime) -> None:
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
+    # 9. An AMENDMENT that arrives after a close and changes a quantity that close had
+    #    already reported. This is the only shape that can tell "the quantity known at
+    #    the close" apart from "the final quantity", and without it specification mutant
+    #    SPEC-06 survives at the small profile while dying at the large one - a mutation
+    #    score that depends on how much data you happened to generate is a score that
+    #    measures the data.
+    #
+    #    The comment used to say "after the close OF THE MONTH ITS LINE BELONGS TO",
+    #    which is not what the arithmetic below does: the sale is three days before the
+    #    first close and therefore in the month BEFORE it, whose own close is a month
+    #    later. The case works - the quantity differs between close 0 and close 1, which
+    #    is what SPEC-06 needs - and the sentence explaining it described a different
+    #    case. A comment that is nearly right about a boundary case is the reason the
+    #    next reader trusts the next one.
+    pop.boundary_seq += 1
+    oid, sku = f"B{pop.boundary_seq:06d}", skus[pop.boundary_seq % len(skus)]
+    sale_ts = close0 - dt.timedelta(days=3)
+    events.append(
+        (
+            sale_ts + dt.timedelta(minutes=5),
+            {
+                "event_id": f"op-{oid}-{sku}",
+                "event_type": "order_placed",
+                "event_ts": sale_ts.isoformat(),
+                "order_id": oid,
+                "customer_id": customers[0],
+                "sku": sku,
+                "qty": 2,
+                "unit_price_cents": 20000,
+                "currency": CURRENCY,
+                "boundary": "amendment_after_close",
+            },
+        )
+    )
+    amend_ts = sale_ts + dt.timedelta(hours=6)
+    events.append(
+        (
+            close0 + dt.timedelta(hours=2),
+            {
+                "event_id": f"am-{oid}-{sku}",
+                "event_type": "order_line_amended",
+                "event_ts": amend_ts.isoformat(),
+                "order_id": oid,
+                "sku": sku,
+                "new_qty": 7,
+                "boundary": "amendment_after_close",
+            },
+        )
+    )
+    facts[(oid, sku)] = {
+        "customer_id": customers[0],
+        "qty0": 2,
+        "qty": 7,
+        "unit_price_cents": 20000,
+        "sale_ts": sale_ts,
+        "arrival_ts": sale_ts + dt.timedelta(minutes=5),
+        "boundary": "amendment_after_close",
+        "amendments": [
+            {
+                # The id the EVENT carries, not a suffixed one. The ledger said
+                # "am-...-0" while the event written said "am-...", which is harmless
+                # only because this line has a single amendment and nothing ties on it:
+                # a ledger that records a different key from the data it describes is one
+                # tie away from being a wrong answer nobody can explain.
+                "event_id": f"am-{oid}-{sku}",
+                "event_ts": amend_ts,
+                "arrival_ts": close0 + dt.timedelta(hours=2),
+                "qty": 7,
+            }
+        ],
+    }
+
+
+def _boundary_amendments_that_tie(pop: Population) -> None:
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
+    base_ts = pop.base_ts
+    # 10. Two amendments for the same line at the SAME event time, with different
+    #     quantities. Only the tie-break on event_id decides which one wins, and until
+    #     this case existed a mutant that flipped exactly that tie-break survived the
+    #     whole campaign. A tie-break nothing exercises is a coin toss with a comment.
+    pop.boundary_seq += 1
+    oid, sku = f"B{pop.boundary_seq:06d}", skus[pop.boundary_seq % len(skus)]
+    sale_ts = base_ts + dt.timedelta(days=1, hours=10)
+    tie_ts = sale_ts + dt.timedelta(hours=6)
+    events.append(
+        (
+            sale_ts + dt.timedelta(minutes=3),
+            {
+                "event_id": f"op-{oid}-{sku}",
+                "event_type": "order_placed",
+                "event_ts": sale_ts.isoformat(),
+                "order_id": oid,
+                "customer_id": customers[0],
+                "sku": sku,
+                "qty": 1,
+                "unit_price_cents": 30000,
+                "currency": CURRENCY,
+                "boundary": "amendment_tie",
+            },
+        )
+    )
+    for suffix, tie_qty in (("a", 3), ("b", 9)):
         events.append(
             (
-                close0 + dt.timedelta(hours=2),
+                tie_ts + dt.timedelta(minutes=4),
                 {
-                    "event_id": f"am-{oid}-{sku}",
+                    "event_id": f"am-{oid}-{sku}-{suffix}",
                     "event_type": "order_line_amended",
-                    "event_ts": amend_ts.isoformat(),
+                    "event_ts": tie_ts.isoformat(),
                     "order_id": oid,
                     "sku": sku,
-                    "new_qty": 7,
-                    "boundary": "amendment_after_close",
-                },
-            )
-        )
-        facts[(oid, sku)] = {
-            "customer_id": customers[0],
-            "qty0": 2,
-            "qty": 7,
-            "unit_price_cents": 20000,
-            "sale_ts": sale_ts,
-            "arrival_ts": sale_ts + dt.timedelta(minutes=5),
-            "boundary": "amendment_after_close",
-            "amendments": [
-                {
-                    # The id the EVENT carries, not a suffixed one. The ledger said
-                    # "am-...-0" while the event written said "am-...", which is harmless
-                    # only because this line has a single amendment and nothing ties on it:
-                    # a ledger that records a different key from the data it describes is one
-                    # tie away from being a wrong answer nobody can explain.
-                    "event_id": f"am-{oid}-{sku}",
-                    "event_ts": amend_ts,
-                    "arrival_ts": close0 + dt.timedelta(hours=2),
-                    "qty": 7,
-                }
-            ],
-        }
-
-        # 10. Two amendments for the same line at the SAME event time, with different
-        #     quantities. Only the tie-break on event_id decides which one wins, and until
-        #     this case existed a mutant that flipped exactly that tie-break survived the
-        #     whole campaign. A tie-break nothing exercises is a coin toss with a comment.
-        boundary_seq += 1
-        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
-        sale_ts = base_ts + dt.timedelta(days=1, hours=10)
-        tie_ts = sale_ts + dt.timedelta(hours=6)
-        events.append(
-            (
-                sale_ts + dt.timedelta(minutes=3),
-                {
-                    "event_id": f"op-{oid}-{sku}",
-                    "event_type": "order_placed",
-                    "event_ts": sale_ts.isoformat(),
-                    "order_id": oid,
-                    "customer_id": customers[0],
-                    "sku": sku,
-                    "qty": 1,
-                    "unit_price_cents": 30000,
-                    "currency": CURRENCY,
+                    "new_qty": tie_qty,
                     "boundary": "amendment_tie",
                 },
             )
         )
-        for suffix, tie_qty in (("a", 3), ("b", 9)):
-            events.append(
-                (
-                    tie_ts + dt.timedelta(minutes=4),
-                    {
-                        "event_id": f"am-{oid}-{sku}-{suffix}",
-                        "event_type": "order_line_amended",
-                        "event_ts": tie_ts.isoformat(),
-                        "order_id": oid,
-                        "sku": sku,
-                        "new_qty": tie_qty,
-                        "boundary": "amendment_tie",
-                    },
-                )
-            )
-        # The contract says the last amendment wins, ordered by event time and then by event
-        # id descending, so "am-...-b" (9 units) is the effective quantity.
-        facts[(oid, sku)] = {
-            "customer_id": customers[0],
-            "qty0": 1,
-            "qty": 9,
-            "unit_price_cents": 30000,
-            "sale_ts": sale_ts,
-            "arrival_ts": sale_ts + dt.timedelta(minutes=3),
-            "boundary": "amendment_tie",
-            "amendments": [
-                {
-                    "event_id": f"am-{oid}-{sku}-a",
-                    "event_ts": tie_ts,
-                    "arrival_ts": tie_ts + dt.timedelta(minutes=4),
-                    "qty": 3,
-                },
-                {
-                    "event_id": f"am-{oid}-{sku}-b",
-                    "event_ts": tie_ts,
-                    "arrival_ts": tie_ts + dt.timedelta(minutes=4),
-                    "qty": 9,
-                },
-            ],
-        }
+    # The contract says the last amendment wins, ordered by event time and then by event
+    # id descending, so "am-...-b" (9 units) is the effective quantity.
+    facts[(oid, sku)] = {
+        "customer_id": customers[0],
+        "qty0": 1,
+        "qty": 9,
+        "unit_price_cents": 30000,
+        "sale_ts": sale_ts,
+        "arrival_ts": sale_ts + dt.timedelta(minutes=3),
+        "boundary": "amendment_tie",
+        "amendments": [
+            {
+                "event_id": f"am-{oid}-{sku}-a",
+                "event_ts": tie_ts,
+                "arrival_ts": tie_ts + dt.timedelta(minutes=4),
+                "qty": 3,
+            },
+            {
+                "event_id": f"am-{oid}-{sku}-b",
+                "event_ts": tie_ts,
+                "arrival_ts": tie_ts + dt.timedelta(minutes=4),
+                "qty": 9,
+            },
+        ],
+    }
 
+
+def _boundary_money_bounds(pop: Population, mid: dt.datetime) -> None:
     # 11. The money bounds, exactly ON them and exactly one past them, at all four places the
     #     contract applies them: a line's quantity, a line's unit price, an amendment's new
     #     quantity and a return's quantity. Eight mutants lived here - SQL-041, 047, 048, 052,
@@ -1096,15 +1237,17 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # amount_out_of_range. Without the first, `unit_price_cents <= MAX` and
     # `unit_price_cents < MAX` classify every row identically (SQL-041 survives); without the
     # second, `<= MAX` and `<= MAX + 1` do (SQL-047 survives).
-    _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS, tag="price_at_bound")
-    _boundary_order(mid, qty=1, price=MAX_UNIT_PRICE_CENTS + 1, tag="price_past_bound")
+    _boundary_order(pop, mid, qty=1, price=MAX_UNIT_PRICE_CENTS, tag="price_at_bound")
+    _boundary_order(pop, mid, qty=1, price=MAX_UNIT_PRICE_CENTS + 1, tag="price_past_bound")
     # The same pair for the quantity bound (SQL-059 and SQL-067), priced at ONE CENT: the case
     # has to reach the bound, not dominate the close it is measured in. The price bound above
     # gets no such discount - a line at the price bound costs the price bound, whatever
     # quantity it carries - which is the whole reason the bound itself had to be a number a
     # retail close can absorb.
-    bound_oid, bound_sku = _boundary_order(mid, qty=MAX_LINE_QUANTITY, price=1, tag="qty_at_bound")
-    _boundary_order(mid, qty=MAX_LINE_QUANTITY + 1, price=1, tag="qty_past_bound")
+    bound_oid, bound_sku = _boundary_order(
+        pop, mid, qty=MAX_LINE_QUANTITY, price=1, tag="qty_at_bound"
+    )
+    _boundary_order(pop, mid, qty=MAX_LINE_QUANTITY + 1, price=1, tag="qty_past_bound")
     # A return AT the quantity bound, against the line that sold exactly that many units, so
     # it is accepted and the whole line comes back: without it `d.qty <= MAX` and
     # `d.qty < MAX` agree on every return ever generated (SQL-048 survives). And one unit past
@@ -1116,6 +1259,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # ledger recorded.
     bound_return_arrival = mid + dt.timedelta(days=11, minutes=5)
     _boundary_return(
+        pop,
         bound_oid,
         bound_sku,
         "atbound",
@@ -1128,6 +1272,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         outcome="accepted",
     )
     _boundary_return(
+        pop,
         bound_oid,
         bound_sku,
         "pastbound",
@@ -1142,8 +1287,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # And the same pair for an amendment's new quantity (SQL-068 and SQL-072). An amendment
     # carries `new_qty`, which is a different column under a different branch of the
     # classification, so the two rows the line needed do not test it: it needs its own two.
-    amend_oid, amend_sku = _boundary_order(mid, qty=2, price=1, tag="amend_qty_at_bound")
+    amend_oid, amend_sku = _boundary_order(pop, mid, qty=2, price=1, tag="amend_qty_at_bound")
     _boundary_amendment(
+        pop,
         amend_oid,
         amend_sku,
         "atbound",
@@ -1153,8 +1299,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         tag="amend_qty_at_bound",
         outcome="accepted",
     )
-    amend_oid, amend_sku = _boundary_order(mid, qty=3, price=100, tag="amend_qty_past_bound")
+    amend_oid, amend_sku = _boundary_order(pop, mid, qty=3, price=100, tag="amend_qty_past_bound")
     _boundary_amendment(
+        pop,
         amend_oid,
         amend_sku,
         "pastbound",
@@ -1165,6 +1312,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         outcome=str(QuarantineReason.AMOUNT_OUT_OF_RANGE),
     )
 
+
+def _boundary_duplicate_line_keys(pop: Population, mid: dt.datetime) -> None:
+    customers, skus, events, facts = pop.customers, pop.skus, pop.events, pop.facts
     # 12. Two order_placed events sharing one (order_id, sku). The key of a sale is its
     #     event_id, so this is contract-legal, and gold keeps exactly ONE of them: the first
     #     by (sale_ts, event_id). SQL-042 and SQL-043 flip the two halves of that order and
@@ -1189,8 +1339,8 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         # The same sale instant, so only the event_id decides. Kills SQL-043.
         ("duplicate_line_key_by_event_id", 0),
     ):
-        boundary_seq += 1
-        oid, sku = f"B{boundary_seq:06d}", skus[boundary_seq % len(skus)]
+        pop.boundary_seq += 1
+        oid, sku = f"B{pop.boundary_seq:06d}", skus[pop.boundary_seq % len(skus)]
         pair_arrival = mid + dt.timedelta(minutes=5)
         # Named rather than positional, and the ledger below reads the SAME tuple the event
         # does. `winner` earns the name in both pairs: it is the earlier sale in the first and
@@ -1232,6 +1382,8 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             "boundary": tag,
         }
 
+
+def _boundary_cumulative_returns(pop: Population, mid: dt.datetime) -> None:
     # 13. One line, three returns, and the cumulative window that decides which of them takes
     #     units off it. Three mutants of that window survived - SQL-055 turns its SUM into a
     #     MAX, SQL-064 and SQL-065 flip the two halves of its ORDER BY - and a fourth,
@@ -1255,7 +1407,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     #     their MAX instead of their SUM (SQL-055) accepts both. Both move the month's
     #     returns_cents, which is the number a reader of gold would have watched move.
     cumulative_oid, cumulative_sku = _boundary_order(
-        mid, qty=3, price=5000, tag="return_cumulative_window"
+        pop, mid, qty=3, price=5000, tag="return_cumulative_window"
     )
     # One arrival for all three, for the reason given in case 11: the cumulative rule is a
     # property of the SET of returns that has arrived, so a close that splits the set is a
@@ -1267,6 +1419,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         ("overflows", 2, 2, str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY)),
     ):
         _boundary_return(
+            pop,
             cumulative_oid,
             cumulative_sku,
             suffix,
@@ -1285,13 +1438,14 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     # different times. The line sells 3; the first by event_id takes 1 and is accepted, the
     # second wants 3 and is refused. Read the other way the 3 is accepted and the 1 refused,
     # which is 12 000 cents of refund instead of 4 000.
-    tie_oid, tie_sku = _boundary_order(mid, qty=3, price=4000, tag="return_tie_on_instant")
+    tie_oid, tie_sku = _boundary_order(pop, mid, qty=3, price=4000, tag="return_tie_on_instant")
     tie_return_ts = mid + dt.timedelta(days=3)
     for suffix, return_qty, outcome in (
         ("a", 1, "accepted"),
         ("b", 3, str(QuarantineReason.RETURN_EXCEEDS_SOLD_QTY)),
     ):
         _boundary_return(
+            pop,
             tie_oid,
             tie_sku,
             suffix,
@@ -1304,6 +1458,8 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
             outcome=outcome,
         )
 
+
+def _boundary_zero_amendment(pop: Population, mid: dt.datetime) -> None:
     # 14. An amendment to a quantity of ZERO, which is non_positive_quantity: the contract
     #     admits an amendment that changes how many units were sold, not one that unsells the
     #     line. SQL-071 turns the amendments filter's `new_qty > 0` into `new_qty >= 0` and
@@ -1317,8 +1473,9 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     #     COALESCE takes the zero - 10 000 cents of gross the close simply stops reporting,
     #     with the line still counted. It is the same failure an amendment to -5 once caused
     #     in the other direction, which is why the branch exists at all.
-    zero_oid, zero_sku = _boundary_order(mid, qty=4, price=2500, tag="amendment_to_zero")
+    zero_oid, zero_sku = _boundary_order(pop, mid, qty=4, price=2500, tag="amendment_to_zero")
     _boundary_amendment(
+        pop,
         zero_oid,
         zero_sku,
         "zero",
@@ -1329,6 +1486,46 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         outcome=str(QuarantineReason.NON_POSITIVE_QUANTITY),
     )
 
+
+def _boundary_fixtures(pop: Population) -> None:
+    """Why these cases exist, and the rule that keeps them in step with the contract.
+
+    These are not decoration. The mutation campaign showed that without them, six
+    generated mutants survived - not because the gate was weak but because the data never
+    reached the boundary they moved (a zero quantity, a free line, a return exactly on the
+    45th day, an event arriving exactly at the close instant). A generator that never
+    produces a boundary cannot detect a mistake at that boundary, and the mutation score
+    was measuring the generator, not the pipeline. See
+    docs/adr/0006-mutants-are-generated-not-planted.md and the README note on how the score
+    moved once the boundaries existed.
+
+    Cases 11 to 14 are the same lesson learned a second time, and the way it came back is
+    the part worth keeping. Contract 1.3.0 added rules - two bounds on the money arithmetic,
+    and which of two sales sharing a line key is the line - and this block was not extended
+    with them. Both implementations grew the rules; nothing grew the data that reaches them,
+    so fifteen mutants of those rules produced the original's numbers exactly and the
+    campaign fell to 52 of 67. A rule can therefore be correct in both lanes and untested
+    from the day it lands. The rule this block now follows: a change to the contract that
+    adds a comparison adds a case here in the same commit, or the campaign quietly stops
+    measuring the pipeline again.
+    """
+    mid = pop.base_ts + dt.timedelta(days=max(1, pop.profile.days // 3), hours=9)
+    _boundary_window_edges(pop, mid)
+    if pop.closes:
+        close0 = pop.closes[0]
+        _boundary_sale_at_the_close_instant(pop, close0)
+        _boundary_sale_arriving_after_the_close(pop, close0)
+        _boundary_amendment_after_the_close(pop, close0)
+        _boundary_amendments_that_tie(pop)
+    _boundary_money_bounds(pop, mid)
+    _boundary_duplicate_line_keys(pop, mid)
+    _boundary_cumulative_returns(pop, mid)
+    _boundary_zero_amendment(pop, mid)
+
+
+def _ledger_counters(pop: Population) -> None:
+    closes, ledger, facts = pop.closes, pop.ledger, pop.facts
+    returns, rejected_returns = pop.returns, pop.rejected_returns
     # ---- the ledger ------------------------------------------------------------------
     # Two projections, ONE pass and one piece of arithmetic. "all" is the close: every
     # accepted line and every accepted return, boundary fixtures included, and it is what
@@ -1395,7 +1592,10 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
                     "returns_rejected_count": t["rejected_count"][month],
                 }
 
-    # ---- write files ------------------------------------------------------------------
+
+def _write_bronze(pop: Population, out_dir: Path) -> _WriteTally:
+    """Sort by arrival, write one file per arrival batch, and count what reached the files."""
+    events, profile = pop.events, pop.profile
     events.sort(key=lambda e: (e[0], json.dumps(e[1], sort_keys=True)))
     files: list[Path] = []
     bucket = profile.batch_minutes * 60
@@ -1459,11 +1659,31 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
     finally:
         if handle is not None:
             handle.close()
+    return _WriteTally(
+        files=files,
+        written=written,
+        unique_event_ids=len(parseable_event_ids),
+        duplicate_lines=duplicate_lines,
+        unparseable_lines=unparseable_lines,
+        beyond_bigint_lines=beyond_bigint_lines,
+    )
 
+
+def _finalise(
+    pop: Population, out_dir: Path, seed: int, noise: _Noise, tally: _WriteTally
+) -> GenerationResult:
+    ledger, profile, facts, returns = pop.ledger, pop.profile, pop.facts, pop.returns
+    quarantine_counts = pop.quarantine_counts
+    written, files = tally.written, tally.files
+    duplicate_lines = tally.duplicate_lines
+    unparseable_lines = tally.unparseable_lines
+    beyond_bigint_lines = tally.beyond_bigint_lines
+    n_dup, n_corrupt = noise.duplicates_planned, noise.corrupt
+    duplicates_late = noise.duplicates_late
     ledger.quarantine = dict(sorted(quarantine_counts.items()))
     ledger.counts = {
         "events_written": written,
-        "unique_events": len(parseable_event_ids),
+        "unique_events": tally.unique_event_ids,
         "duplicates": duplicate_lines,
         # The two figures the noise generator INTENDED, kept beside the two that were
         # actually written. They differ, and the difference is informative: a duplicate is
@@ -1472,7 +1692,7 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         "unparseable_lines": unparseable_lines,
         "values_beyond_bigint": beyond_bigint_lines,
         "duplicates_planned": n_dup,
-        "unique_originals": len(originals),
+        "unique_originals": noise.originals,
         "duplicates_late": duplicates_late,
         "corrupt": n_corrupt,
         "order_lines": len(facts),
@@ -1493,3 +1713,25 @@ def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationRes
         encoding="utf-8",
     )
     return GenerationResult(ledger=ledger, files=files, profile=profile, seed=seed)
+
+
+def generate(out_dir: Path, seed: int, profile: Profile = FAST) -> GenerationResult:
+    """Write bronze JSONL files under ``out_dir`` and return the ledger.
+
+    Files are named by arrival batch (``batch=YYYYmmddHHMM/part-*.json``) so that the
+    directory listing order and the arrival order agree, which is what a file-source
+    reader sees in production and what makes the arrival-permutation experiment meaningful.
+
+    The steps are in this order because the RNG is consumed in this order, and the seeds
+    derive from the commit sha: moving one call moves every published figure. `Population`
+    carries what they share.
+    """
+    out_dir = Path(out_dir)
+    (out_dir / "bronze").mkdir(parents=True, exist_ok=True)
+    pop = _new_population(seed, profile)
+    _customer_dimension(pop)
+    _daily_orders(pop)
+    noise = _add_noise(pop)
+    _boundary_fixtures(pop)
+    _ledger_counters(pop)
+    return _finalise(pop, out_dir, seed, noise, _write_bronze(pop, out_dir))
