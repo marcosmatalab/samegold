@@ -171,7 +171,7 @@ on any machine:
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
 - deleting one month copied
-  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->10.89<!--/sg--> surviving rows per deleted
+  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->10.99<!--/sg--> surviving rows per deleted
   row**, which is the argument for deletion vectors in one number.
 
 ## Two runtimes, one parity matrix
@@ -193,7 +193,7 @@ than into a README nobody re-reads.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->694<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->78.5<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->719<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->58.1<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->148<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

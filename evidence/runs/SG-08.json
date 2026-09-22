@@ -10,7 +10,7 @@
       "raw dimension is refused"
     ],
     "checks_failed": [],
-    "dimension_rows": 260,
+    "dimension_rows": 241,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
@@ -18,13 +18,13 @@
       "cutoff": "2026-02-04",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 244,
+      "rows_deleted": 228,
       "version_after": 3,
       "version_before": 0
     }
   },
-  "ci_commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35736791197",
+  "ci_commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35740196795",
   "claim_id": "SG-08",
   "environment": {
     "delta_rs": "1.6.5",
@@ -36,12 +36,12 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "f7b1e2725886d2091eb018c02736d312",
+  "hash": "368470c4abd5289368fa1bf8eaa00693",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "cab0f25e30cf2617a8d69376387f4392",
+  "prev": "1e16796615be9ce737a75fd6b4971b38",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -58,19 +58,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
-      "duration_s": 0.541,
+      "commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
+      "duration_s": 0.361,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        2589167835144679168
+        5935332745641017045
       ],
-      "started_at": "2026-09-22T13:58:37+00:00",
+      "started_at": "2026-09-22T14:28:39+00:00",
       "tree_dirty": false,
-      "tree_sha": "670b7b8914c30cb81b978a2b0320868f5f2f4880"
+      "tree_sha": "4ba7fa2773ee00739c2cd78c40e22938ac10d254"
     }
   }
 }

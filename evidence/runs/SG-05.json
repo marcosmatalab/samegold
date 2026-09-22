@@ -2,13 +2,13 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "b697a33ede82cd4594b4f0293abc8fdf",
-      "a84c76b8bd065930891999b47e601d36",
-      "dac44418e0e72cbb4da1b103ef9bd6ed"
+      "103c59aa87ecfa743cb7bd7fc082889e",
+      "a10188a057166b4decfc310b5cf15eea",
+      "8ceb0211f9d8f0665e3c8971281a03a3"
     ]
   },
-  "ci_commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35736791197",
+  "ci_commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35740196795",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.5",
@@ -20,11 +20,11 @@
     "python": "3.11.16",
     "sqlglot": "30.18.0"
   },
-  "hash": "cab0f25e30cf2617a8d69376387f4392",
+  "hash": "1e16796615be9ce737a75fd6b4971b38",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "86b9c690261e6b4b81360b97573e7abd",
+  "prev": "c62728107bb3eb564973d3095389da1c",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
-      "duration_s": 4.387,
+      "commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
+      "duration_s": 2.901,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        17642808222159691378,
-        7413583644488337513,
-        3178864413708058955
+        14134169736176290114,
+        15887304791103295144,
+        10424792715999514209
       ],
-      "started_at": "2026-09-22T13:58:36+00:00",
+      "started_at": "2026-09-22T14:28:39+00:00",
       "tree_dirty": false,
-      "tree_sha": "670b7b8914c30cb81b978a2b0320868f5f2f4880"
+      "tree_sha": "4ba7fa2773ee00739c2cd78c40e22938ac10d254"
     }
   }
 }
