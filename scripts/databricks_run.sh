@@ -613,6 +613,25 @@ create a dashboard and an alert pointing at a warehouse that does not exist.
     fi
     echo "  warehouse for the dashboard and the alert: $warehouse"
     echo "  deploying $commit (tree_dirty=$dirty)"
+    # THE PLAN, PRINTED BEFORE ANYTHING IS APPLIED, and with the variables this function has
+    # just resolved rather than a second set of its own: a plan computed from different inputs
+    # than the apply is a plan of something else, which is the failure it exists to prevent.
+    #
+    # What it watches for has a name: a REPLACE. The pipeline this bundle manages has a run
+    # history that FINDINGS.md cites BY ID, and a destroy-and-create would leave those records
+    # pointing at an id that no longer exists. An update is fine. The difference is visible
+    # here and nowhere else.
+    #
+    # `bundle plan` exists from the v1.x CLI, which is what this lane is pinned to and what
+    # evidence/databricks/fetch.json records. It does not gate - it prints, immediately above
+    # the deploy that acts on it, so whoever dispatched the run reads it in the same log.
+    say "plan"
+    (cd "$BUNDLE" && databricks bundle plan -t "$TARGET" \
+        --var="catalog=$CATALOG" \
+        --var="deploy_commit=$commit" \
+        --var="deploy_tree_dirty=$dirty" \
+        --var="warehouse_id=$warehouse") || echo "  (this CLI has no bundle plan)"
+    say "bundle deploy -t $TARGET"
     (cd "$BUNDLE" && databricks bundle deploy -t "$TARGET" \
         --var="catalog=$CATALOG" \
         --var="deploy_commit=$commit" \

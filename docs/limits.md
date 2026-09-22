@@ -419,6 +419,28 @@ statement about the day it ran and about no other day.** The same is true of eve
 that installs anything from a network, which is all of them; this one is written down because
 it has already happened once.
 
+## The deploy from CI has not been seen green
+
+`databricks bundle validate` runs green in CI against the real Free Edition workspace
+(run 35756700062), which is a measured statement that the bundle resolves and the credentials
+work, and no statement at all about the close. **`bundle deploy` has not succeeded from CI.**
+
+Its first attempt failed on a pipeline name collision, and the cause is measured and removed:
+CI installed a Databricks CLI from a generation that cannot read the deployment state the
+September deploys left, and the pin now matches the CLI
+`evidence/databricks/fetch.json` records ([`FINDINGS.md`](../FINDINGS.md),
+[`tests/fast/test_databricks_cli_pin.py`](../tests/fast/test_databricks_cli_pin.py)).
+
+**What is not known is whether that is sufficient**, and it is stated here rather than after
+the next run: the remaining question is what the deploy will do with the resources it finds,
+and that is a fact about the workspace that no clone can answer. `step_deploy` prints
+`databricks bundle plan` immediately above the deploy for exactly that reason. The outcome to
+watch for is a REPLACE of the pipeline, because its run history is cited by id in `FINDINGS.md`
+and a destroy-and-create would leave those citations pointing at nothing.
+
+Until a green deploy exists, the honest sentence about this lane is the one on the front page:
+the bundle is checked from a clone, and the workspace is not.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

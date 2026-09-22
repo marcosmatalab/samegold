@@ -88,26 +88,32 @@ jobs:
     steps:
       # actions/checkout v4.1.7
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      # databricks/setup-cli v0.221.2. Was `@main` until 8 September 2026, which is a moving
-      # branch on a third-party action in a job that holds a workspace token.
+      # databricks/setup-cli v1.14.1, which is the version `evidence/databricks/fetch.json`
+      # RECORDS as having produced the committed records. Was `@main` until 8 September 2026 -
+      # a moving branch on a third-party action in a job that holds a workspace token - and
+      # then v0.221.1, and that pin is the whole of the next paragraph.
       #
-      # MOVED FROM v0.221.1 ON 22 SEPTEMBER 2026, AND THE PIN IS NOT WHAT FAILED. Run
-      # 35753864155 reached `bundle validate -t free`, printed the warehouse placeholder, and
-      # died on:
+      # WHY NOT v0.221.x. The pin taken on 8 September froze CI to a CLI released in APRIL,
+      # five months older than the v1.14.1 the laptop was already deploying with, and nothing
+      # noticed because CI only ever ran `validate`, which touches no state. The first deploy
+      # from CI, run 35756907303, failed with:
       #
-      #   Error: error downloading Terraform: unable to verify checksums signature:
-      #   openpgp: key expired
+      #   Error: cannot create pipeline: The pipeline name 'samegold' is already used by
+      #   another pipeline.
       #
-      # The CLI downloads a Terraform binary at RUN TIME - for `validate`, not only for
-      # `deploy` - and verifies HashiCorp's signature over its checksums. That key expired,
-      # so every Databricks CLI from v0.210.3 to v0.297.1 started failing on a command line
-      # that had not changed: https://github.com/databricks/cli/issues/5022. The patch for
-      # this minor line is v0.221.2, read from the issue's table rather than inferred from
-      # the version number, and 5da7e8b is the commit that release tagged.
+      # Measured, in the CLI's own source rather than in the workspace: from v1.x the DIRECT
+      # deployment engine is the default, and after a deploy it migrates the Terraform state -
+      # "renamed to resources.json, terraform.tfstate is" removed
+      # (bundle/statemgmt/direct_migration.go). So the September deploys, made with v1.14.1,
+      # left the deployment state in `resources.json`; a v0.221.2 CLI knows only
+      # `terraform.tfstate`, found nothing it could read, and planned to CREATE a pipeline
+      # that already exists. The collision is a symptom of the version gap, not of the
+      # workspace, and the pipeline the records cite is untouched.
       #
-      # FINDINGS.md carries it, because a workflow that is green today and red tomorrow with
-      # no line of the tree changed is the shape this repository collects.
-      - uses: databricks/setup-cli@5da7e8b08abd3e64930088b8282d0688f57b5002
+      # The key-expiry patch is still satisfied: `bundle/deploy/terraform/pubkey.go`, the file
+      # v0.221.2 added to carry HashiCorp's new signing key, is present in v1.14.1 at the same
+      # size. tests/fast/test_databricks_cli_pin.py holds this pin against the record.
+      - uses: databricks/setup-cli@602f285bac0c85e5985bf4c16d5a2befed0578d9
 
       - name: validate (no workspace changes)
         env:
