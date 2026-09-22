@@ -1,43 +1,43 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "adrs": 14,
+    "adrs": 15,
     "demo_closed_at": "2026-02-05",
     "demo_dimension_well_formed": "yes",
-    "demo_events": "779",
-    "demo_files": "312",
+    "demo_events": "786",
+    "demo_files": "284",
     "demo_month": "2026-01",
-    "demo_move": "-5 091,83",
-    "demo_move_pct": "-3.47",
+    "demo_move": "-3 011,10",
+    "demo_move_pct": "-1.80",
     "demo_observed_at": "2026-04-05",
-    "demo_revenue_at_close": "146 712,77",
-    "demo_revenue_now": "141 620,94",
+    "demo_revenue_at_close": "167 059,17",
+    "demo_revenue_now": "164 048,07",
     "demo_seconds": "0.2",
-    "demo_seed": "3866732607104142982",
+    "demo_seed": "10030472886934891129",
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
-    "fast_lane_repository_tests": 544,
-    "fast_lane_seconds": 58.1,
+    "fast_lane_repository_tests": 568,
+    "fast_lane_seconds": 80.2,
     "fast_lane_unclassified_files": 0,
-    "harness_lines": 23448,
-    "harness_share_pct": 75.6,
-    "line_coverage_pct": 70.19,
-    "markdown_documents": 34,
+    "harness_lines": 23723,
+    "harness_share_pct": 75.8,
+    "line_coverage_pct": 70.2,
+    "markdown_documents": 38,
     "platform_lines": 7567,
-    "platform_share_pct": 24.4,
+    "platform_share_pct": 24.2,
     "python_modules": 58,
-    "source_lines": 13556,
-    "test_lines": 13755,
-    "tests_databricks_bundle": 126,
+    "source_lines": 13553,
+    "test_lines": 14033,
+    "tests_databricks_bundle": 128,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 719,
-    "tests_passed": 703,
+    "tests_fast": 743,
+    "tests_passed": 727,
     "tests_spark": 148
   },
-  "ci_commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35740196795",
+  "ci_commit_sha": "294833ab606f686c53b23ec4070a864514677715",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35760498591",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.5",
@@ -47,13 +47,13 @@
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.18.0"
+    "sqlglot": "30.19.0"
   },
-  "hash": "e65f16f73f535561f7cebfb464bdb17b",
+  "hash": "47b28b702f62d6e7775d89ab4bbbef8d",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "c2f9309617adf83d5184cb5c8f2643eb",
+  "prev": "a150e21562e1f6971ba4242540f12bfa",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -62,27 +62,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 703,
-      "trials": 703,
+      "successes": 727,
+      "trials": 727,
       "wilson95": [
-        0.994565,
+        0.994744,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "dbf5198bb8ab85e1eba4d1817a377658e26a67f4",
-      "duration_s": 61.376,
+      "commit_sha": "294833ab606f686c53b23ec4070a864514677715",
+      "duration_s": 84.286,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        15295035261813834432
+        12700541406093392172
       ],
-      "started_at": "2026-09-22T14:29:49+00:00",
+      "started_at": "2026-09-22T17:28:43+00:00",
       "tree_dirty": false,
-      "tree_sha": "4ba7fa2773ee00739c2cd78c40e22938ac10d254"
+      "tree_sha": "2e10340ca973a665c586f4b64cf42f7c4125fd68"
     }
   }
 }
