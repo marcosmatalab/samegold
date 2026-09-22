@@ -47,6 +47,17 @@ jobs:
         run: samegold evidence --profile ci --claims SG-07 --repetitions 10
       - name: render the documents
         run: samegold readme && samegold check
+      - name: every published figure recomputes from the seeds its own record names
+        # THE GATE THAT HAS TO BITE BEFORE THE PUSH, and the reason it is here rather than on
+        # the pull request this job opens. Measured 22 September 2026: the one check ever
+        # queued on an evidence pull request was run 35587784478, which ended `action_required`
+        # and never executed. A check on a pull request opened by GITHUB_TOKEN waits for a
+        # human click, so a required check there is a gate that cannot report.
+        #
+        # Here it can. The records were written by the steps above, on this runner, and this
+        # re-runs each claim from the seeds its own record names before anything is pushed.
+        # ADR 0011 said this step was here before it was; it is here now.
+        run: samegold verify-latest
       - name: attest the evidence
         # Provenance, so a reader can tell a number produced by this workflow from a number
         # produced by someone with a text editor.
@@ -89,6 +100,37 @@ jobs:
             echo "::error::pull requests'. Until then, open it by hand:"
             echo "::error::  gh pr create --base ${{ github.ref_name }} --head $branch --fill"
             exit 1
+          fi
+          # AND IT CLOSES IT, immediately, rather than with `--auto`.
+          #
+          # `--auto` was the first design and it cannot work here. Measured on 22 September
+          # 2026 by asking GitHub rather than by reading its documentation:
+          #
+          #   gh api graphql -f query='{repository(owner:"marcosmatalab",name:"samegold"){
+          #     autoMergeAllowed pullRequests(states:OPEN,first:5){nodes{
+          #     number viewerCanEnableAutoMerge mergeable}}}}'
+          #
+          #   autoMergeAllowed        false
+          #   viewerCanEnableAutoMerge  false on all three open pull requests,
+          #                             including the one reported MERGEABLE
+          #
+          # Two reasons, and the second survives fixing the first: the repository setting is
+          # off, and auto-merge is a queue for a pull request that is WAITING for something.
+          # `main` has no protection (`gh api .../branches/main/protection` answers 404) and
+          # no rulesets (`gh api .../rulesets` answers `[]`), so nothing is ever pending and
+          # there is nothing for a queue to wait on. A pull request opened and left open by a
+          # job that could have merged it is not review, it is a branch: the cron opened four
+          # and exactly one was ever closed, while the front page named a commit eighteen
+          # behind HEAD.
+          #
+          # What justifies merging without a human is the step above, which recomputed every
+          # published figure from the seeds its own record names, on this runner, before this
+          # line could run. See docs/adr/0014-the-evidence-pull-request-merges-itself.md for
+          # the alternative that was rejected and why.
+          if ! gh pr merge --squash --delete-branch; then
+            echo "::warning::the evidence is on $branch and its pull request is open; the"
+            echo "::warning::merge was refused. Close it by hand:"
+            echo "::warning::  gh pr merge --squash --delete-branch $branch"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

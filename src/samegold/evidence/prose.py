@@ -22,7 +22,12 @@ claim that the repository can falsify from its own files, and nothing else:
 
   1. an EXHAUSTIVE ENUMERATION of a directory - "holds a, b and c, and nothing else";
   2. a claim that something has NEVER RUN, against the run records under `evidence/`;
-  3. a claim that a PATH DOES NOT EXIST, against the filesystem.
+  3. a claim that a PATH DOES NOT EXIST, against the filesystem;
+  4. an ACCEPTED ADR THAT QUOTES A COMMAND, against the implementation - added 22 September
+     2026, after ADR 0014 sat on `main` for a day describing an auto-merge that had been
+     refused at commit time and was in no workflow. The three rules above read all fourteen
+     ADRs, through the same `docs/**/*.md` glob as everything else, and none of them had
+     anything to say about that shape.
 
 It cannot read intent, and it does not try. What it does instead is make the exceptions
 explicit: a sentence that is genuinely true and matches one of these shapes has to be declared
@@ -32,6 +37,7 @@ failure - so a declared exception cannot outlive the sentence it was written for
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
@@ -111,13 +117,21 @@ NO_SUCH_PATH = re.compile(
 #   * THE ASSERTING SECTIONS ONLY. "Alternatives rejected" quotes commands the repository
 #     deliberately does NOT run, and "Context" quotes measurements taken before the decision;
 #     neither asserts that the tree contains anything. Decision and Consequences do.
-#   * THE EVIDENCE EXCLUDES PROSE. This is the whole of why the first version of this rule
-#     found nothing: a command quoted in an ADR appears in the tracked tree, in that ADR. A
-#     document cannot be its own proof, so only the implementation counts.
+#   * THE EVIDENCE EXCLUDES PROSE, AND COMMENTS ARE PROSE. This is the whole of why the first
+#     two versions of this rule found nothing. The first read every tracked file, so a command
+#     quoted in an ADR appeared in the tree - in that ADR. The second excluded `docs/` and
+#     still passed, because the paragraph you are reading quotes the command as an EXAMPLE of
+#     the defect, and a comment in a `.py` file is prose that happens to live in source. So
+#     Python is reduced to its code (comments and docstrings removed by an AST round-trip,
+#     string literals kept, because a command a program actually runs is often a string), and
+#     `#` comments come off the YAML, the shell and the Makefile.
+#   * `make X` IS NOT A LITERAL. Its evidence is a Makefile target called `X`, which is why
+#     `make` is not in the tool list below and is handled on its own. Checking it as a string
+#     reported `make fast` and `make preflight` as absent, which they are: the Makefile
+#     declares `fast:` and `preflight:` and never spells the invocation.
 ADR_TOOLS = (
     "gh",
     "git",
-    "make",
     "samegold",
     "pytest",
     "ruff",
@@ -127,6 +141,9 @@ ADR_TOOLS = (
     "npm",
     "curl",
 )
+#: A Makefile rule, at the start of a line. `.PHONY` and pattern rules are not targets a
+#: document would tell somebody to run.
+MAKE_TARGET = re.compile(r"^(?P<target>[a-zA-Z_][\w-]*):", re.MULTILINE)
 #: The sections in which an ADR asserts that the tree now contains something.
 ADR_ASSERTING_SECTION = re.compile(
     r"^##\s+(?:Decision|Consequences)\b.*?$(?P<body>.*?)(?=^##\s|\Z)",
@@ -298,33 +315,79 @@ def _tracked_files(repo: Path) -> frozenset[str]:
     return frozenset(path for path in out.stdout.split("\x00") if path)
 
 
-def implementation_text(repo: Path) -> str:
-    """Everything an ADR's claim may be honoured by, with whitespace flattened.
+def _code_only(source: str) -> str:
+    """Python with its comments and docstrings removed, and everything else kept.
 
-    PROSE IS NOT IN HERE, and that exclusion is the rule rather than an optimisation. The first
-    version of this check read every tracked file and found nothing wrong with ADR 0014,
-    because the command ADR 0014 claims to have added appears in the tracked tree - inside ADR
-    0014. A document that counts as its own evidence is a check that cannot fail.
+    An AST round-trip rather than a regex: `#` inside a string is not a comment, and the one
+    thing this function must not do is decide that a command is absent because it deleted the
+    line that runs it. String literals survive, because a command a program actually invokes is
+    usually a list of strings.
 
-    Whitespace is flattened on both sides so that a command wrapped across two lines of YAML
-    still matches the one-line form an ADR quotes. What it does NOT survive is a command split
-    by a shell continuation, which stays a false positive and is what `EXEMPTIONS` is for.
+    Unparseable source is returned whole. The rule then errs towards NOT reporting, which is
+    the safe direction for a gate whose false positive is an accusation.
     """
-    tracked = _tracked_files(repo)
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return source
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        body = node.body
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            node.body = body[1:] or [ast.Pass()]
+    try:
+        return ast.unparse(tree)
+    except (AttributeError, ValueError, RecursionError):
+        return source
+
+
+def _without_hash_comments(source: str) -> str:
+    """YAML, shell and Makefile with their comments off. Whole-line and trailing both."""
+    kept: list[str] = []
+    for line in source.splitlines():
+        kept.append("" if line.lstrip().startswith("#") else line.split(" #", 1)[0])
+    return "\n".join(kept)
+
+
+def implementation_text(repo: Path) -> str:
+    """Everything an ADR's claim may be honoured by: code, with the prose taken out.
+
+    See the block comment above `ADR_TOOLS` for why prose is excluded and why a comment counts
+    as prose. Whitespace is flattened on both sides so that a command wrapped across two lines
+    of YAML still matches the one-line form an ADR quotes. What it does not survive is a
+    command split by a shell continuation, which stays a false positive and is what
+    `EXEMPTIONS` is for.
+    """
     wanted = sorted(
         name
-        for name in tracked
+        for name in _tracked_files(repo)
         if (name.startswith(IMPLEMENTATION_ROOTS) or name in IMPLEMENTATION_FILES)
         and not name.endswith(".md")
     )
     chunks: list[str] = []
     for name in wanted:
-        path = repo / name
         try:
-            chunks.append(" ".join(path.read_text(encoding="utf-8", errors="replace").split()))
+            source = (repo / name).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        stripped = _code_only(source) if name.endswith(".py") else _without_hash_comments(source)
+        chunks.append(" ".join(stripped.split()))
     return " ".join(chunks)
+
+
+def make_targets(repo: Path) -> frozenset[str]:
+    """The targets the Makefile declares, which is what a `make X` claim is honoured by."""
+    makefile = repo / "Makefile"
+    if not makefile.is_file():
+        return frozenset()
+    text = makefile.read_text(encoding="utf-8", errors="replace")
+    return frozenset(match.group("target") for match in MAKE_TARGET.finditer(text))
 
 
 def adr_commands(text: str) -> list[str]:
@@ -333,9 +396,17 @@ def adr_commands(text: str) -> list[str]:
     for section in ADR_ASSERTING_SECTION.finditer(text):
         for span in BACKTICKED.findall(section.group("body")):
             tokens = span.split()
-            if len(tokens) >= 2 and tokens[0] in ADR_TOOLS:
+            if len(tokens) >= 2 and (tokens[0] in ADR_TOOLS or tokens[0] == "make"):
                 out.append(" ".join(tokens))
     return out
+
+
+def command_is_honoured(command: str, implementation: str, targets: frozenset[str]) -> bool:
+    """Whether the tree contains what this command claims. `make X` asks the Makefile."""
+    tokens = command.split()
+    if tokens[0] == "make":
+        return tokens[1] in targets
+    return command in implementation
 
 
 def _run_records(repo: Path) -> list[Path]:
@@ -452,12 +523,52 @@ def check_document(path: Path, repo: Path, implementation: str | None = None) ->
                     f"{candidate} exists.",
                 )
             )
+
+    # An ACCEPTED ADR that quotes a command it did not add. Scoped to `docs/adr/` because the
+    # status header is what makes the claim binding: a proposed ADR describes something
+    # somebody is arguing for, and only an accepted one asserts that the tree contains it.
+    if name.startswith("docs/adr/"):
+        status = ADR_STATUS.search(text)
+        if status is not None and status.group("status").lower() == "accepted":
+            commands = [c for c in adr_commands(text) if not any(f in c for f in exempted)]
+            if commands:
+                if implementation is None:
+                    implementation = implementation_text(repo)
+                targets = make_targets(repo)
+                for command in commands:
+                    if command_is_honoured(command, implementation, targets):
+                        continue
+                    out.append(
+                        Drift(
+                            name,
+                            line_of(text.index(command) if command in text else 0),
+                            command[:160],
+                            f"this ADR is accepted and says `{command}`, and the tree does "
+                            f"not contain it: nothing under "
+                            f"{', '.join(IMPLEMENTATION_ROOTS)} runs it, outside comments. An "
+                            f"accepted ADR describes what the tree does; if this one "
+                            f"describes something still to be done, its status is not "
+                            f"'accepted' yet.",
+                        )
+                    )
     return out
 
 
 def check_documents(repo: Path, documents: list[Path]) -> list[Drift]:
-    """Every drifted sentence across the documents, in document order."""
-    return [drift for path in documents if path.exists() for drift in check_document(path, repo)]
+    """Every drifted sentence across the documents, in document order.
+
+    The implementation text is read once for the whole sweep rather than once per ADR: there
+    are fourteen of them and it is a megabyte and a half of source.
+    """
+    implementation: str | None = None
+    if any(path.as_posix().find("docs/adr/") >= 0 for path in documents):
+        implementation = implementation_text(repo)
+    return [
+        drift
+        for path in documents
+        if path.exists()
+        for drift in check_document(path, repo, implementation)
+    ]
 
 
 def expiring_on(event: str) -> list[Exemption]:

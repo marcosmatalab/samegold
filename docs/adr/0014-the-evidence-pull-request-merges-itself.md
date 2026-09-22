@@ -1,76 +1,100 @@
-# ADR 0014 - the weekly evidence pull request closes itself
+# ADR 0014 - the evidence pull request is merged by the job that opened it
 
-**Status** accepted, 2026-09-22
+**Status** accepted, 2026-09-22 (superseding the version of this ADR that described `--auto`)
 
 ## Context
 
 `evidence.yml` runs on `cron: "23 4 * * 1"`, spends about a quarter of an hour recomputing
 every claim on a runner, pushes the records to a branch and opens a pull request. That design
 is right and its comments argue it well: a record is evidence, and it should arrive somewhere a
-person looks at it before it becomes the number on the front page.
+person can look at it before it becomes the number on the front page.
 
-Measured on 22 September 2026, over four fires of that cron:
-
-| run | branch | opened | merged |
-|---|---|---|---|
-| 33815591122 | `evidence/run-33815591122` | 3 Sep | yes |
-| 34106077889 | `evidence/run-34106077889` | 7 Sep | **no** |
-| 34830672517 | `evidence/run-34830672517` | 14 Sep | **no** |
-| 35586535706 | `evidence/run-35586535706` | 21 Sep | **no** |
-
-One of four. The cost was not theoretical. `evidence/run-34830672517` and
-`evidence/run-35586535706` were each **ahead 1, behind 0** of `main`: green runs over that very
-HEAD, carrying the correction that moved `SG-00` from `local run, not reproduced in CI,
-98c980b44` to `CI, 9e52f158e` and the other nine rows from a commit eighteen behind. So the
-front page of a repository whose entire thesis is that unregenerated documents rot was itself
-eighteen commits stale, while the regeneration sat in a branch.
+Measured over four fires of that cron: run 33815591122 (3 September) was merged, and runs
+34106077889, 34830672517 and 35586535706 were not. One of four. The cost was not theoretical -
+two of those branches were **ahead 1, behind 0** of `main`, green runs over that very HEAD
+carrying the correction that moved `SG-00` from `local run, not reproduced in CI, 98c980b44` to
+`CI, 9e52f158e`. The front page of a repository whose thesis is that unregenerated documents
+rot named a commit eighteen behind HEAD, while the regeneration sat in a branch.
 
 Opening the pull request was never the hard part. Closing it was.
 
+### The first version of this ADR described a mechanism that does not exist here
+
+It said the fix was `gh pr merge --auto --squash --delete-branch`. That command was never added
+to `evidence.yml`, and this document sat on `main` asserting that it had been - which is the
+defect `tests/fast/test_prose_gate.py` now has a fourth rule for, and which is recorded in
+`docs/findings/the-gate-found-three-things-and-two-were-its-own.md`.
+
+It also would not have worked. Asked on 22 September 2026, GitHub answers:
+
+```console
+$ gh api graphql -f query='{ repository(owner:"marcosmatalab", name:"samegold") {
+    autoMergeAllowed
+    pullRequests(states: OPEN, first: 5) {
+      nodes { number viewerCanEnableAutoMerge mergeable } } } }'
+
+autoMergeAllowed            false
+#2  viewerCanEnableAutoMerge false   mergeable CONFLICTING
+#3  viewerCanEnableAutoMerge false   mergeable CONFLICTING
+#4  viewerCanEnableAutoMerge false   mergeable MERGEABLE
+```
+
+Two reasons, and the second survives fixing the first. The repository setting is off, so the
+mutation is refused outright. And auto-merge is a **queue for a pull request that is waiting on
+something**: `gh api repos/marcosmatalab/samegold/branches/main/protection` answers 404 and
+`gh api repos/marcosmatalab/samegold/rulesets` answers `[]`, so nothing is ever pending on a
+pull request here and a queue has nothing to wait for. `viewerCanEnableAutoMerge` is false even
+on #4, which GitHub itself reports as `MERGEABLE`.
+
+`--auto` in this repository is a command that fails, wrapped in a warning that says merge it by
+hand. That is the state the last three Mondays were already in.
+
 ## Decision
 
-**`gh pr merge --auto --squash --delete-branch` immediately after the `gh pr create` that is
-already there**, with a warning rather than a failure if auto-merge is not enabled on the
-repository: the evidence is already pushed and the pull request is already open, so a refused
-auto-merge loses nothing except the automation.
+**The job merges the pull request it just opened, in the same step, with
+`gh pr merge --squash --delete-branch`** - immediately, not queued.
 
-**And the compensation moves into the producing job.** `samegold verify-latest` runs as a step
-of `evidence.yml`, before the commit and push, not as a check on the pull request.
+**And the recompute gate moves into the job, before the push.** `samegold verify-latest` is a
+step of `evidence.yml`, between rendering the documents and committing them. ADR 0011 said this
+was so before it was; it is so now.
 
-## Why the compensation is where it is
+## Why not the alternatives
 
-Handing the merge to a machine means a bad record could land unattended. The obvious place to
-compensate is a required status check on the pull request, and it cannot be: a pull request
-opened by `GITHUB_TOKEN` has its checks queued at `action_required` and they wait for a person
-to click. Measured on run 35587784478, the `fast` check of the 21 September pull request, which
-sat at `action_required` for a week. A required check that cannot report is not a gate, it is a
-deadlock, and with `--auto` waiting on it the branch would never merge at all.
+**Create a ruleset with `fast`, `spark` and `evidence` as required checks, and keep `--auto`.**
+This is the option that makes `--auto` legal, and it is worse than doing nothing, for a reason
+that is measured rather than argued: a pull request opened by `GITHUB_TOKEN` does not get its
+checks run. The only check ever queued on an evidence pull request was run 35587784478, which
+ended `action_required` without executing, and was still sitting there a week later. Make
+`fast` required and the evidence pull request waits on a check that will never report, so
+`--auto` never fires and the branch accumulates exactly as today - with the added cost that
+every direct push to `main` is now blocked by the same ruleset.
 
-So the recompute runs inside the job that produces the record, on the runner that measured it,
-before anything is pushed. A record whose rate does not reproduce never becomes a branch.
+It can be made to work by having the job open the pull request with a personal access token
+instead of `GITHUB_TOKEN`, because a PAT-opened pull request does run its checks. That means a
+long-lived PAT with `repo` scope in a public repository's secrets, to buy a review nobody has
+performed in four weeks. Rejected on both counts.
 
-## Alternatives rejected
+**Push straight to `main` and drop the pull request.** This is what the decision does in
+substance, and the pull request is kept anyway because it costs one API call and leaves a
+permalink with a readable diff. A squash-merged pull request is a better audit trail than a
+commit, and the branch is deleted either way.
 
-**Push straight to `main` and skip the pull request.** `main` is not protected - `gh api
-repos/.../branches/main/protection` answers 404 - so this is technically available. It throws
-away the human review, which is half of what the workflow is for, and it would still be true
-that nobody ever looked.
-
-**Protect `main` and require `fast`.** The same `action_required` rule makes it a deadlock for
-exactly the pull requests it would be protecting, and it would block the author's own pushes
-for the benefit of a check that cannot run.
-
-**Leave it and merge by hand every Monday.** That is what the last three weeks were. Section 10
-of the audit that prompted this makes the honest version of the argument: eight Mondays of
-visible activity cannot be bought with hours today, and the only thing that can is a repository
-that keeps a pulse when nobody is looking at it.
+**Leave it and merge by hand every Monday.** That is what the last three Mondays were.
 
 ## Consequences
 
-A bad record can now land on `main` without a person seeing it first. What stands between it
-and the front page is [ADR 0011](0011-the-gate-recomputes-the-record.md): the step that
-recomputes each claim from the seeds its own record names, in the job, before the push.
+A record can now reach `main` without a person seeing it first. What stands between it and the
+front page is [ADR 0011](0011-the-gate-recomputes-the-record.md), running on the runner that
+produced the record, before the push - which is strictly earlier than any check on the pull
+request could have bitten, and which is why the two decisions were made together.
 
-The two decisions were made in the same round on purpose. Auto-merge without the recompute
-would be a bad idea; the recompute without auto-merge leaves the front page stale for weeks at
-a time. Each is the reason the other is safe.
+The merge is not conditional on the pull request's own checks, because they do not run. It is
+conditional on the steps before it in the job, which do: `samegold check`, then
+`samegold verify-latest`. A failure in either fails the job before the branch is pushed.
+
+`fast.yml` then runs on the resulting push to `main`, so a record that got past both gates
+turns the badge red within minutes rather than at the next review.
+
+**What this does not buy: a human reading the diff.** It never did. The honest description of
+the previous design is not "review" but "a branch nobody closed", and this ADR exists because
+saying otherwise for three weeks cost the front page eighteen commits of accuracy.

@@ -14,9 +14,11 @@ from pathlib import Path
 
 import pytest
 
+from samegold.evidence import prose
 from samegold.evidence.lane_split import split
 from samegold.evidence.prose import (
     DATABRICKS_WORKFLOW_HAS_RUN,
+    check_document,
     check_documents,
     databricks_workflow_run_count,
     expired_exemptions,
@@ -319,4 +321,142 @@ def test_every_test_file_in_the_fast_lane_is_classified() -> None:
         f"these test files are in neither class: {unclassified}. The criterion is in the "
         f"docstring of samegold.evidence.lane_split; add each file to REPOSITORY_TESTS or "
         f"DOMAIN_TESTS there, because the sum SG-00 publishes is that addition."
+    )
+
+
+# ------------------------------------------------- an accepted ADR that describes a change
+# that is not there
+#
+# ADR 0014 was committed to `main` saying the fix was `gh pr merge --auto --squash
+# --delete-branch`, "immediately after the `gh pr create` that is already there". The command
+# was in no workflow: it had been written, refused at commit time, and the ADR went in anyway.
+#
+# The three rules above read that document - all fourteen ADRs go through the same
+# `docs/**/*.md` glob as every other file here - and had nothing to say about it. These tests
+# are the fourth rule and the two ways it was wrong before it worked.
+
+
+def _adr(body: str, status: str = "accepted") -> str:
+    return f"# ADR 9999 - a decision\n\n**Status** {status}, 2026-09-22\n\n{body}\n"
+
+
+def test_an_accepted_adr_quoting_a_command_the_tree_does_not_run_is_a_drift(
+    tmp_path: Path,
+) -> None:
+    adr = tmp_path / "docs" / "adr" / "9999-a-decision.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text(
+        _adr("## Decision\n\n`gh pr merge --auto --squash --delete-branch` after the create."),
+        encoding="utf-8",
+    )
+    drifts = check_document(adr, tmp_path, implementation="nothing relevant in here")
+    assert len(drifts) == 1, drifts
+    assert "gh pr merge --auto --squash --delete-branch" in drifts[0].why
+    assert "its status is not" in drifts[0].why
+
+
+def test_the_same_adr_is_clean_once_the_tree_runs_the_command(tmp_path: Path) -> None:
+    adr = tmp_path / "docs" / "adr" / "9999-a-decision.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text(_adr("## Decision\n\n`gh pr merge --squash --delete-branch` after it."), "utf-8")
+    honoured = "if ! gh pr merge --squash --delete-branch; then echo failed; fi"
+    assert check_document(adr, tmp_path, implementation=honoured) == []
+
+
+def test_a_proposed_adr_is_not_asserting_anything_yet(tmp_path: Path) -> None:
+    """Status is what makes the claim binding. A proposal describes what somebody wants."""
+    adr = tmp_path / "docs" / "adr" / "9999-a-decision.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text(
+        _adr("## Decision\n\n`gh pr merge --auto` after it.", status="proposed"), "utf-8"
+    )
+    assert check_document(adr, tmp_path, implementation="") == []
+
+
+def test_a_command_in_the_rejected_alternatives_is_not_a_claim(tmp_path: Path) -> None:
+    """An ADR's "Alternatives rejected" section quotes what the repository decided NOT to do.
+
+    Without this scoping the rule fires on every ADR that argues against something concretely,
+    which is every good ADR, and the answer would be to stop arguing concretely.
+    """
+    adr = tmp_path / "docs" / "adr" / "9999-a-decision.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text(
+        _adr(
+            "## Decision\n\nSomething else entirely.\n\n"
+            "## Alternatives rejected\n\n`gh pr merge --auto --squash` would need a ruleset."
+        ),
+        encoding="utf-8",
+    )
+    assert check_document(adr, tmp_path, implementation="") == []
+
+
+def test_a_make_target_is_checked_against_the_makefile_and_not_as_a_string(
+    tmp_path: Path,
+) -> None:
+    """`make preflight` is honoured by a `preflight:` rule, and the Makefile never spells the
+    invocation. Checking it as a literal reported `make fast` and `make preflight` as absent
+    from ADRs 0011 and 0013, which is three false accusations out of ten commands."""
+    adr = tmp_path / "docs" / "adr" / "9999-a-decision.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text(_adr("## Decision\n\nIt runs in `make preflight`."), encoding="utf-8")
+    (tmp_path / "Makefile").write_text(".PHONY: preflight\npreflight:\n\t@echo hi\n", "utf-8")
+    assert check_document(adr, tmp_path, implementation="") == []
+
+    (tmp_path / "Makefile").write_text("fast:\n\t@echo hi\n", encoding="utf-8")
+    drifts = check_document(adr, tmp_path, implementation="")
+    assert len(drifts) == 1 and "make preflight" in drifts[0].why
+
+
+def test_a_comment_is_not_evidence_that_a_command_runs() -> None:
+    """The second version of this rule passed because of a COMMENT.
+
+    `prose.py` explains the defect by quoting the command that caused it. That comment lives
+    under `src/`, so an evidence set built from raw file text contained the very command whose
+    absence was the finding - and the rule reported the tree as honouring it. A comment is
+    prose that happens to live in source.
+    """
+    source = "# we could add `gh pr merge --auto` here one day\nprint('hello')\n"
+    assert "gh pr merge --auto" in source
+    assert "gh pr merge --auto" not in prose._code_only(source)
+    assert "print" in prose._code_only(source)
+
+    yaml_source = "steps:\n  # run: gh pr merge --auto\n  - run: echo hi\n"
+    assert "gh pr merge --auto" not in prose._without_hash_comments(yaml_source)
+    assert "echo hi" in prose._without_hash_comments(yaml_source)
+
+
+def test_a_docstring_is_not_evidence_either_and_a_real_string_is() -> None:
+    """Docstrings go; other string literals stay, because a command a program actually runs is
+    usually a list of strings and deleting those would make the rule accuse working code."""
+    source = '"""Runs `gh pr merge --auto`."""\nsubprocess.run(["gh", "pr", "create", "--fill"])\n'
+    stripped = prose._code_only(source)
+    assert "gh pr merge --auto" not in stripped
+    assert "pr" in stripped and "create" in stripped
+
+
+@pytest.mark.evidence_dependent
+def test_the_rule_does_not_fire_on_any_adr_this_repository_already_has() -> None:
+    """The measurement that decided every parameter of the rule.
+
+    A gate that fires on what is already in the tree is a gate somebody switches off. The
+    fourteen ADRs hold 96 inline-code spans; filtering to command shapes leaves 25, and
+    restricting to the asserting sections leaves 10. All ten are honoured.
+    """
+    implementation = prose.implementation_text(REPO)
+    targets = prose.make_targets(REPO)
+    commands = {
+        adr.name: prose.adr_commands(adr.read_text(encoding="utf-8"))
+        for adr in sorted((REPO / "docs" / "adr").glob("*.md"))
+    }
+    total = sum(len(v) for v in commands.values())
+    assert total >= 8, f"only {total} commands parsed out of the ADRs; the reader broke"
+    unhonoured = {
+        f"{name}: {command}"
+        for name, found in commands.items()
+        for command in found
+        if not prose.command_is_honoured(command, implementation, targets)
+    }
+    assert not unhonoured, (
+        f"these ADRs assert a command the tree does not run: {sorted(unhonoured)}"
     )
