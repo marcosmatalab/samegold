@@ -94,7 +94,7 @@ things. Four are done and checkable against that record; three have not been sta
 | expectations, per rule, from the event log | done | seven rules, fourteen numbers, in the record - and every one matches what the OSS predicates give on the same population |
 | AUTO CDC Type 2 | done | 75 / 60 / 60 / 15, and equal to the hand-written MERGE's dimension ROW BY ROW - same customers, same intervals, same instants - against the workspace's own rows, committed |
 | the event log read for the update's state | done | `update.last_state = COMPLETED`, `error_events = 0`, plus ten terminal updates in `update_history` |
-| **bundle deploy from CI** | **not started** | `gh run list --workflow databricks.yml` returns nothing. The workflow exists and can deploy, seed, run and fetch on a `workflow_dispatch`; it has never been dispatched. Every deploy so far was from a laptop |
+| **bundle deploy from CI** | **validate only, on purpose** | The workflow takes `workflow_dispatch` and nothing else, defaults to `validate`, and offers no option that starts compute - so CI cannot spend the Free Edition's daily quota. Its token is in the `databricks` environment rather than in a repository secret, and the job is guarded to this repository, so a pull request from a fork cannot reach it. Whether it has run, and when, is the badge on the front page; this row is about what it is allowed to do |
 | **AI/BI dashboard** | **done** | `databricks/resources/dashboards.yml` declares the dashboard and one SQL alert, and `databricks/dashboards/samegold_close.lvdash.json` is the page. Deployed 6 September 2026: `Created dashboards.samegold_close_dashboard`, `Created alerts.samegold_close_not_sound` |
 | **screenshots as evidence** | **not started** | none exist |
 

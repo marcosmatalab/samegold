@@ -9,6 +9,7 @@ un arnés cuyo único trabajo es demostrar que está mal, y el registro de cada 
 [![fast](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml)
 [![spark](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml)
 [![evidence](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml)
+[![databricks](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml)
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
@@ -205,10 +206,14 @@ en el YAML la pone roja.
 **No comprobable aquí:** el workspace. La vía corrió cuatro veces entre el 3 y el 6 de septiembre
 de 2026 contra un workspace de Databricks Free Edition, y los registros están commiteados en
 [`evidence/databricks/`](evidence/databricks/) con sus ids de job run, de pipeline y de update.
-**Este repositorio no guarda credenciales para él** - medido: cero secretos de repositorio, cero
-entornos, y `databricks.yml` es sólo `workflow_dispatch` - así que nadie con un clon puede
-volver a ejecutarla. Esos registros son lo único aquí que te tienes que creer, y lo dicen ellos
-mismos: `"chain": {"chained": false}`.
+**Un clon de este repositorio no contiene ninguna credencial para él** - `databricks.yml` acepta
+`workflow_dispatch` y nada más, viene por defecto en `validate`, no ofrece ninguna opción que
+arranque compute, y lee su token de un entorno de GitHub en vez de un secreto de repositorio,
+con el job acotado a este repositorio para que el pull request de un fork no pueda alcanzarlo.
+El badge de arriba dice si ha corrido. **Que ahí salga verde significa que el bundle resolvió y
+que las credenciales funcionan, y nada sobre el cierre**: lo dice el comentario del propio job,
+y los campos que la API exige se comprueban en la vía rápida. Esos registros son lo único aquí que te
+tienes que creer, y lo dicen ellos mismos: `"chain": {"chained": false}`.
 
 Lo que eso compra en lugar de una captura de pantalla:
 [**`docs/databricks-run-evidence.md`**](docs/databricks-run-evidence.md) renderiza lo que midió

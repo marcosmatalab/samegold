@@ -9,6 +9,7 @@ whose whole job is to prove it wrong, and a record of every time it did.
 [![fast](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml)
 [![spark](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml)
 [![evidence](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml)
+[![databricks](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml)
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
@@ -198,10 +199,14 @@ figure above is checked against `databricks/resources/jobs.yml` by
 **Not checkable here:** the workspace. The lane ran four times between 3 and 6 September 2026
 against a Databricks Free Edition workspace, and the records are committed under
 [`evidence/databricks/`](evidence/databricks/) with their job run, pipeline and update ids.
-**This repository holds no credentials for it** - measured: zero repository secrets, zero
-environments, and `databricks.yml` is `workflow_dispatch` only - so nobody with a clone can
-re-run it. Those records are the one thing here you have to take on trust, and they say so
-themselves: `"chain": {"chained": false}`.
+**A clone of this repository contains no credential for it** - `databricks.yml` takes
+`workflow_dispatch` and nothing else, defaults to `validate`, offers no option that starts
+compute, and reads its token from a GitHub environment rather than a repository secret, with
+the job guarded to this repository so a fork's pull request cannot reach it. The badge above
+says whether it has run. **A green tick there means the bundle resolved and the credentials
+worked, and nothing about the close**: the job's own comment says so, and the fields the API
+requires are asserted in the fast lane instead. Those records are the one thing here you have
+to take on trust, and they say so themselves: `"chain": {"chained": false}`.
 
 What that buys instead of a screenshot:
 [**`docs/databricks-run-evidence.md`**](docs/databricks-run-evidence.md) renders what the

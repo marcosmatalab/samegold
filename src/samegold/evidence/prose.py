@@ -42,6 +42,7 @@ import json
 import re
 import subprocess
 import urllib.request
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -184,12 +185,24 @@ class Kind(Enum):
 # THE EVENT THAT FALSIFIES A MEASURED_TRUE EXEMPTION, named so a test can ask about it.
 #
 # `stale_exemptions` catches an exemption whose SENTENCE moved. It cannot catch one whose WORLD
-# moved, and that is the failure mode these three have: they are true because a workflow has
-# never been dispatched, and the day it is, all of them become false sentences carrying a note
-# that says somebody checked once. Nothing in the document changes, so nothing goes red.
+# moved: a sentence that is true because a workflow has never been dispatched becomes false the
+# day it is, and nothing in the document changes, so nothing goes red. This repository cannot
+# check that offline - it is a fact about a remote service, which is why such a sentence is
+# exempt at all. CI has a network, so CI is where it is asked.
 #
-# This repository cannot check it offline - it is a fact about a remote service, which is why
-# these are exempt at all. CI has a network, so CI is where it is asked.
+# NO EXEMPTION CARRIES THIS EXPIRY TODAY, and the mechanism is kept anyway. Three did, over
+# sentences that counted the databricks workflow's run history, and the fix was not to wait for
+# the expiry to fire: it was to stop writing sentences about run history. Each of the three now
+# states what the workflow is ALLOWED to do - `workflow_dispatch` only, `validate` by default,
+# no option that starts compute, a token in an environment rather than a repository secret -
+# which is a fact about the tree, true before the first dispatch and after it, and checkable
+# from a clone. Whether it HAS run is the badge on the front page, which is live by
+# construction and therefore never a sentence anybody has to keep up to date.
+#
+# `tests/fast/test_prose_gate.py` keeps this honest in both directions: the real check is
+# vacuous while no exemption carries the expiry, so the test also builds one and requires the
+# machinery to report it. A gate with nothing to guard must still be shown to work, or it is a
+# green tick for no work.
 DATABRICKS_WORKFLOW_HAS_RUN = "the databricks workflow has been dispatched at least once"
 
 
@@ -218,39 +231,12 @@ class Exemption:
 
 
 EXEMPTIONS: tuple[Exemption, ...] = (
-    Exemption(
-        document="docs/milestones.md",
-        fragment="it has never been dispatched",
-        kind=Kind.MEASURED_TRUE,
-        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
-        reason=(
-            "TRUE, and measured on 6 September 2026: the `databricks` workflow is "
-            "workflow_dispatch only and the GitHub API reports total_count 0 for its entire "
-            "history. This repository cannot check that offline - it is a fact about a remote "
-            "service - so it is exempted by name rather than by a pattern that would also "
-            "exempt the two false sentences beside it."
-        ),
-    ),
     # THE THREE BELOW ARE THE MERGE'S OWN, and this commit is the first place they could live.
     # `warehouse-placeholder` wrote the sentences and has no prose.py; `surface-round` wrote
     # this gate and none of the sentences. Neither branch is red on its own, and neither could
     # carry these: on surface-round all three fragments are absent, so `stale_exemptions` would
     # have failed on the exemptions instead of passing on the document. The drift is created by
     # putting the two branches together, so the exemption for it belongs to the merge.
-    Exemption(
-        document="FINDINGS.md",
-        fragment="**has never been run**",
-        kind=Kind.MEASURED_TRUE,
-        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
-        reason=(
-            "TRUE, and measured on 8 September 2026: the `databricks` workflow is "
-            "workflow_dispatch only and the GitHub API reports total_count 0 for its entire "
-            "history. The run records under evidence/databricks/ come from "
-            "`scripts/databricks_run.sh` against a Free Edition workspace, not from that "
-            "workflow, so the sentence and the records are about two different things. This "
-            "one EXPIRES: the day the workflow runs it becomes a false sentence."
-        ),
-    ),
     Exemption(
         document="FINDINGS.md",
         fragment="in a guard added the day before and never executed",
@@ -265,17 +251,6 @@ EXEMPTIONS: tuple[Exemption, ...] = (
             "cells: FINDINGS.md is almost entirely tables, so that would have blinded the "
             "never-run check across the whole document, including the two sentences beside "
             "this one that ARE about the present and must go red the day the workflow runs."
-        ),
-    ),
-    Exemption(
-        document="FINDINGS.md",
-        fragment="on a workflow that has never run (this round)",
-        kind=Kind.MEASURED_TRUE,
-        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
-        reason=(
-            "TRUE, and the same measurement as the first FINDINGS.md entry: the `databricks` "
-            "workflow reports total_count 0. This is the one-line restatement of that finding "
-            "in the class table, and it EXPIRES on the same day."
         ),
     ),
 )
@@ -571,20 +546,26 @@ def check_documents(repo: Path, documents: list[Path]) -> list[Drift]:
     ]
 
 
-def expiring_on(event: str) -> list[Exemption]:
+def expiring_on(event: str, among: Sequence[Exemption] | None = None) -> list[Exemption]:
     """The exemptions that `event` would make false."""
-    return [e for e in EXEMPTIONS if e.expires_when == event]
+    return [e for e in (EXEMPTIONS if among is None else among) if e.expires_when == event]
 
 
-def expired_exemptions(event: str, has_happened: bool) -> list[Exemption]:
+def expired_exemptions(
+    event: str, has_happened: bool, among: Sequence[Exemption] | None = None
+) -> list[Exemption]:
     """The exemptions `event` has already falsified.
 
     SPLIT FROM THE ASKING ON PURPOSE. The network supplies one boolean and this decides what it
     means, so the decision can be tested with the answer forced both ways - which is the only
     way to know this fires, since the true case cannot be produced on demand: it needs somebody
     to dispatch a workflow.
+
+    `among` takes a set of exemptions other than this module's, and exists because no exemption
+    in this module carries an expiry today. Without it, the only test of this function would be
+    one that cannot fail.
     """
-    return expiring_on(event) if has_happened else []
+    return expiring_on(event, among) if has_happened else []
 
 
 def _origin_slug(repo: Path) -> str | None:

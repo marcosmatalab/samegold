@@ -18,6 +18,8 @@ from samegold.evidence import prose
 from samegold.evidence.lane_split import split
 from samegold.evidence.prose import (
     DATABRICKS_WORKFLOW_HAS_RUN,
+    Exemption,
+    Kind,
     check_document,
     check_documents,
     databricks_workflow_run_count,
@@ -256,14 +258,31 @@ def test_the_expiry_fires_when_the_event_happens() -> None:
     is tested both ways here - which is what stops the check below from being a line of code
     that has never once evaluated its own consequent.
     """
-    expiring = expiring_on(DATABRICKS_WORKFLOW_HAS_RUN)
-    assert expiring, (
-        "no exemption declares that dispatching the databricks workflow would falsify it. "
-        "Either the three MEASURED_TRUE entries lost their `expires_when`, or this event name "
-        "changed and the exemptions were not moved with it."
+    # NO EXEMPTION IN THE MODULE CARRIES THIS EXPIRY ANY MORE. Three did, over sentences that
+    # counted the databricks workflow's run history, and they are gone because the sentences
+    # are: each one now states what the workflow is ALLOWED to do, which is a fact about the
+    # tree rather than about a remote service, so it needs no exemption and no expiry.
+    #
+    # This test used to assert that those three existed, and deleting them turned it red -
+    # correctly, because a mechanism with nothing to guard cannot tell its own green tick from
+    # a broken one. So it guards an exemption built HERE instead. The assertion it makes is
+    # about the machinery, which is what it was always about; the three entries were only the
+    # material it happened to have.
+    assert not expiring_on(DATABRICKS_WORKFLOW_HAS_RUN), (
+        "an exemption has declared this expiry again. That is fine - point the two assertions "
+        "below at the real set, and delete the invented one."
     )
-    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=True) == expiring
-    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=False) == []
+    invented = Exemption(
+        document="docs/milestones.md",
+        fragment="a sentence no document in this repository contains",
+        kind=Kind.MEASURED_TRUE,
+        reason="built by this test, so that the expiry machinery is exercised by something",
+        expires_when=DATABRICKS_WORKFLOW_HAS_RUN,
+    )
+    expiring = expiring_on(DATABRICKS_WORKFLOW_HAS_RUN, (invented,))
+    assert expiring == [invented]
+    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, True, (invented,)) == expiring
+    assert expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, False, (invented,)) == []
 
 
 def test_no_exemption_survives_the_run_that_makes_its_sentence_false() -> None:
@@ -280,6 +299,10 @@ def test_no_exemption_survives_the_run_that_makes_its_sentence_false() -> None:
             "(offline, rate-limited, or no origin remote); CI has a network and asks there"
         )
     expired = expired_exemptions(DATABRICKS_WORKFLOW_HAS_RUN, has_happened=runs > 0)
+    # Vacuous today, and said out loud rather than left to be discovered: no exemption carries
+    # this expiry any more, because the three that did were replaced by sentences about what
+    # the workflow is ALLOWED to do rather than about how often it has run. The assertion below
+    # is what keeps the mechanism from being a green tick for no work - see the test after it.
     assert not expired, (
         f"`.github/workflows/databricks.yml` has now run {runs} time(s), so these exemptions "
         f"are covering sentences that are no longer true:\n"
