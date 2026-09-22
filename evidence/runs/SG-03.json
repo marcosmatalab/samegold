@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "3ff7b1690a20d0a8c22531d8289a1a32",
-        "digest_reversed": "3ff7b1690a20d0a8c22531d8289a1a32",
+        "digest_forward": "148152799785a0a4cfd5d58ac805eec1",
+        "digest_reversed": "148152799785a0a4cfd5d58ac805eec1",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -231,25 +231,25 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35736791197",
   "claim_id": "SG-03",
   "environment": {
-    "delta_rs": "1.6.3",
+    "delta_rs": "1.6.5",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Windows-11-10.0.26200-SP0",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.13.2",
-    "sqlglot": "30.17.0"
+    "python": "3.11.16",
+    "sqlglot": "30.18.0"
   },
-  "hash": "a8dedc30783381729d545d83121e5980",
+  "hash": "2fbda8563d1f04812b710ea2085be0a3",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "160eeab0e800527139c3f04b898161e8",
+  "prev": "5c82e3bc1ec4c6383ac2627eb0026ea6",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "a545de774e2b658e979c3ec8d4a4cabafa9a1429",
-      "duration_s": 360.621,
+      "commit_sha": "9368e9fc46afa29508a4749f76f2727c10bd645d",
+      "duration_s": 76.018,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        13539811926700272415
+        198665352994452169
       ],
-      "started_at": "2026-09-22T13:04:00+00:00",
+      "started_at": "2026-09-22T13:58:31+00:00",
       "tree_dirty": false,
-      "tree_sha": "27404d8a7f8c01a0e8ab45cff38097dba95c8112"
+      "tree_sha": "670b7b8914c30cb81b978a2b0320868f5f2f4880"
     }
   }
 }

@@ -8,16 +8,16 @@ hash-chained and seed-derived; a hand-edited figure fails a test.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 639/639 (95% CI 99.4%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 212/212 (95% CI 98.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 9e52f158e](https://github.com/marcosmatalab/samegold/actions/runs/35586535706) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-00` what this repository contains, counted | PASS | 678/678 (95% CI 99.4%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 221/221 (95% CI 98.3%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
 
 <!-- samegold:end claims -->
 
@@ -55,7 +55,7 @@ split by about ten.
 
 The pipeline's own coverage is not this number either. **Line coverage of `src/samegold` by
 the fast lane is <!--sg:SG-00.artifact.line_coverage_pct-->68.43<!--/sg-->%
-(<!--sg:SG-00.provenance-->local run, not reproduced in CI, a545de774<!--/sg-->)**, and it is gated at 58 in CI.
+(<!--sg:SG-00.provenance-->[CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197)<!--/sg-->)**, and it is gated at 58 in CI.
 
 **The provenance is part of the figure, and that is the whole defence here.** Every other number
 in these documents is checked twice: the anchor keeps the document agreeing with the record, and
@@ -141,7 +141,7 @@ unfalsified rather than quietly kept.
 **Experiment.** For every month closed at least twice, compare the net revenue at its own
 close (day 5 of the following month) with its final value.
 Result: <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> of closed months moved, worst
-<!--sg:SG-04.artifact.worst_move_pct-->4.89<!--/sg-->%.
+<!--sg:SG-04.artifact.worst_move_pct-->5.5699<!--/sg-->%.
 
 **Measured over the simulated shop, not over the close.** The generator plants boundary
 fixtures so that the mutation campaign has data able to tell its mutants apart, and those
@@ -153,7 +153,7 @@ simulated month of 595 000 - 168 times the business of that month - and it moved
 percentage from 6.48% to 3.38% and moved which month was worst, while nothing about the
 pipeline changed. The same measurement over the whole close, fixtures included, is published
 beside it as
-<!--sg:SG-04.artifact.worst_move_pct_including_boundary_fixtures-->4.7763<!--/sg-->%, so the size
+<!--sg:SG-04.artifact.worst_move_pct_including_boundary_fixtures-->5.4502<!--/sg-->%, so the size
 of the correction is a number a reader can see rather than a claim that it is small.
 
 Every claim that compares implementations - SG-01, SG-02, SG-03, SG-05 - runs over the WHOLE
@@ -213,7 +213,7 @@ kept because in production there is no ledger and shape is all there is.
 of every record from the commit it names. The count is the records present **at the moment
 this claim ran**: SG-06 is ordered last in `ALL_CLAIMS` so a full `samegold evidence` covers
 everything before it, but a later single-claim run (`make faults`, a re-run of SG-00) appends
-after it and is therefore not in this number. Result: <!--sg:SG-06.rate-->212/212 (95% CI 98.2%-100.0%)<!--/sg-->.
+after it and is therefore not in this number. Result: <!--sg:SG-06.rate-->221/221 (95% CI 98.3%-100.0%)<!--/sg-->.
 
 **Why it exists.** The first version of this claim recomputed the seeds and compared them with
 themselves; it passed on a repository whose evidence had been forged by appending two lines to

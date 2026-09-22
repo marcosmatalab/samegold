@@ -38,16 +38,16 @@ the anchored figure below. What `make demo` prints:
 
 <!-- samegold:begin demo -->
 ```text
-samegold demo - 788 events, 295 files, seed 12579763839765862898
+samegold demo - 732 events, 292 files, seed 6732031791646218452
 
-  Month 2026-01 was closed at 2026-02-05 reporting 135 036,87 EUR of net revenue.
-  By 2026-04-05, late returns and late amendments had moved it to 129 917,33 EUR.
-  That is -5 119,54 EUR, -3.79% of a month that finance had already signed off.
+  Month 2026-01 was closed at 2026-02-05 reporting 146 468,35 EUR of net revenue.
+  By 2026-04-05, late returns and late amendments had moved it to 142 298,95 EUR.
+  That is -4 169,40 EUR, -2.85% of a month that finance had already signed off.
 
   The customer dimension is well formed: yes.
   Two implementations of that number are compared on this data by `samegold evidence`.
 
-  2.4s, no account, no credentials, nothing installed beyond this package.
+  0.2s, no account, no credentials, nothing installed beyond this package.
 ```
 <!-- samegold:end demo -->
 
@@ -62,7 +62,7 @@ one anyway, and the chain refuses the result as evidence. **A claim that fails u
 is the most useful issue anyone can open here.**
 
 `make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->694<!--/sg--> tests in
-<!--sg:SG-00.artifact.fast_lane_seconds-->234.9<!--/sg--> s, no JVM, no credentials), `make
+<!--sg:SG-00.artifact.fast_lane_seconds-->78.5<!--/sg--> s, no JVM, no credentials), `make
 preflight` the gate before a push, `make doctor` what this machine can run.
 
 ## What it computes
@@ -133,16 +133,16 @@ full policy.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 639/639 (95% CI 99.4%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 212/212 (95% CI 98.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 9e52f158e](https://github.com/marcosmatalab/samegold/actions/runs/35586535706) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-00` what this repository contains, counted | PASS | 678/678 (95% CI 99.4%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 221/221 (95% CI 98.3%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, 9368e9fc4](https://github.com/marcosmatalab/samegold/actions/runs/35736791197) |
 
 <!-- samegold:end claims -->
 
