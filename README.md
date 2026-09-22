@@ -53,16 +53,13 @@ samegold demo - 742 events, 281 files, seed 6946252875829610527
 
 **That block is rendered from evidence, not pasted.** It used to be pasted, and it was the one
 defect here a reviewer could find by running the command this section tells them to run: it
-announced 780 events and seed 6569293562773694097 while the program printed 694 and
-9769305124036219406, and it had been wrong for eighteen commits, because the seeds derive from
-the commit sha and a transcript is stale the moment it is copied. `samegold check` refuses the
-document if anybody moves those figures by hand.
+announced 780 events where the program printed 694, and had been wrong for eighteen commits,
+because the seeds derive from the commit sha and a transcript is stale the moment it is copied.
 
-**The last command is the point.** Seeds derive from the commit sha, so picking a favourable one
-means changing the code, which changes the seed. `make refute` lets you pick one anyway;
-override runs are refused by the evidence chain and written to `evidence/refutations.jsonl`,
-which is committed. **A claim that fails under your seed is the most useful issue anyone can
-open here.**
+**The last command is the point.** Seeds deriving from the commit sha means picking a
+favourable one requires changing the code, which changes the seed. `make refute` lets you pick
+one anyway, and the chain refuses the result as evidence. **A claim that fails under your seed
+is the most useful issue anyone can open here.**
 
 `make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->674<!--/sg--> tests in
 <!--sg:SG-00.artifact.fast_lane_seconds-->241.9<!--/sg--> s, no JVM, no credentials), `make
@@ -81,12 +78,10 @@ table names and the reads between them from `databricks/src/` by parsing it, and
 figures from `evidence/databricks/SG-DBX-01.json`. A renamed table, a reversed arrow or a
 changed digit each turns it red, and each turns red on its own.
 
-It earned that on the first run: the picture originally drew the tidy chain bronze to
-classified to events to gold, and the lane does not do that. `silver_events` is read from
-`bronze_events` and is a parallel table declared for the event log, and gold reads
-`silver_classified`, which the code says in one line of docstring and the drawing contradicted.
-A diagram that drifts is the same defect class as a sentence that drifts, and the sentences
-have had a gate since 7 September 2026.
+It earned that on the first run. The picture drew the tidy chain bronze to classified to events
+to gold, and the lane does not do that: gold reads `silver_classified`, which the code says in
+one line of docstring and the drawing contradicted. A diagram that drifts is the same defect
+class as a sentence that drifts.
 
 ## Why a close needs two time axes, in one picture
 
@@ -190,16 +185,15 @@ against a Databricks Free Edition workspace, and the records are committed under
 [`evidence/databricks/`](evidence/databricks/) with their job run, pipeline and update ids.
 **This repository holds no credentials for it** - measured: zero repository secrets, zero
 environments, and `databricks.yml` is `workflow_dispatch` only - so nobody with a clone can
-re-run it, and those records are the one thing here you have to take on trust. They say so
+re-run it. Those records are the one thing here you have to take on trust, and they say so
 themselves: `"chain": {"chained": false}`.
 
 What that buys instead of a screenshot:
 [**`docs/databricks-run-evidence.md`**](docs/databricks-run-evidence.md) renders what the
 workspace measured out of those records - the Type 2 dimension row by row with its `__START_AT`
 and `__END_AT`, the four closed versions of two months, the expectations with their pass and
-fail counts, and the four events the contract refused with the value that did it. It is
-rendered by `samegold readme`, and `samegold check` fails if one figure on it stops matching
-the records. Every other figure in this repository is reproducible without an account.
+fail counts, the four events the contract refused with the value that did it. `samegold check`
+fails if one figure on it stops matching the records.
 
 ## Where to go next
 
