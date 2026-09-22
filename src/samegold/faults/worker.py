@@ -18,12 +18,19 @@ import sys
 from pathlib import Path
 
 from samegold.faults.barrier import CrashBarrier
-from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
-from samegold.pipelines.session import StorageMode, build_session
-from samegold.pipelines.transform import classify
 
 
 def run(bronze: Path, out: Path, files_per_trigger: int = 40) -> int:
+    # The Spark imports are INSIDE the function, which is the pattern `cli.py` uses and for
+    # the same reason: `main` below is argument handling and a `--reset`, and the fast lane
+    # cannot import a module that pulls in pyspark - `tests/fast/conftest.py` fails the whole
+    # session if pyspark reaches `sys.modules`. With them at module scope this file had no
+    # test of any kind, and the arm of the harness that most needed one was the arm that
+    # deletes a directory.
+    from samegold.pipelines.schema import RESCUED_COLUMN, bronze_schema
+    from samegold.pipelines.session import StorageMode, build_session
+    from samegold.pipelines.transform import classify
+
     barrier = CrashBarrier.from_env()
     spark = build_session("samegold-faults", mode=StorageMode.from_env())
     checkpoint = out / "_checkpoint"

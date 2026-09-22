@@ -153,14 +153,44 @@ def seed_for(sha: str, index: int, purpose: str = "generator") -> int:
     return int.from_bytes(digest, "big")
 
 
+#: Pins the commit the seeds derive from, for ``samegold verify-latest`` and nothing else.
+#:
+#: The problem it solves: a published record names the commit it was measured at, and that is
+#: never HEAD. The evidence job runs at C, commits the record on top of it, and the merge makes
+#: HEAD a third commit; so re-running a claim to check its number would draw different seeds
+#: and compute a different population, and every comparison would be a false alarm. Recomputing
+#: "from the seeds the record names" means exactly this variable.
+#:
+#: Why it cannot be used to choose a favourable number: ``seed_source`` reports "pinned"
+#: whenever it is set to anything but the real HEAD, and ``EvidenceStore._validate`` refuses
+#: every source that is not "commit" or "override". A record produced under a pin cannot enter
+#: the chain, which is right, because `verify-latest` recomputes and compares and never writes.
+SEED_COMMIT_ENV = "SAMEGOLD_SEED_COMMIT"
+
+
+def pinned_commit() -> str | None:
+    """The commit the seeds are pinned to, if the pin is in force."""
+    sha = os.environ.get(SEED_COMMIT_ENV, "").strip().lower()
+    return sha or None
+
+
 def seeds_from_commit(n: int, purpose: str = "generator", sha: str | None = None) -> list[int]:
     override = os.environ.get("SAMEGOLD_SEED_OVERRIDE")
     if override:
         base = hashlib.blake2b(override.encode(), digest_size=20).hexdigest()
         return [seed_for(base, i, purpose) for i in range(n)]
-    sha = sha or current_commit_sha()
+    sha = sha or pinned_commit() or current_commit_sha()
     return [seed_for(sha, i, purpose) for i in range(n)]
 
 
 def seed_source() -> str:
-    return "override" if os.environ.get("SAMEGOLD_SEED_OVERRIDE") else "commit"
+    if os.environ.get("SAMEGOLD_SEED_OVERRIDE"):
+        return "override"
+    pinned = pinned_commit()
+    if pinned and pinned != current_commit_sha():
+        # Not "commit", and deliberately a word the store does not know: `_validate` refuses
+        # every source but "commit" and "override", so a pinned run cannot be published even
+        # by accident. A pin that happens to name the real HEAD is not a pin at all, and
+        # saying so keeps `samegold evidence` honest on the one commit where they coincide.
+        return "pinned"
+    return "commit"

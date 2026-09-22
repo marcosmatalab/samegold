@@ -26,7 +26,7 @@ from typing import Any
 import duckdb
 
 from samegold.mutation.equivalents import ASSUMPTIONS
-from samegold.mutation.operators import Mutant, mutate_sql
+from samegold.mutation.operators import mutate_sql
 
 _AS_OF = "2026-03-05T22:59:59+00:00"
 
@@ -366,7 +366,3 @@ def probe_orphan_returns_are_excluded(
             else "VIOLATED: an orphan return reached the close and the equivalence class is void"
         ),
     }
-
-
-def unused(_: Mutant) -> None:  # pragma: no cover - keeps the Mutant import meaningful
-    return None

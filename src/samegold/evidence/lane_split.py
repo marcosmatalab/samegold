@@ -37,6 +37,18 @@ Two calls worth naming because a reader may disagree:
     a third of its tests are regressions in documents and lane declarations rather than in the
     close. Moving those would shift the split by about ten tests in the repository direction. It
     is counted whole, on the side its majority sits.
+
+Two more, added on 22 September 2026, both REPOSITORY, and the reasoning is the same one each
+time - none of them would change if the domain were payroll:
+
+  * `test_reproduce` is about the evidence gate that recomputes a record (ADR 0011). It runs no
+    close and reads no data: its subject is whether a published number was measured;
+  * `test_faults` is the one worth arguing about. The crash harness kills a run of the SILVER
+    stage, which is domain machinery, so a reader could reasonably put it on the other side.
+    It is REPOSITORY because what these tests decide is the harness's own accounting - a missed
+    injection is not a pass, the bound is withheld below three trials, the schedule cannot ask
+    for a batch that does not exist. The part that computes over data is `worker.run`, which
+    needs a JVM and is not in this lane at all.
 """
 
 from __future__ import annotations
@@ -52,8 +64,10 @@ REPOSITORY_TESTS = {
     "test_databricks_catalog_step.py",
     "test_documentation.py",
     "test_evidence_gate.py",
+    "test_faults.py",
     "test_preflight.py",
     "test_prose_gate.py",
+    "test_reproduce.py",
     "test_seeds.py",
 }
 DOMAIN_TESTS = {

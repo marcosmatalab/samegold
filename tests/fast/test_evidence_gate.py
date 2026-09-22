@@ -17,6 +17,7 @@ import pytest
 from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.registry import CLAIM_TITLES
 from samegold.evidence.render import BEGIN, END, check_readme, render_readme
+from samegold.evidence.reproduce import arithmetic_mismatches
 from samegold.evidence.store import EvidenceRejected, EvidenceStore, record_hash
 from samegold.generator.seeds import current_commit_sha, current_tree, seeds_from_commit
 from samegold.verify.verdict import Pass, Rate, RunSet
@@ -317,11 +318,26 @@ def test_the_provenance_names_the_commit_that_produced_the_number() -> None:
     assert "aaaaaaaaa" in rendered and "bbbbbbbbb" in rendered
     assert "uncommitted tree" in rendered
 
+    # AND IT LINKS THE RUN when the record names one. "CI" as bare text asked the reader to
+    # take on trust that a run existed: `grep -rno 'actions/runs/[0-9]*' --include=*.md .`
+    # over this repository answered with nothing, so the word "CI" on the front page was the
+    # least checkable thing on it. The url is in the record, which the chain hashes.
     in_ci = {
         "ci_run_url": "https://github.com/x/y/actions/runs/1",
         "verdict": {"runs": {"commit_sha": "c" * 40}},
     }
-    assert _provenance(in_ci).startswith("CI, ccccccccc")
+    assert _provenance(in_ci) == "[CI, ccccccccc](https://github.com/x/y/actions/runs/1)"
+
+    # A url that is not a run url is rendered as the plain text it used to be, not refused and
+    # not interpolated: a value that lands inside `](...)` can close the link early and put
+    # the rest of itself into the table as prose, and one odd record is no reason to stop
+    # publishing the other nine rows.
+    odd = {
+        "ci_run_url": "https://example.invalid/runs/1) [click here](https://evil.invalid",
+        "verdict": {"runs": {"commit_sha": "c" * 40}},
+    }
+    assert _provenance(odd) == "CI, ccccccccc"
+
     # A record with no commit at all says so rather than rendering an empty cell, which would
     # read as "no caveat" instead of "no provenance".
     assert "no commit" in _provenance({"verdict": {"runs": {}}})
@@ -387,4 +403,39 @@ def test_this_repositorys_own_chain_has_no_crlf() -> None:
         f"terminated. They verify - the hashes are over the JSON - but the file's bytes now "
         f"depend on which shell wrote each line, and a second git on the same checkout reads "
         f"that as an uncommitted tree."
+    )
+
+
+@pytest.mark.evidence_dependent
+def test_no_published_rate_disagrees_with_its_own_record() -> None:
+    """The fifth attack, in the lane a reviewer runs first.
+
+    The four checks above stop a record being EDITED. None of them stopped one being
+    APPENDED: a copy of a genuine record with `verdict.rate` set to 999/999, chained to the
+    real head, hashed with `record_hash`, published `SG-03 | PASS | 999/999` on the front page
+    with `samegold check` at exit 0 and 594 tests passing.
+
+    What the forgery did not do - because it is a great deal more work, and because the prose
+    in CLAIMS.md and FINDINGS.md is written from these numbers - is move the artifacts under
+    the rate. `mutants_total: 94`, `equivalent: 27` and `per_witness.ledger: 67` stayed where
+    they were, two lines below a rate of 999/999, and 94 - 27 is not 999.
+
+    So this is arithmetic over one file, it costs nothing, and it is the half of the gate that
+    runs here. `samegold verify-latest` is the other half: it re-runs the claims from the
+    seeds their records name, which is exact and costs minutes, and it runs in CI and in
+    `make preflight` rather than in the fast lane.
+    """
+    latest = EvidenceStore(REPO / "evidence").latest()
+    mismatches, unchecked = arithmetic_mismatches(latest)
+    assert not mismatches, (
+        "a published figure disagrees with the artifacts of its own record, which means it "
+        "was not produced by the run those artifacts came from: "
+        + "; ".join(str(m) for m in mismatches)
+    )
+    # Not an assertion that everything was checked - older records legitimately predate the
+    # artifacts some rules read, and `samegold verify-latest` reports the same set. What would
+    # be wrong is this test reporting agreement having compared nothing at all.
+    assert len(unchecked) < len(latest), (
+        f"no rule could check any published rate ({unchecked}), so this test compared "
+        f"nothing and passed, which is the defect it exists to catch"
     )
