@@ -1,38 +1,47 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "dimension_rows": 249,
+    "checks": [
+      "masked dimension passes",
+      "no expired row survives",
+      "no purged identifier is left in the transaction log",
+      "purge deleted rows",
+      "purge vacuumed files",
+      "raw dimension is refused"
+    ],
+    "checks_failed": [],
+    "dimension_rows": 76,
     "identifiers_left_in_the_log": [],
     "leaks_in_masked_dimension": 0,
     "leaks_in_raw_dimension": 1,
     "purge": {
-      "cutoff": "2026-02-01",
+      "cutoff": "2026-01-12",
       "files_removed_by_vacuum": 1,
       "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
-      "rows_deleted": 236,
+      "rows_deleted": 70,
       "version_after": 3,
       "version_before": 0
     }
   },
-  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
+  "ci_commit_sha": null,
+  "ci_run_url": null,
   "claim_id": "SG-08",
   "environment": {
-    "delta_rs": "1.6.4",
+    "delta_rs": "1.6.3",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.11.16",
-    "sqlglot": "30.18.0"
+    "python": "3.13.2",
+    "sqlglot": "30.17.0"
   },
-  "hash": "82ab60e30b1345c818a3c661c615920b",
+  "hash": "24db6edbf91972b459f2739c16203858",
   "not_claimed": [
     "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
     "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
   ],
-  "prev": "cbe9303263a1b4c426dceb9ab739dea9",
+  "prev": "1c7898469c4e59f077ec5c9ea589a155",
   "runtime": "oss-local",
   "title": "no direct identifier reaches gold, and a purge really purges",
   "verdict": {
@@ -49,19 +58,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-      "duration_s": 0.406,
+      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
+      "duration_s": 0.88,
       "n": 1,
-      "profile": "ci",
+      "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "privacy",
       "seed_source": "commit",
       "seeds": [
-        11897151531029392976
+        16217721714894003431
       ],
-      "started_at": "2026-09-21T10:04:09+00:00",
+      "started_at": "2026-09-22T11:41:25+00:00",
       "tree_dirty": false,
-      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
+      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
     }
   }
 }

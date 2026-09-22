@@ -3,25 +3,25 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
+  "ci_commit_sha": null,
+  "ci_run_url": null,
   "claim_id": "SG-02",
   "environment": {
-    "delta_rs": "1.6.4",
+    "delta_rs": "1.6.3",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.11.16",
-    "sqlglot": "30.18.0"
+    "python": "3.13.2",
+    "sqlglot": "30.17.0"
   },
-  "hash": "326ba2f384ab8de2da55d6b075dacea6",
+  "hash": "d6d5ff765f0e72a2608d711fcc68623f",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "f43f092b9158e00b6652d75c9c8990f9",
+  "prev": "2fd5634795c74e923bd46dd698692e09",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-      "duration_s": 3.935,
+      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
+      "duration_s": 9.968,
       "n": 3,
-      "profile": "ci",
+      "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        16263132534951923977,
-        2872856479665480637,
-        14208131205871191713
+        15197747349463808509,
+        9602841209820662143,
+        16531731528189334519
       ],
-      "started_at": "2026-09-21T10:03:17+00:00",
+      "started_at": "2026-09-22T11:35:46+00:00",
       "tree_dirty": false,
-      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
+      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
     }
   }
 }

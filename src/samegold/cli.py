@@ -326,8 +326,8 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
 
     work = _work_dir(args.work)
 
-    def run_claim(claim_id: str, sha: str) -> dict[str, object]:
-        """One claim, with its seeds pinned to the commit the record names.
+    def run_claim(claim_id: str, sha: str, profile: str) -> dict[str, object]:
+        """One claim, with its seeds pinned to the commit and its profile taken from the record.
 
         The pin is what makes this a recomputation rather than a fresh measurement: the
         record was written at the commit the evidence job ran on, HEAD is at least two commits
@@ -343,7 +343,12 @@ def cmd_verify_latest(args: argparse.Namespace) -> int:
                 iter(
                     _run_claims(
                         [claim_id],
-                        args.profile,
+                        # The record's own profile, not the caller's. A record written at the
+                        # `fast` profile describes a different population from one written at
+                        # `ci`, so recomputing it at the wrong one reports a mismatch about
+                        # evidence that was perfectly good - which is exactly what the first
+                        # run of this command did, to SG-01 and SG-04.
+                        profile if profile in PROFILES else args.profile,
                         work,
                         REPO_ROOT / "evidence",
                         repetitions=args.repetitions,

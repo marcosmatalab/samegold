@@ -1,42 +1,59 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "adrs": 10,
+    "adrs": 14,
+    "demo_closed_at": "2026-02-05",
+    "demo_dimension_well_formed": "yes",
+    "demo_events": "742",
+    "demo_files": "281",
+    "demo_month": "2026-01",
+    "demo_move": "-2 627,03",
+    "demo_move_pct": "-1.84",
+    "demo_observed_at": "2026-04-05",
+    "demo_revenue_at_close": "142 410,67",
+    "demo_revenue_now": "139 783,64",
+    "demo_seconds": "1.7",
+    "demo_seed": "6946252875829610527",
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
-    "fast_lane_repository_tests": 421,
-    "fast_lane_seconds": 55.0,
+    "fast_lane_repository_tests": 499,
+    "fast_lane_seconds": 241.9,
     "fast_lane_unclassified_files": 0,
-    "line_coverage_pct": 61.95,
-    "markdown_documents": 25,
-    "python_modules": 56,
-    "source_lines": 11654,
-    "test_lines": 11869,
+    "harness_lines": 22228,
+    "harness_share_pct": 74.6,
+    "line_coverage_pct": 67.92,
+    "markdown_documents": 31,
+    "platform_lines": 7567,
+    "platform_share_pct": 25.4,
+    "python_modules": 57,
+    "source_lines": 12957,
+    "test_lines": 13134,
+    "tests_databricks_bundle": 121,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 596,
-    "tests_passed": 585,
+    "tests_fast": 674,
+    "tests_passed": 622,
     "tests_spark": 148
   },
-  "ci_commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35586535706",
+  "ci_commit_sha": null,
+  "ci_run_url": null,
   "claim_id": "SG-00",
   "environment": {
-    "delta_rs": "1.6.4",
+    "delta_rs": "1.6.3",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "platform": "Windows-11-10.0.26200-SP0",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.11.16",
-    "sqlglot": "30.18.0"
+    "python": "3.13.2",
+    "sqlglot": "30.17.0"
   },
-  "hash": "5420dfad18e428ce6c0fc5a832887ad1",
+  "hash": "559d9a21a87b9dfe5b3894d75744ebb1",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "fd207ef7efc7c73bca4a8b1cd0245609",
+  "prev": "7e724403d9b272ff64bcc15499c008af",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -45,27 +62,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 585,
-      "trials": 585,
+      "successes": 622,
+      "trials": 622,
       "wilson95": [
-        0.993476,
+        0.993862,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "9e52f158ed07912ec71b6a9605777102198c82fe",
-      "duration_s": 57.521,
+      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
+      "duration_s": 258.223,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        4388807561024108564
+        4843302389907710609
       ],
-      "started_at": "2026-09-21T10:05:14+00:00",
+      "started_at": "2026-09-22T11:45:55+00:00",
       "tree_dirty": false,
-      "tree_sha": "ad7887ab8d394e85793b10780d5ace29f3826525"
+      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
     }
   }
 }

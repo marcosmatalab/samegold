@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from samegold.evidence.registry import CLAIM_TITLES
 from samegold.evidence.reproduce import (
     RATE_RULES,
     Reproduction,
@@ -29,7 +30,6 @@ from samegold.evidence.reproduce import (
     rate_against_artifacts,
     reproduce_latest,
 )
-from samegold.evidence.registry import CLAIM_TITLES
 from samegold.generator.seeds import seed_for, seeds_from_commit
 
 REPO = Path(__file__).resolve().parents[2]
@@ -45,6 +45,7 @@ def _record(
     purpose: str = "mutation",
     sha: str = SHA,
     n: int = 1,
+    profile: str = "ci",
 ) -> dict[str, Any]:
     return {
         "claim_id": claim_id,
@@ -58,6 +59,7 @@ def _record(
                 "seed_purpose": purpose,
                 "seed_source": "commit",
                 "commit_sha": sha,
+                "profile": profile,
             },
         },
         "artifacts": artifacts
@@ -66,8 +68,8 @@ def _record(
     }
 
 
-def _never_runs(claim_id: str, sha: str) -> dict[str, Any]:
-    raise AssertionError(f"the claim {claim_id} at {sha} should not have been re-run")
+def _never_runs(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
+    raise AssertionError(f"the claim {claim_id} at {sha} ({profile}) should not have been re-run")
 
 
 # ------------------------------------------------------------- the arithmetic half
@@ -97,7 +99,7 @@ def test_the_genuine_rate_passes_the_same_check() -> None:
 
 
 def test_a_record_whose_artifacts_cannot_answer_is_reported_unchecked_not_agreed() -> None:
-    """"Nothing was compared" and "they agree" must never arrive as the same answer.
+    """ "Nothing was compared" and "they agree" must never arrive as the same answer.
 
     This is the defect the whole module was written against, one level up: a check that
     inspects nothing and reports success. `rate_against_artifacts` returns the two separately
@@ -156,8 +158,9 @@ def test_the_forged_rate_is_caught_by_recomputing_it() -> None:
     """
     forged = _record(successes=999, trials=999)
 
-    def runner(claim_id: str, sha: str) -> dict[str, Any]:
+    def runner(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
         assert sha == SHA, "the seeds must be pinned to the commit the record names"
+        assert profile == "ci", "the profile must be the one the record names, not a default"
         return _record(claim_id=claim_id)
 
     result = reproduce_latest(
@@ -175,7 +178,7 @@ def test_a_genuine_record_reproduces() -> None:
     genuine = _record()
     result = reproduce_latest(
         {"SG-03": genuine},
-        lambda claim_id, sha: _record(claim_id=claim_id),
+        lambda claim_id, sha, profile: _record(claim_id=claim_id),
         repo_root=REPO,
         claim_ids=["SG-03"],
         head_sha=HEAD,
@@ -183,6 +186,32 @@ def test_a_genuine_record_reproduces() -> None:
     assert result.ok
     assert result.reproduced == ("SG-03",)
     assert "every figure recomputed matches what is published" in result.summary()
+
+
+def test_the_profile_the_record_names_is_the_one_it_is_recomputed_at() -> None:
+    """A record written at the `fast` profile describes a different population from one
+    written at `ci`, so recomputing it at the caller's default is not recomputing it.
+
+    This is not hypothetical. The first run of `samegold verify-latest` against the real
+    evidence reported SG-01 as 9/9 against 15/15 and SG-04 as 1/1 against 2/2: both records
+    were written at `fast` and both were recomputed at `ci`. Two MISMATCHes about evidence
+    that was perfectly good, from a gate whose whole subject is figures that were not measured
+    the way they claim.
+    """
+    seen: list[str] = []
+
+    def runner(claim_id: str, sha: str, profile: str) -> dict[str, Any]:
+        seen.append(profile)
+        return _record(claim_id=claim_id, profile=profile)
+
+    reproduce_latest(
+        {"SG-03": _record(profile="fast")},
+        runner,
+        repo_root=REPO,
+        claim_ids=["SG-03"],
+        head_sha=HEAD,
+    )
+    assert seen == ["fast"]
 
 
 def test_seeds_that_do_not_derive_from_the_commit_are_a_mismatch_not_a_run() -> None:
@@ -218,7 +247,7 @@ def test_naming_a_claim_explicitly_overrides_the_default_policy() -> None:
     record = _record(claim_id="SG-00", successes=5, trials=5, purpose="facts", artifacts={})
     result = reproduce_latest(
         {"SG-00": record},
-        lambda claim_id, sha: record,
+        lambda claim_id, sha, profile: record,
         repo_root=REPO,
         claim_ids=["SG-00"],
         head_sha=HEAD,
