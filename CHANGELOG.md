@@ -9,6 +9,53 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the vers
 "version" means the state of the repository at a tag, not a package a dependency resolver
 will see.
 
+## [0.2.0] - 2026-09-22
+
+The release in which the cloud half stopped being a claim about a laptop. The short version is
+[`docs/release-notes-v0.2.0.md`](docs/release-notes-v0.2.0.md).
+
+### Added
+
+- **The Databricks lane runs from CI**, `workflow_dispatch` only, `validate` by default, with
+  no option that starts compute and its token in a GitHub environment rather than a repository
+  secret. The badge is on both front pages.
+- **`scripts/databricks_run.sh deploy-definitions`**, which refuses a missing catalog instead
+  of creating one with a SQL statement that starts the SQL warehouse. It is what CI runs, so
+  the guarantee that the lane never starts compute is a property of the command rather than of
+  the workspace's state that week.
+- **`ubuntu-24.04-arm` in the fast lane's matrix.** Every published figure is now recomputed
+  from the seeds its own record names on x86_64 and on aarch64 and must agree on both. Lint,
+  formatting, types and the mermaid parse stay on x86: they read source text and none of them
+  has an answer that depends on the word size of the machine reading it.
+- **`docs/join-skew.md`, `scripts/measure_join_skew.py` and `make skew`.** A key holding 30% of
+  the rows gives a skew factor of 1.00 at two hundred thousand rows and at two million, and
+  5.62 at the same size with adaptive coalescing off. The measurement is published as a page
+  and not as a claim, because the only configuration in which the number is interesting is the
+  one ADR 0005 refuses to test.
+- **`docs/adr/README.md`**, an index for the fourteen decisions, seven of which were linked by
+  no document in the repository.
+- **`docs/findings/three-things-no-gate-found-and-who-did.md`**, which is what it says.
+
+### Fixed
+
+- **The Databricks CLI pin**, from v0.221.1 to v0.221.2. HashiCorp's signing key expired and
+  every CLI from v0.210.3 to v0.297.1 began failing on command lines that had not changed. The
+  pin was already by SHA and that did not help, which is the finding.
+- **`tree_dirty` reported a clean CI runner as dirty**, because `databricks bundle validate`
+  writes `.databricks/` one step before the field is computed and the rule excluded only
+  `evidence/`. Third occurrence of the same rule being one prefix short; the exclusions are a
+  named list in both copies now, and a test runs the shell copy's own awk program against the
+  same inputs as the Python one.
+
+### Changed
+
+- **Three sentences that counted the Databricks workflow's run history** now state what the
+  workflow is ALLOWED to do, which is a fact about the tree and therefore true before the first
+  dispatch and after it. The three exemptions that covered them are deleted.
+- **The v0.1.0 release notes** said no figure had been measured on more than one machine. The
+  chain beside it held four `environment.platform` values and eight of the ten claims had the
+  same rate on Windows and on the runner. Corrected, and written up.
+
 ## [0.1.0] - 2026-09-22
 
 The first tagged close. Ten claims, every published figure recomputed from the seeds its own
