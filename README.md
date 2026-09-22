@@ -38,16 +38,16 @@ the anchored figure below. What `make demo` prints:
 
 <!-- samegold:begin demo -->
 ```text
-samegold demo - 742 events, 281 files, seed 6946252875829610527
+samegold demo - 788 events, 295 files, seed 12579763839765862898
 
-  Month 2026-01 was closed at 2026-02-05 reporting 142 410,67 EUR of net revenue.
-  By 2026-04-05, late returns and late amendments had moved it to 139 783,64 EUR.
-  That is -2 627,03 EUR, -1.84% of a month that finance had already signed off.
+  Month 2026-01 was closed at 2026-02-05 reporting 135 036,87 EUR of net revenue.
+  By 2026-04-05, late returns and late amendments had moved it to 129 917,33 EUR.
+  That is -5 119,54 EUR, -3.79% of a month that finance had already signed off.
 
   The customer dimension is well formed: yes.
   Two implementations of that number are compared on this data by `samegold evidence`.
 
-  1.7s, no account, no credentials, nothing installed beyond this package.
+  2.4s, no account, no credentials, nothing installed beyond this package.
 ```
 <!-- samegold:end demo -->
 
@@ -61,8 +61,8 @@ favourable one requires changing the code, which changes the seed. `make refute`
 one anyway, and the chain refuses the result as evidence. **A claim that fails under your seed
 is the most useful issue anyone can open here.**
 
-`make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->674<!--/sg--> tests in
-<!--sg:SG-00.artifact.fast_lane_seconds-->241.9<!--/sg--> s, no JVM, no credentials), `make
+`make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->694<!--/sg--> tests in
+<!--sg:SG-00.artifact.fast_lane_seconds-->234.9<!--/sg--> s, no JVM, no credentials), `make
 preflight` the gate before a push, `make doctor` what this machine can run.
 
 ## What it computes
@@ -97,13 +97,13 @@ and it is the property `SG-04` measures.
 
 ## What this repository is mostly made of, since somebody was going to count it
 
-**<!--sg:SG-00.artifact.platform_share_pct-->25.4<!--/sg-->% of the code is Spark, Delta and
-Databricks. <!--sg:SG-00.artifact.harness_share_pct-->74.6<!--/sg-->% is the harness that tries
+**<!--sg:SG-00.artifact.platform_share_pct-->24.8<!--/sg-->% of the code is Spark, Delta and
+Databricks. <!--sg:SG-00.artifact.harness_share_pct-->75.2<!--/sg-->% is the harness that tries
 to break it.** In lines: <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> against
-<!--sg:SG-00.artifact.harness_lines-->22 228<!--/sg-->. Of the fast lane's
-<!--sg:SG-00.artifact.tests_fast-->674<!--/sg--> tests,
+<!--sg:SG-00.artifact.harness_lines-->22 911<!--/sg-->. Of the fast lane's
+<!--sg:SG-00.artifact.tests_fast-->694<!--/sg--> tests,
 <!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> exercise the pipeline and
-<!--sg:SG-00.artifact.fast_lane_repository_tests-->499<!--/sg--> check this repository's own
+<!--sg:SG-00.artifact.fast_lane_repository_tests-->519<!--/sg--> check this repository's own
 claims about itself - a test of the close, against a test of this repository's own paperwork.
 
 Those figures are measured by `make evidence` and rendered here, like every other number on
@@ -133,16 +133,16 @@ full policy.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 622/622 (95% CI 99.4%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-01` two implementations agree on the close | PASS | 9/9 (95% CI 70.1%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-04` a closed month moves after it is closed | PASS | 1/1 (95% CI 20.7%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 203/203 (95% CI 98.1%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
+| `SG-00` what this repository contains, counted | PASS | 639/639 (95% CI 99.4%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 212/212 (95% CI 98.2%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
 | `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 9e52f158e](https://github.com/marcosmatalab/samegold/actions/runs/35586535706) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, 5708423a5 |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, a545de774 |
 
 <!-- samegold:end claims -->
 
@@ -178,7 +178,7 @@ every run of the fast lane.
 mixing them is how a repository ends up sounding better than it is.
 
 **Checkable here, with no account:**
-<!--sg:SG-00.artifact.tests_databricks_bundle-->121<!--/sg--> tests drive `databricks/` and
+<!--sg:SG-00.artifact.tests_databricks_bundle-->126<!--/sg--> tests drive `databricks/` and
 `scripts/databricks_run.sh` against a stub CLI on `PATH` - every notebook path, every widget,
 every job parameter, the concurrent-task ceiling computed as the width of the dependency graph
 above, and the guard that refuses to run a job deployed from a commit that is not `HEAD`. The

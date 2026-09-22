@@ -1,8 +1,8 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "closes_per_run": 3,
-    "comparisons": 9
+    "closes_per_run": 5,
+    "comparisons": 15
   },
   "ci_commit_sha": null,
   "ci_run_url": null,
@@ -17,12 +17,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "2fd5634795c74e923bd46dd698692e09",
+  "hash": "db9f9d200cd3036c6c4247198691d2e8",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "29e3135296f0c37d914d427e89672a8c",
+  "prev": "b3f70a160092ae355ea5ea4987b4335a",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -31,29 +31,29 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 9,
-      "trials": 9,
+      "successes": 15,
+      "trials": 15,
       "wilson95": [
-        0.700855,
+        0.796117,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
-      "duration_s": 6.944,
+      "commit_sha": "a545de774e2b658e979c3ec8d4a4cabafa9a1429",
+      "duration_s": 15.438,
       "n": 3,
-      "profile": "fast",
+      "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        15254564390803158457,
-        18070990112143681940,
-        13866255128025906337
+        3281133662247079848,
+        16026228463333086128,
+        13675516681658431243
       ],
-      "started_at": "2026-09-22T11:35:36+00:00",
+      "started_at": "2026-09-22T12:57:24+00:00",
       "tree_dirty": false,
-      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
+      "tree_sha": "27404d8a7f8c01a0e8ab45cff38097dba95c8112"
     }
   }
 }

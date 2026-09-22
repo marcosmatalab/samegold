@@ -16,12 +16,12 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "d6d5ff765f0e72a2608d711fcc68623f",
+  "hash": "160eeab0e800527139c3f04b898161e8",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "2fd5634795c74e923bd46dd698692e09",
+  "prev": "db9f9d200cd3036c6c4247198691d2e8",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
-      "duration_s": 9.968,
+      "commit_sha": "a545de774e2b658e979c3ec8d4a4cabafa9a1429",
+      "duration_s": 35.153,
       "n": 3,
-      "profile": "fast",
+      "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        15197747349463808509,
-        9602841209820662143,
-        16531731528189334519
+        16699422938895037825,
+        13136083292905757606,
+        5255467710244023711
       ],
-      "started_at": "2026-09-22T11:35:46+00:00",
+      "started_at": "2026-09-22T12:57:59+00:00",
       "tree_dirty": false,
-      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
+      "tree_sha": "27404d8a7f8c01a0e8ab45cff38097dba95c8112"
     }
   }
 }

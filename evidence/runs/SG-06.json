@@ -2,8 +2,9 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
-    "records_verified": 203,
+    "chain_head": "e7e6556b6ecd40b5d559d2eebbbfff6b",
+    "commit_sha": "a545de774e2b658e979c3ec8d4a4cabafa9a1429",
+    "records_verified": 212,
     "seed_source": "commit"
   },
   "ci_commit_sha": null,
@@ -19,40 +20,40 @@
     "python": "3.13.2",
     "sqlglot": "30.17.0"
   },
-  "hash": "b3f70a160092ae355ea5ea4987b4335a",
+  "hash": "73c1d689c74b91bfeef85dffb10815df",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "559d9a21a87b9dfe5b3894d75744ebb1",
+  "prev": "e7e6556b6ecd40b5d559d2eebbbfff6b",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "203 records verified against commit 5708423a55ae",
+    "note": "212 records verified against commit a545de774e2b",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 203,
-      "trials": 203,
+      "successes": 212,
+      "trials": 212,
       "wilson95": [
-        0.981428,
+        0.982202,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "5708423a55aeec51075b9053aea16b678a60747e",
-      "duration_s": 6.249,
+      "commit_sha": "a545de774e2b658e979c3ec8d4a4cabafa9a1429",
+      "duration_s": 8.728,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        18211979705211747277
+        1009912167520296142
       ],
-      "started_at": "2026-09-22T11:46:01+00:00",
+      "started_at": "2026-09-22T13:09:07+00:00",
       "tree_dirty": false,
-      "tree_sha": "76b11fd55a1c604727bb10f27fd8c7d25e0fe592"
+      "tree_sha": "27404d8a7f8c01a0e8ab45cff38097dba95c8112"
     }
   }
 }

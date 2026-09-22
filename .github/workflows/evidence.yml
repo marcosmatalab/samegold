@@ -127,9 +127,23 @@ jobs:
           # published figure from the seeds its own record names, on this runner, before this
           # line could run. See docs/adr/0014-the-evidence-pull-request-merges-itself.md for
           # the alternative that was rejected and why.
-          if ! gh pr merge --squash --delete-branch; then
-            echo "::warning::the evidence is on $branch and its pull request is open; the"
-            echo "::warning::merge was refused. Close it by hand:"
+          # Retried, because GitHub computes mergeability asynchronously: a pull request opened
+          # a second ago reports `MERGEABLE: UNKNOWN` and the merge is refused for a reason
+          # that is gone by the time anybody reads the log. Six tries over a minute, and then
+          # the warning - a race that leaves the branch open is the exact failure this step
+          # exists to end.
+          merged=""
+          for attempt in 1 2 3 4 5 6; do
+            if gh pr merge --squash --delete-branch; then
+              merged="yes"
+              break
+            fi
+            echo "merge attempt $attempt did not take; GitHub may still be computing"
+            sleep 10
+          done
+          if [ -z "$merged" ]; then
+            echo "::warning::the evidence is on $branch and its pull request is open; six"
+            echo "::warning::merge attempts over a minute were refused. Close it by hand:"
             echo "::warning::  gh pr merge --squash --delete-branch $branch"
           fi
         env:
