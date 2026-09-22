@@ -120,6 +120,16 @@ gif: ## re-record docs/img/refute.gif by RUNNING make refute, not by drawing it
 	# committed, and this is how it is redone when `make refute` starts printing something
 	# else. Recorded on WSL2; the Spark lanes want the same machine.
 	vhs docs/refute.tape
+	# And then the PLAYBACK is sped up, which is the only thing here that is not real time.
+	# The run takes 73,1 s and a front page is closed long before that; 4x puts it at 18,3 s.
+	# `setpts` changes when the frames are shown and not what is in them, the tape is
+	# untouched, and BOTH numbers are printed beside the image - so a reader is told the
+	# acceleration rather than left to assume the program is fast.
+	# tests/fast/test_readme_parity.py reads the frame delays out of the GIF itself and fails
+	# if the declared factor and the declared duration stop multiplying out to what the file
+	# actually plays. That is the only reason those two numbers are allowed to be hand-typed.
+	ffmpeg -v error -i docs/img/refute.gif -filter_complex "[0:v]setpts=PTS/4,fps=15,split[a][b];[a]palettegen=max_colors=256[p];[b][p]paletteuse=dither=none" -y docs/img/.refute-fast.gif
+	mv docs/img/.refute-fast.gif docs/img/refute.gif
 
 .PHONY: report
 report: install ## render the close as one self-contained HTML page

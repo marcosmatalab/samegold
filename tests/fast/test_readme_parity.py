@@ -238,3 +238,74 @@ def test_the_gate_catches_an_anchor_deleted_leaving_the_figure_as_plain_text(
     broken = spanish[: match.start()] + match.group(3) + spanish[match.end() :]
     breaks = translation.compare(english, broken)
     assert any(item.kind == "anchors" for item in breaks), breaks
+
+
+# The GIF's two hand-typed numbers, and why they are allowed to be hand-typed.
+#
+# Everything else on the front page goes through an evidence anchor. The acceleration factor
+# and the real duration cannot: they describe a binary artifact that no claim produces, and a
+# claim that re-recorded a terminal session on every `make evidence` would be absurd. So they
+# are checked against the FILE instead, here, from a clone, with no dependency: a GIF carries
+# the delay of each frame in its own Graphic Control Extension blocks, in hundredths of a
+# second, and they add up to how long the thing plays.
+#
+# What that ties together is the honest part of the claim. `make gif` records the run at real
+# speed and then divides the frame delays by four; if somebody changes the divisor and not the
+# sentence, or re-records a run of a different length and leaves `73,1` where it was, the
+# product stops matching and the fast lane says so.
+
+GIF = REPO / "docs" / "img" / "refute.gif"
+#: The sentence is found by the file it names rather than by its own wording, so that
+#: rewriting the prose around these numbers does not break the test that checks them.
+DECLARATION = "docs/refute.tape"
+
+
+def gif_playback_seconds(raw: bytes) -> float:
+    """How long a GIF plays, from its own frame delays. No decoder, no dependency."""
+    delays: list[int] = []
+    at = 0
+    while True:
+        at = raw.find(b"\x21\xf9\x04", at)
+        if at < 0:
+            break
+        # A Graphic Control Extension is 0x21 0xF9 0x04, four bytes, then a 0x00 terminator,
+        # and then the image or another extension. Requiring that shape keeps the scan from
+        # matching the same three bytes inside compressed image data.
+        tail = raw[at + 7 : at + 9]
+        if len(tail) == 2 and tail[0] == 0 and tail[1] in (0x2C, 0x21):
+            delays.append(int.from_bytes(raw[at + 4 : at + 6], "little"))
+        at += 3
+    assert delays, "no frame delays found; this is not a GIF this function understands"
+    return sum(delays) / 100
+
+
+def declared_speed_and_duration(text: str) -> tuple[int, float]:
+    paragraph = next(block for block in text.split(chr(10) + chr(10)) if DECLARATION in block)
+    factor = re.search(r"(\d+)x", paragraph)
+    duration = re.search(r"(\d+),(\d+) s", paragraph)
+    assert factor and duration, f"the GIF paragraph declares neither: {paragraph!r}"
+    return int(factor.group(1)), float(f"{duration.group(1)}.{duration.group(2)}")
+
+
+def test_the_gif_plays_for_as_long_as_the_page_says_it_does() -> None:
+    factor, real_seconds = declared_speed_and_duration(
+        (REPO / "README.md").read_text(encoding="utf-8")
+    )
+    plays_for = gif_playback_seconds(GIF.read_bytes())
+    expected = real_seconds / factor
+    # One per cent, measured rather than picked: the parse is exact (18.27 s against the 18.275
+    # the sentence implies, 0.03% apart), so the tolerance is there for rounding in the printed
+    # figure and nothing else. At 2% a run re-recorded at 73,9 s and left declared as 73,1
+    # slipped through; at 1% it does not. A lie smaller than that - 73,1 for 73,2 - is below
+    # the threshold and this says so rather than implying the check is exact.
+    assert abs(plays_for - expected) / expected < 0.01, (
+        f"the front page says the run took {real_seconds} s played at {factor}x, which is "
+        f"{expected:.2f} s of GIF, and docs/img/refute.gif plays for {plays_for:.2f} s. "
+        f"Either the sentence or the artifact is stale; `make gif` regenerates the artifact."
+    )
+
+
+def test_both_pages_declare_the_same_speed_and_the_same_run(pages: tuple[str, str]) -> None:
+    """Covered by the numbers rule too; stated separately because it is the claim, not a token."""
+    english, spanish = pages
+    assert declared_speed_and_duration(english) == declared_speed_and_duration(spanish)

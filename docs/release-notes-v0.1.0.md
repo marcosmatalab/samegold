@@ -49,10 +49,17 @@ needed to check any of it.
 - **The Databricks workspace is not reproducible from a clone.** The bundle is checked here;
   the workspace is not, and those are different claims. The records under
   `evidence/databricks/` say so themselves, with `"chain": {"chained": false}`.
-- **No figure here was measured on more than one machine.** All ten claims in this tag's table
-  were produced by a single run of the evidence workflow on `ubuntu-latest`, which is one
-  runner, one Python and one architecture. The chain records which, so a figure that turns out
-  to be an artifact of that machine can be found later; nothing here shows that it is not.
+- **Nothing here has run on anything but x86_64.** The chain holds records from four platforms
+  - Windows 11, WSL2, another Linux and the `ubuntu-latest` runner - and four Python versions,
+  and eight of the ten claims were measured on Windows and on the runner and gave the same
+  rate. The two that did not are `SG-00` and `SG-06`, which count this repository's tests and
+  this chain's records rather than anything about the data, and both of those denominators are
+  a property of the machine by definition. What is missing is a different ARCHITECTURE, and one
+  DuckDB version appears in every record in the chain.
+
+  An earlier draft of this bullet said no figure here had been measured on more than one
+  machine. It was false when it was written, and the chain it was written beside says so in
+  four `environment.platform` values. It is in `docs/findings/`.
 - **The Spark and Delta lanes do not run on Windows.** They need WSL2 or Linux; `make doctor`
   says what a given machine can run, and `make preflight` refuses to exit 0 on one that cannot.
 - **No performance claim of any kind.** Nothing here has been benchmarked against anything,

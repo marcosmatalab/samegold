@@ -364,6 +364,18 @@ record says `14 198 046` - a published figure differing between two front pages 
 repository, which is the defect, not the inconvenience.
 `tests/fast/test_readme_parity.py` states both halves of that trade as tests.
 
+## No gate reads a sentence about this repository's own history
+
+The drift gates compare a figure against the record that produced it, and a command against the
+tree that runs it. Neither direction catches a sentence that counts something about the chain,
+or asserts what another document contains, or says what a branch holds. Three such sentences
+went in - or nearly did - on 22 September 2026, and a reader caught all three:
+[`findings/three-things-no-gate-found-and-who-did.md`](findings/three-things-no-gate-found-and-who-did.md).
+
+A rule for the first of them - "the release notes say `a single run` of something the chain can
+count" - is not obviously writable, because the space of sentences that imply a number is the
+space of sentences. This is stated here rather than presented as a gap about to be closed.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

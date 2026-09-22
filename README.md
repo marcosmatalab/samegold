@@ -65,10 +65,11 @@ is the most useful issue anyone can open here.**
 
 ![make refute on seed 424242: the seven claims about the data run again, and printed as each one passes](docs/img/refute.gif)
 
-**That GIF is a recording, not a drawing.** [`docs/refute.tape`](docs/refute.tape) is the
-script `vhs` executes, `make gif` regenerates it, and what scrolls past is the program's own
-output at the speed it came out. A drawn one would be the transcript this page already removed
-once, in colour.
+**That GIF is a recording, not a drawing** - **played at 4x, over a real run of 73,1 s.**
+[`docs/refute.tape`](docs/refute.tape) is the script `vhs` executes and `make gif` regenerates
+it; the only thing not in real time is when the frames are shown, and both numbers are here so
+you are told the acceleration rather than left to assume the program is fast. A drawn one would
+be the transcript this page already removed once, in colour.
 
 `make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->719<!--/sg--> tests in
 <!--sg:SG-00.artifact.fast_lane_seconds-->58.1<!--/sg--> s, no JVM, no credentials), `make

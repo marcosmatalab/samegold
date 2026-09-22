@@ -68,10 +68,11 @@ con tu semilla es la incidencia más útil que alguien puede abrir aquí.**
 
 ![make refute con la semilla 424242: las siete claims sobre los datos ejecutadas otra vez, impresas según cada una pasa](docs/img/refute.gif)
 
-**Ese GIF es una grabación, no un dibujo.** [`docs/refute.tape`](docs/refute.tape) es el guion
-que ejecuta `vhs`, `make gif` lo regenera, y lo que pasa por pantalla es la salida del propio
-programa a la velocidad a la que salió. Uno dibujado sería el transcript que esta página ya
-quitó una vez, en color.
+**Ese GIF es una grabación, no un dibujo** - **reproducido a 4x, sobre una ejecución real de 73,1 s.**
+[`docs/refute.tape`](docs/refute.tape) es el guion que ejecuta `vhs` y `make gif` lo regenera;
+lo único que no va en tiempo real es cuándo se muestran los fotogramas, y las dos cifras están
+aquí para que te digan la aceleración en vez de dejarte suponer que el programa es rápido. Uno dibujado
+sería el transcript que esta página ya quitó una vez, en color.
 
 `make fast` es toda la vía rápida (<!--sg:SG-00.artifact.tests_fast-->719<!--/sg--> tests en
 <!--sg:SG-00.artifact.fast_lane_seconds-->58.1<!--/sg--> s, sin JVM, sin credenciales), `make
