@@ -376,6 +376,27 @@ A rule for the first of them - "the release notes say `a single run` of somethin
 count" - is not obviously writable, because the space of sentences that imply a number is the
 space of sentences. This is stated here rather than presented as a gap about to be closed.
 
+## Two architectures verify the figures; one architecture produced them
+
+Since 22 September 2026 the fast lane runs on `ubuntu-latest` and on `ubuntu-24.04-arm`, and
+both run `samegold verify-latest`. So **every published figure has been recomputed from the
+seeds its own record names on x86_64 and on aarch64, and agreed on both** - eight of the ten
+claims, the two exceptions being the ones that cost minutes of runtime rather than the ones
+that cannot be checked. First run, measured: 722 tests in 61,6 s at 70,98% coverage on ARM,
+and every wheel this project needs has a manylinux aarch64 build.
+
+**The evidence chain still holds no aarch64 record**, and the difference matters. Records are
+written by `samegold evidence` in `evidence.yml`; that file is an append-only hash chain, and
+two jobs appending to it in one run is a broken chain, not two architectures. Putting ARM in
+the chain means a second job running the whole battery again after the first, which doubles
+the run and doubles the chain's growth for a second opinion on figures that a third machine
+already recomputes on every push. It has not been done, and this says so rather than letting
+the matrix imply it.
+
+So the honest pair of sentences is: the figures are PRODUCED on one architecture and VERIFIED
+on two. `environment.platform` in `evidence/history.jsonl` is where the first half can be
+checked, and it reads x86_64 in every record.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

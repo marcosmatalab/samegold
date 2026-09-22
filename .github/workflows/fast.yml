@@ -16,7 +16,26 @@ permissions:
 
 jobs:
   fast:
-    runs-on: ubuntu-latest
+    # TWO ARCHITECTURES, because "every record in the chain is x86_64" was a declared limit in
+    # docs/limits.md and a limit that can be measured should be measured. Free ARM runners for
+    # public repositories are what made it cheap; what made it worth doing is the step below
+    # that recomputes every published figure, which now has to agree on aarch64 as well.
+    #
+    # Measured on 22 September 2026, first run: every wheel this project needs has a
+    # manylinux aarch64 build (deltalake, duckdb, pyarrow, hypothesis, mypy, pyyaml), 722
+    # tests pass in 61,6 s at 70,98% coverage, and `verify-latest` recomputes eight claims and
+    # matches all eight. The ARM job finished in 2m44 against the x86 job's 3m43.
+    #
+    # WHAT THIS DOES NOT DO: it does not put an aarch64 record in the evidence chain. The
+    # chain is written by `samegold evidence` in evidence.yml, which appends, and two jobs
+    # appending to one hash-linked file is a broken chain rather than two architectures. So
+    # the claim this buys is the verification one - every published figure recomputes on both
+    # - and not "the chain has seen two architectures". docs/limits.md says which is which.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +62,12 @@ jobs:
         # go back to nothing without somebody deciding to let it.
         run: pytest tests/fast -q --cov=src/samegold --cov-report=term-missing:skip-covered --cov-fail-under=65
       - name: lint and types
+        # x86 ONLY, and that is a decision rather than an oversight: a formatter, a linter and
+        # a type checker read source text, and none of the three has an answer that depends on
+        # the word size of the machine reading it. Running them twice would buy a second green
+        # tick for the same work and add a minute to every push. The steps that DO depend on
+        # the architecture - the tests, the chain, and the recompute - run on both.
+        if: matrix.runner == 'ubuntu-latest'
         # Every directory that holds code, not just the two the command used to name. A
         # formatting error sat in `databricks/` while this step printed "All checks passed":
         # the scope of a check is part of its result. See docs/adr/0006-mutants-are-generated-not-planted.md.
@@ -68,6 +93,10 @@ jobs:
         # loud instead of counting them as reproduced.
         run: samegold verify-latest
       - name: the diagrams are diagrams
+        # x86 only, for the same reason as the lint step, and one more: this one installs two
+        # npm packages, so running it on both doubles a network cost to re-parse the same
+        # text with the same parser.
+        if: matrix.runner == 'ubuntu-latest'
         # mermaid's own parser, not an approximation of it. A flowchart that does not parse
         # renders on GitHub as a raw code block - something that announces itself as a diagram
         # and is not one - and no Python test can answer that question without reimplementing
