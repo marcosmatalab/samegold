@@ -5,31 +5,31 @@
     "months_that_moved": [
       {
         "accounting_month": "2026-01",
-        "delta_cents": -3288179,
-        "delta_pct": -5.0973,
-        "final_net_cents": 61220101,
-        "first_close_net_cents": 64508280,
+        "delta_cents": -3315021,
+        "delta_pct": -5.4324,
+        "final_net_cents": 57707824,
+        "first_close_net_cents": 61022845,
         "versions": 3
       },
       {
         "accounting_month": "2026-02",
-        "delta_cents": -1258480,
-        "delta_pct": -4.5404,
-        "final_net_cents": 26458960,
-        "first_close_net_cents": 27717440,
+        "delta_cents": -952471,
+        "delta_pct": -3.4274,
+        "final_net_cents": 26837110,
+        "first_close_net_cents": 27789581,
         "versions": 3
       }
     ],
-    "worst_delta_eur": "32 881,79",
-    "worst_final_eur": "612 201,01",
-    "worst_first_close_eur": "645 082,80",
+    "worst_delta_eur": "33 150,21",
+    "worst_final_eur": "577 078,24",
+    "worst_first_close_eur": "610 228,45",
     "worst_month": "2026-01",
-    "worst_move_pct": 5.0973,
-    "worst_move_pct_including_boundary_fixtures": 5.0016,
+    "worst_move_pct": 5.4324,
+    "worst_move_pct_including_boundary_fixtures": 5.3242,
     "worst_versions": 3
   },
-  "ci_commit_sha": "294833ab606f686c53b23ec4070a864514677715",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35760498591",
+  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
   "claim_id": "SG-04",
   "environment": {
     "delta_rs": "1.6.5",
@@ -41,17 +41,17 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "612858c356a1f91e0898001bc5aaac38",
+  "hash": "b4d63dbc260d85d81983035651fabd7e",
   "not_claimed": [
     "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one",
     "that they describe the close. They describe the simulated shop: the boundary fixtures, which sit on the contract's bounds by construction and are therefore the largest lines it admits, are held out of this measurement and are included in every claim that compares implementations"
   ],
-  "prev": "9e587e6b0f62763149c4d6bf9f01ea0f",
+  "prev": "33efc8b1d4f3a0854408d7f39e52e367",
   "runtime": "oss-local",
   "title": "a closed month moves after it is closed",
   "verdict": {
     "claim_id": "SG-04",
-    "note": "largest move 5.10% of the first close",
+    "note": "largest move 5.43% of the first close",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -63,19 +63,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "294833ab606f686c53b23ec4070a864514677715",
-      "duration_s": 0.3,
+      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
+      "duration_s": 0.303,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "restatement",
       "seed_source": "commit",
       "seeds": [
-        3386402266082415471
+        13062539439827506028
       ],
-      "started_at": "2026-09-22T17:27:03+00:00",
+      "started_at": "2026-09-22T20:51:00+00:00",
       "tree_dirty": false,
-      "tree_sha": "2e10340ca973a665c586f4b64cf42f7c4125fd68"
+      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
     }
   }
 }

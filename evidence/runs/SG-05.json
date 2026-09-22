@@ -2,13 +2,13 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "16ea4d096136d2216213ed3a25072077",
-      "6c5da47a92343cd9ad17e24f36b63cbd",
-      "9c47f067d94ec3786e77334103ac7b2b"
+      "6eb59aadc5250ce632b149c307f03b57",
+      "91b322218f0afdd7475d678fed353d10",
+      "efc51ffd89634f78058a3c16ef258f8a"
     ]
   },
-  "ci_commit_sha": "294833ab606f686c53b23ec4070a864514677715",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35760498591",
+  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.5",
@@ -20,11 +20,11 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "921e32b6f13938c303b1c484a606989a",
+  "hash": "2e9bf63489584e2497267647228701e3",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "612858c356a1f91e0898001bc5aaac38",
+  "prev": "b4d63dbc260d85d81983035651fabd7e",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "294833ab606f686c53b23ec4070a864514677715",
-      "duration_s": 4.47,
+      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
+      "duration_s": 4.397,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        8122155768389813053,
-        6327263945885426722,
-        1348678839943546481
+        8055892599026791019,
+        161298071202462649,
+        11394966353820397489
       ],
-      "started_at": "2026-09-22T17:27:08+00:00",
+      "started_at": "2026-09-22T20:51:06+00:00",
       "tree_dirty": false,
-      "tree_sha": "2e10340ca973a665c586f4b64cf42f7c4125fd68"
+      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
     }
   }
 }

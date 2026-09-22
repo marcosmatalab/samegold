@@ -43,11 +43,11 @@ tardado tu máquina, y el tiempo de la propia vía es la cifra anclada de abajo.
 
 <!-- samegold:begin demo -->
 ```text
-samegold demo - 786 events, 284 files, seed 10030472886934891129
+samegold demo - 772 events, 301 files, seed 3606824677207351751
 
-  Month 2026-01 was closed at 2026-02-05 reporting 167 059,17 EUR of net revenue.
-  By 2026-04-05, late returns and late amendments had moved it to 164 048,07 EUR.
-  That is -3 011,10 EUR, -1.80% of a month that finance had already signed off.
+  Month 2026-01 was closed at 2026-02-05 reporting 150 658,58 EUR of net revenue.
+  By 2026-04-05, late returns and late amendments had moved it to 147 227,51 EUR.
+  That is -3 431,07 EUR, -2.28% of a month that finance had already signed off.
 
   The customer dimension is well formed: yes.
   Two implementations of that number are compared on this data by `samegold evidence`.
@@ -75,8 +75,8 @@ lo único que no va en tiempo real es cuándo se muestran los fotogramas, y las 
 aquí para que te digan la aceleración en vez de dejarte suponer que el programa es rápido. Uno dibujado
 sería el transcript que esta página ya quitó una vez, en color.
 
-`make fast` es toda la vía rápida (<!--sg:SG-00.artifact.tests_fast-->743<!--/sg--> tests en
-<!--sg:SG-00.artifact.fast_lane_seconds-->80.2<!--/sg--> s, sin JVM, sin credenciales), `make
+`make fast` es toda la vía rápida (<!--sg:SG-00.artifact.tests_fast-->753<!--/sg--> tests en
+<!--sg:SG-00.artifact.fast_lane_seconds-->79.5<!--/sg--> s, sin JVM, sin credenciales), `make
 preflight` la puerta antes de un push, `make doctor` lo que esta máquina puede ejecutar.
 
 ## Qué calcula
@@ -111,13 +111,13 @@ propiedad que mide `SG-04`.
 
 ## De qué está hecho sobre todo este repositorio, ya que alguien iba a contarlo
 
-**El <!--sg:SG-00.artifact.platform_share_pct-->24.2<!--/sg-->% del código es Spark, Delta y
-Databricks. El <!--sg:SG-00.artifact.harness_share_pct-->75.8<!--/sg-->% es el arnés que intenta
+**El <!--sg:SG-00.artifact.platform_share_pct-->24.0<!--/sg-->% del código es Spark, Delta y
+Databricks. El <!--sg:SG-00.artifact.harness_share_pct-->76.0<!--/sg-->% es el arnés que intenta
 romperlo.** En líneas: <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> frente a
-<!--sg:SG-00.artifact.harness_lines-->23 723<!--/sg-->. De los
-<!--sg:SG-00.artifact.tests_fast-->743<!--/sg--> tests de la vía rápida,
+<!--sg:SG-00.artifact.harness_lines-->23 967<!--/sg-->. De los
+<!--sg:SG-00.artifact.tests_fast-->753<!--/sg--> tests de la vía rápida,
 <!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> ejercitan el pipeline y
-<!--sg:SG-00.artifact.fast_lane_repository_tests-->568<!--/sg--> comprueban las afirmaciones del
+<!--sg:SG-00.artifact.fast_lane_repository_tests-->578<!--/sg--> comprueban las afirmaciones del
 propio repositorio sobre sí mismo - un test del cierre, frente a un test del papeleo del propio
 repositorio.
 
@@ -149,16 +149,16 @@ en el idioma en el que están escritos los registros.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 727/727 (95% CI 99.5%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 241/241 (95% CI 98.4%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, 294833ab6](https://github.com/marcosmatalab/samegold/actions/runs/35760498591) |
+| `SG-00` what this repository contains, counted | PASS | 737/737 (95% CI 99.5%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 251/251 (95% CI 98.5%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
 
 <!-- samegold:end claims -->
 
@@ -195,7 +195,7 @@ comprueban en cada ejecución de la vía rápida.
 mezclarlas es como un repositorio acaba sonando mejor de lo que es.
 
 **Comprobable aquí, sin cuenta:**
-<!--sg:SG-00.artifact.tests_databricks_bundle-->128<!--/sg--> tests conducen `databricks/` y
+<!--sg:SG-00.artifact.tests_databricks_bundle-->135<!--/sg--> tests conducen `databricks/` y
 `scripts/databricks_run.sh` contra una CLI de pega en el `PATH` - cada ruta de notebook, cada
 widget, cada parámetro del job, el techo de tareas concurrentes calculado como la anchura del
 grafo de dependencias de arriba, y la guarda que se niega a ejecutar un job desplegado desde un
