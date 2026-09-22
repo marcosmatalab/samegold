@@ -290,6 +290,37 @@ explain_statement_state() {
 
 # One question, one place, so that every caller asks it the same way and no caller is tempted
 # to infer the answer instead.
+# The catalog is REQUIRED to exist, and is not created. This is what `deploy-definitions`
+# runs in place of `step_catalog`, and the difference is the whole point of that subcommand:
+# `step_catalog` creates a missing catalog with a SQL statement, which STARTS the one 2X-Small
+# warehouse Free Edition gives you and therefore spends compute quota. That is fine from a
+# laptop, where a person decided to do it. It is not fine from CI, where the promise being
+# made is "this lane never starts compute" and a promise that depends on whether somebody
+# deleted a catalog last week is not a promise.
+#
+# `databricks catalogs get` is a REST call against the Unity Catalog API. No warehouse, no
+# cluster, no statement execution, nothing to start.
+step_require_catalog() {
+    say "catalog $CATALOG must already exist"
+    if catalog_exists; then
+        echo "  exists"
+        return 0
+    fi
+    die "catalog '$CATALOG' does not exist, and \`deploy-definitions\` will not create one.
+
+Creating it needs a SQL statement, which starts the SQL warehouse and spends compute quota -
+so this subcommand refuses rather than doing it silently from CI. Create it once, from a
+machine where you meant to:
+
+  scripts/databricks_run.sh catalog
+
+or in the workspace's SQL Editor:
+
+  CREATE CATALOG IF NOT EXISTS $CATALOG;
+
+then dispatch this workflow again."
+}
+
 catalog_exists() {
     databricks catalogs get "$CATALOG" >/dev/null 2>&1
 }
@@ -1166,7 +1197,11 @@ PY
 }
 
 usage() {
-    echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|seed|run|run-full-refresh|fetch]" >&2
+    echo "usage: scripts/databricks_run.sh [all|catalog|validate|deploy|deploy-definitions|" >&2
+    echo "                                  seed|run|run-full-refresh|fetch]" >&2
+    echo "       deploy-definitions is deploy without creating the catalog: it refuses" >&2
+    echo "       when the catalog is missing instead of starting a warehouse to make" >&2
+    echo "       one, which is what CI runs." >&2
     echo "       run and run-full-refresh take an optional comma-separated list of task keys:" >&2
     echo "         scripts/databricks_run.sh run publish_evidence" >&2
     echo "       fetch takes an optional label, which keeps the run beside the canonical" >&2
@@ -1195,6 +1230,13 @@ case "${1:-all}" in
     # is also what .github/workflows/databricks.yml runs by default.
     validate) require_cli; require_auth; step_validate ;;
     deploy)   require_cli; require_auth; step_catalog; step_validate; step_deploy ;;
+    # The same deploy with the catalog CREATED rather than assumed, which is what CI runs.
+    # `deploy` above may start the SQL warehouse, because creating a catalog takes a SQL
+    # statement; this one asks whether the catalog is there and refuses if it is not. The
+    # guarantee the workflow publishes - that it never starts compute - is then a property of
+    # the command rather than of the workspace's current state.
+    deploy-definitions)
+              require_cli; require_auth; step_require_catalog; step_validate; step_deploy ;;
     seed)     require_cli; require_auth; step_seed ;;
     run)      require_cli; require_auth; step_run ;;
     # The same step with the schema cache thrown away. Spelled as its own word rather than a

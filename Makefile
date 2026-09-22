@@ -112,6 +112,17 @@ check: install ## fail if the documents and the evidence disagree
 refute: install ## run every claim with a seed of your choosing: make refute SEED=12345
 	$(BIN)/samegold refute --seed $(SEED) --profile ci
 
+.PHONY: skew
+skew: ## measure what a skewed join does, and print the table docs/join-skew.md publishes
+	# NOT a claim, and docs/join-skew.md says why: with adaptive execution on - which
+	# ADR 0005 requires - two million rows coalesce into one shuffle partition, and one
+	# partition has no skew. The only configuration where the thing exists is the one that
+	# ADR refuses to test, so this is run by hand and the page reports it as a measurement
+	# rather than as evidence.
+	#
+	# Needs pyspark and a JVM: same machine as the Spark lanes, so WSL2 or Linux.
+	$(BIN)/python scripts/measure_join_skew.py
+
 .PHONY: gif
 gif: ## re-record docs/img/refute.gif by RUNNING make refute, not by drawing it
 	# `vhs` drives a real terminal and films what comes out, so the GIF on the front page is

@@ -1082,3 +1082,66 @@ def test_the_deploy_tells_the_workspace_which_commit_it_is_deploying(tmp_path: P
         f"a commit alone is a claim the deploy does not honour when the tree has "
         f"uncommitted code. What it ran was:\n{calls}"
     )
+
+
+# ------------------------------------------------- the subcommand CI runs, and what it refuses
+#
+# `deploy` creates a missing catalog with a SQL statement, which starts the one 2X-Small
+# warehouse Free Edition gives you. From a laptop that is a person deciding to spend quota.
+# From CI it turns "this lane never starts compute" into a claim about whether somebody
+# deleted a catalog last week, and a guarantee with a condition like that attached is not one.
+#
+# So the workflow runs `deploy-definitions`, and these two say what that buys: it does the
+# same deploy when the catalog is there, and it refuses - naming the command to run by hand -
+# when it is not. Neither path may reach a warehouse.
+
+
+def _touched_compute(calls: str) -> list[str]:
+    """Every recorded call that could START something. Empty is the property under test.
+
+    `warehouses list` is deliberately NOT in here, and the first version of this helper had it
+    and failed: `step_deploy` lists warehouses to resolve the `warehouse_id` variable the
+    dashboard attaches to, and listing is a REST call against the SQL Warehouses API that
+    starts nothing. The test was wrong and the script was right.
+
+    What does start compute is `warehouses start`, and `api post` to the statement-execution
+    endpoint - which is how a catalog gets created, and is exactly what `deploy-definitions`
+    exists to avoid reaching.
+    """
+    starts = ("warehouses start", "api post", "api get", "jobs run", "bundle run")
+    return [line for line in calls.splitlines() if line.startswith(starts)]
+
+
+def test_deploy_definitions_deploys_without_going_near_a_warehouse(tmp_path: Path) -> None:
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=1,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = (tmp_path / "calls").read_text(encoding="utf-8")
+    assert "catalogs get" in calls
+    assert "bundle deploy" in calls
+    assert _touched_compute(calls) == [], calls
+
+
+def test_deploy_definitions_refuses_a_missing_catalog_instead_of_creating_one(
+    tmp_path: Path,
+) -> None:
+    """The case `deploy` handles by spending quota, and the reason this subcommand exists."""
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=0,  # `catalogs get` fails for ever: the catalog is not there
+    )
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    # It names the way out. A refusal that does not is a dead end with an explanation.
+    assert "scripts/databricks_run.sh catalog" in output, output
+    assert "CREATE CATALOG IF NOT EXISTS" in output, output
+    calls = (tmp_path / "calls").read_text(encoding="utf-8")
+    assert _touched_compute(calls) == [], calls
+    # And it stopped BEFORE the deploy rather than after it.
+    assert "bundle deploy" not in calls, calls

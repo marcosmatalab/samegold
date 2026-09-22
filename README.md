@@ -226,6 +226,7 @@ fails if one figure on it stops matching the records.
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - what the workspace measured, rendered from the records it left
 - [`docs/runbook.md`](docs/runbook.md) - the alert has fired at three in the morning: what it means, data problem or platform problem, and how to repair a run without spending the day's quota
 - [`docs/findings/`](docs/findings/) - the write-ups: what the recompute gate found on its first run, and how two of the three were the gate
+- [`docs/join-skew.md`](docs/join-skew.md) - one key takes 30% of the rows: what happens to the join, measured, and why it is not a claim
 - [`docs/limits.md`](docs/limits.md) - what this repository could not verify, and why
 - [`EXAM_MAP.md`](EXAM_MAP.md) - the Databricks Professional guide, objective by objective
 - [`PARITY.md`](PARITY.md) - open-source lane versus Databricks, claim by claim

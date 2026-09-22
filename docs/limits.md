@@ -397,6 +397,28 @@ So the honest pair of sentences is: the figures are PRODUCED on one architecture
 on two. `environment.platform` in `evidence/history.jsonl` is where the first half can be
 checked, and it reads x86_64 in every record.
 
+## The deploy lane depends on a binary it downloads while it runs
+
+`databricks bundle validate` and `bundle deploy` both make the Databricks CLI fetch a Terraform
+binary over the network and verify HashiCorp's OpenPGP signature over its checksums. On
+22 September 2026 that key expired and the lane went red with no line of this repository
+changed ([databricks/cli#5022](https://github.com/databricks/cli/issues/5022),
+[`FINDINGS.md`](../FINDINGS.md)). The pin moved to the patched CLI, v0.221.2.
+
+**The exposure is not closed and this is the decision, not an oversight.** Setting
+`DATABRICKS_TF_EXEC_PATH` to a Terraform installed by other means makes the CLI skip both the
+download and the signature check. It also makes `findExecPath` require that binary's version to
+equal the one the CLI expects, so the repository would then hold two versions that must agree,
+one of them chosen by whoever next upgrades the CLI, with nothing checking they still do until
+a deploy fails. Setting `DATABRICKS_TF_VERSION` alone changes nothing: it selects which
+Terraform is downloaded, and the download is what verifies the signature.
+
+So a rare external failure with a loud error message is preferred to a quiet internal one, and
+the consequence is stated rather than hidden: **a green tick on the databricks workflow is a
+statement about the day it ran and about no other day.** The same is true of every job here
+that installs anything from a network, which is all of them; this one is written down because
+it has already happened once.
+
 ## Things a reader should distrust
 
 - The three witnesses share an author. That is measured through the specification mutants, not

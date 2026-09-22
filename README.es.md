@@ -233,6 +233,7 @@ de aciertos y fallos, los cuatro eventos que el contrato rechazó con el valor q
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - qué midió el workspace, renderizado desde los registros que dejó
 - [`docs/runbook.md`](docs/runbook.md) - la alerta ha sonado a las tres de la mañana: qué significa, problema de datos o de plataforma, y cómo reparar una ejecución sin gastar la cuota del día
 - [`docs/findings/`](docs/findings/) - los informes: qué encontró la puerta de recálculo en su primera ejecución, y cómo dos de las tres cosas eran la propia puerta
+- [`docs/join-skew.md`](docs/join-skew.md) - una clave se lleva el 30 % de las filas: qué le pasa al join, medido, y por qué no es una claim
 - [`docs/limits.md`](docs/limits.md) - lo que este repositorio no pudo verificar, y por qué
 - [`EXAM_MAP.md`](EXAM_MAP.md) - la guía de Databricks Professional, objetivo por objetivo
 - [`PARITY.md`](PARITY.md) - la vía de código abierto frente a Databricks, claim a claim

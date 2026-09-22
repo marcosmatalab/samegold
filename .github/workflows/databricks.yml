@@ -88,9 +88,26 @@ jobs:
     steps:
       # actions/checkout v4.1.7
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      # databricks/setup-cli v0.221.1. Was `@main` until 8 September 2026, which is a moving
+      # databricks/setup-cli v0.221.2. Was `@main` until 8 September 2026, which is a moving
       # branch on a third-party action in a job that holds a workspace token.
-      - uses: databricks/setup-cli@bf82b7a11475ed8d99eaf2920980fd091ca2cb12
+      #
+      # MOVED FROM v0.221.1 ON 22 SEPTEMBER 2026, AND THE PIN IS NOT WHAT FAILED. Run
+      # 35753864155 reached `bundle validate -t free`, printed the warehouse placeholder, and
+      # died on:
+      #
+      #   Error: error downloading Terraform: unable to verify checksums signature:
+      #   openpgp: key expired
+      #
+      # The CLI downloads a Terraform binary at RUN TIME - for `validate`, not only for
+      # `deploy` - and verifies HashiCorp's signature over its checksums. That key expired,
+      # so every Databricks CLI from v0.210.3 to v0.297.1 started failing on a command line
+      # that had not changed: https://github.com/databricks/cli/issues/5022. The patch for
+      # this minor line is v0.221.2, read from the issue's table rather than inferred from
+      # the version number, and 5da7e8b is the commit that release tagged.
+      #
+      # FINDINGS.md carries it, because a workflow that is green today and red tomorrow with
+      # no line of the tree changed is the shape this repository collects.
+      - uses: databricks/setup-cli@5da7e8b08abd3e64930088b8282d0688f57b5002
 
       - name: validate (no workspace changes)
         env:
@@ -103,11 +120,24 @@ jobs:
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        # `deploy` is catalog, then validate, then deploy. The catalog step is first because a
-        # bundle cannot declare a catalog - there is no `catalogs` resource type, and on
-        # Default Storage `databricks catalogs create` fails outright - so it is created with
-        # SQL, out of band, by this same script.
-        run: scripts/databricks_run.sh deploy
+        # `deploy-definitions`, NOT `deploy`, and the difference is the promise this workflow
+        # makes. `deploy` is catalog, then validate, then deploy - and the catalog step creates
+        # a missing catalog with a SQL statement, because a bundle cannot declare one (there is
+        # no `catalogs` resource type, and on Default Storage `databricks catalogs create`
+        # fails outright). A SQL statement STARTS the one 2X-Small warehouse Free Edition
+        # gives you, so `deploy` may spend compute quota - not because of anything in the
+        # bundle, but depending on whether the catalog happens to exist that day.
+        #
+        # A guarantee that holds only while nobody has deleted a catalog is not a guarantee.
+        # `deploy-definitions` asks `databricks catalogs get`, which is a REST call, and
+        # REFUSES with the command to run by hand if the catalog is not there. So "this lane
+        # never starts compute" is a property of the command rather than of the workspace.
+        #
+        # Everything the bundle itself declares is inert on deploy, measured rather than
+        # assumed: the pipeline is `continuous: false`, the job schedule and the dashboard
+        # alert are both `pause_status: PAUSED`, the warehouse is referenced by id and not
+        # created, and the target sets no `mode: development`.
+        run: scripts/databricks_run.sh deploy-definitions
 
       - name: what failed, said rather than left to be deduced
         if: failure()
