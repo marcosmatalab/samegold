@@ -344,6 +344,44 @@ print(
 
 # Prints `id state` for the warehouse to use: a RUNNING one if there is one, because that
 # skips the cold start, and otherwise whichever exists. Free Edition gives exactly one.
+# Reads `databricks bundle plan -o json` and prints one line per resource whose planned
+# action does NOT keep its id. Empty output means every resource survives with the id it has.
+#
+# THE SET IS THE CLI'S OWN. `deployplan.ActionType.KeepsID()` in the Databricks CLI returns
+# false for exactly these four, and copying that list is better than inventing a rule about
+# which words sound destructive: `recreate` is the obvious one, `create` means the deploy
+# cannot see the existing resource at all, `delete` is a removal, and `update_id` changes the
+# identifier while keeping the resource. All four break a record that cites an id.
+#
+# A plan that cannot be parsed EXITS NON-ZERO rather than printing nothing, because printing
+# nothing is how this script says "all clear".
+PLAN_FIELDS='
+import json, sys
+
+LOSES_ID = {"create", "recreate", "delete", "update_id"}
+
+try:
+    plan = json.load(sys.stdin)
+except Exception as error:
+    print("unreadable plan: %s" % error, file=sys.stderr)
+    raise SystemExit(1)
+
+entries = plan.get("plan")
+if not isinstance(entries, dict):
+    print("plan has no `plan` object", file=sys.stderr)
+    raise SystemExit(1)
+
+for key, entry in sorted(entries.items()):
+    if not isinstance(entry, dict):
+        print("plan entry %s is not an object" % key, file=sys.stderr)
+        raise SystemExit(1)
+    action = str(entry.get("action", ""))
+    if action in LOSES_ID:
+        name = key[len("resources."):] if key.startswith("resources.") else key
+        current = entry.get("id") or "no id yet"
+        print("%-9s %s (id now: %s) - this action does NOT keep the id" % (action, name, current))
+'
+
 WAREHOUSE_FIELDS='
 import json, sys
 try:
@@ -571,7 +609,11 @@ report_deployed_task_settings() {
 }
 
 step_deploy() {
-    say "bundle deploy -t $TARGET"
+    # The heading says PREPARE, not deploy. The plan below can refuse, and a step that
+    # announces "bundle deploy" and then refuses has told the reader it did something it did
+    # not do - which is the same defect, in a log line, as a document describing a change the
+    # tree does not contain.
+    say "prepare deploy -t $TARGET"
     local commit dirty warehouse py
     commit="$(deploy_commit)"
     dirty=$(test -n "$(code_changes)" && echo true || echo false)
@@ -613,6 +655,64 @@ create a dashboard and an alert pointing at a warehouse that does not exist.
     fi
     echo "  warehouse for the dashboard and the alert: $warehouse"
     echo "  deploying $commit (tree_dirty=$dirty)"
+    # THE PLAN, AND IT REFUSES. It is read before anything is applied, with the variables
+    # this function has just resolved rather than a second set of its own: a plan computed
+    # from different inputs than the apply is a plan of something else.
+    #
+    # WHAT IT REFUSES, and the rule is the CLI's own rather than one invented here.
+    # `deployplan.ActionType.KeepsID()` returns false for `create`, `update_id`, `recreate`
+    # and `delete`: those are the actions after which the resource does not have the id it
+    # had. The pipeline this bundle manages has a run history that FINDINGS.md cites BY ID,
+    # so an action that does not keep the id would leave those citations pointing at nothing.
+    # An `update` is fine and proceeds.
+    #
+    # PRINTING IT WAS NOT ENOUGH, and that is why this is a refusal. The first version of
+    # this step printed the plan and deployed immediately afterwards in the same job - so by
+    # the time anyone read the log the pipeline had already been recreated. A check that
+    # reports after the fact is not a guard, it is the autopsy.
+    #
+    # IT FAILS CLOSED. No plan, an unreadable plan, or a CLI with no `bundle plan` all stop
+    # the deploy, because "the guard could not run" and "the guard found nothing" must not
+    # look the same from outside. SAMEGOLD_ALLOW_REPLACE=1 is the way to say you meant it,
+    # and it prints what it is allowing.
+    say "plan"
+    local plan_json plan_py offenders
+    plan_py="$(python_bin)" || die "no python on PATH, which reading the plan needs"
+    plan_json="$(cd "$BUNDLE" && databricks bundle plan -t "$TARGET" -o json \
+        --var="catalog=$CATALOG" \
+        --var="deploy_commit=$commit" \
+        --var="deploy_tree_dirty=$dirty" \
+        --var="warehouse_id=$warehouse")" || die \
+"`databricks bundle plan` failed, so nothing is known about what the deploy would do.
+
+It exists from the v1.x CLI, which is what evidence/databricks/fetch.json records and what
+.github/workflows/databricks.yml pins. This step refuses rather than deploying blind."
+
+    offenders="$(printf %s "$plan_json" | "$plan_py" -c "$PLAN_FIELDS")" || die \
+"the output of `databricks bundle plan -o json` could not be read.
+
+This step refuses on an unreadable plan for the same reason it refuses on a missing one: a
+guard that cannot run must not be indistinguishable from a guard that found nothing."
+
+    if [ -n "$offenders" ]; then
+        echo "$offenders" | while IFS= read -r line; do echo "  $line"; done
+        if [ -n "${SAMEGOLD_ALLOW_REPLACE:-}" ]; then
+            echo "  SAMEGOLD_ALLOW_REPLACE is set: proceeding, and the ids above will change."
+        else
+            die \
+"the plan contains an action that does NOT keep the resource id, listed above.
+
+The pipeline this bundle manages has a run history cited by id in FINDINGS.md and in
+evidence/databricks/. Recreating it leaves those records naming an id that does not exist,
+which is the one thing this lane must not do by accident.
+
+If the replacement is intended, say so:
+
+  SAMEGOLD_ALLOW_REPLACE=1 scripts/databricks_run.sh deploy-definitions"
+        fi
+    else
+        echo "  every resource keeps its id"
+    fi
     # THE PLAN, PRINTED BEFORE ANYTHING IS APPLIED, and with the variables this function has
     # just resolved rather than a second set of its own: a plan computed from different inputs
     # than the apply is a plan of something else, which is the failure it exists to prevent.

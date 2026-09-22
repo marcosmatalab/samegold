@@ -433,10 +433,15 @@ September deploys left, and the pin now matches the CLI
 
 **What is not known is whether that is sufficient**, and it is stated here rather than after
 the next run: the remaining question is what the deploy will do with the resources it finds,
-and that is a fact about the workspace that no clone can answer. `step_deploy` prints
-`databricks bundle plan` immediately above the deploy for exactly that reason. The outcome to
-watch for is a REPLACE of the pipeline, because its run history is cited by id in `FINDINGS.md`
-and a destroy-and-create would leave those citations pointing at nothing.
+and that is a fact about the workspace that no clone can answer.
+
+What IS settled is what happens if the answer is bad. `step_deploy` reads
+`databricks bundle plan -o json` before applying anything and **refuses** when any resource's
+planned action does not keep its id - `create`, `update_id`, `recreate` or `delete`, which is
+the CLI's own `KeepsID()` list. The pipeline's run history is cited by id in `FINDINGS.md` and
+in `evidence/databricks/`, so a destroy-and-create would leave those citations pointing at
+nothing, and the plan and the deploy run in the same job: printing the plan would have meant
+reading about the replacement after it happened.
 
 Until a green deploy exists, the honest sentence about this lane is the one on the front page:
 the bundle is checked from a clone, and the workspace is not.

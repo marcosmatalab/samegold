@@ -68,6 +68,12 @@ case "$1 $2" in
       if [ -n "${SG_JOBS_FAIL:-}" ]; then exit 1; fi
       cat "$SG_JOBS" ; exit 0 ;;
   "warehouses list") cat "$SG_WAREHOUSES" ; exit 0 ;;
+  "bundle plan")
+      # `step_deploy` reads this to decide whether any resource would lose its id. $SG_PLAN
+      # names the file holding the answer; $SG_PLAN_FAIL makes the command FAIL instead of
+      # answering, which is a different case and one the guard must also refuse on.
+      if [ -n "${SG_PLAN_FAIL:-}" ]; then exit 1; fi
+      cat "$SG_PLAN" ; exit 0 ;;
   "warehouses start") exit 0 ;;
   "fs cp")
       # `databricks fs cp --overwrite SRC DEST`. A copy that writes nothing is not a copy, and
@@ -98,6 +104,15 @@ esac
 """
 
 RUNNING_WAREHOUSE = '[{"id": "wh-1", "state": "RUNNING"}]'
+#: A plan in which every resource keeps the id it has. The default, so that the tests which
+#: are not about the replace guard are not written as though they were.
+PLAN_ALL_UPDATE = (
+    '{"plan": {"resources.pipelines.samegold_pipeline": {"id": "f640de65", "action": "update"}}}'
+)
+#: The one this lane must never apply by accident.
+PLAN_RECREATES_THE_PIPELINE = (
+    '{"plan": {"resources.pipelines.samegold_pipeline": {"id": "f640de65", "action": "recreate"}}}'
+)
 STOPPED_WAREHOUSE = '[{"id": "wh-1", "state": "STOPPED"}]'
 
 
@@ -168,6 +183,7 @@ def _run(
     subcommand: str = "catalog",
     second: str = "",
     jobs: str | None = None,
+    plan: str = PLAN_ALL_UPDATE,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `scripts/databricks_run.sh catalog` against a stub that answers `answers` in order.
@@ -192,8 +208,11 @@ def _run(
         jobs if jobs is not None else _deployed_job(_head()), encoding="utf-8", newline="\n"
     )
 
+    (tmp_path / "plan").write_text(plan, encoding="utf-8", newline="\n")
+
     environment = {
         **os.environ,
+        "SG_PLAN": (tmp_path / "plan").as_posix(),
         "SG_CALLS": calls.as_posix(),
         "SG_ANSWERS": (tmp_path / "answers").as_posix(),
         "SG_WAREHOUSES": (tmp_path / "warehouses").as_posix(),
@@ -1145,3 +1164,92 @@ def test_deploy_definitions_refuses_a_missing_catalog_instead_of_creating_one(
     assert _touched_compute(calls) == [], calls
     # And it stopped BEFORE the deploy rather than after it.
     assert "bundle deploy" not in calls, calls
+
+
+# ---------------------------------------------- the plan refuses, rather than reporting later
+#
+# The first version of this step PRINTED the plan and deployed immediately afterwards, in the
+# same job. By the time anybody read the log the pipeline would already have been recreated and
+# the id that `FINDINGS.md` and `evidence/databricks/` cite would already be gone. A check that
+# reports after the fact is not a guard, it is the autopsy.
+#
+# The rule is the CLI's own: `deployplan.ActionType.KeepsID()` is false for `create`,
+# `update_id`, `recreate` and `delete`. These say the refusal happens, that it happens BEFORE
+# the deploy, that it fails closed, and that it can be overridden on purpose and only on
+# purpose.
+
+
+def test_a_plan_where_everything_keeps_its_id_deploys(tmp_path: Path) -> None:
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=1,
+        plan=PLAN_ALL_UPDATE,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "every resource keeps its id" in result.stdout
+    assert "bundle deploy" in (tmp_path / "calls").read_text(encoding="utf-8")
+
+
+def test_a_plan_that_recreates_the_pipeline_stops_before_the_deploy(tmp_path: Path) -> None:
+    """THE TEST. Everything else in this block exists so that this one cannot be vacuous."""
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=1,
+        plan=PLAN_RECREATES_THE_PIPELINE,
+    )
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "does NOT keep the id" in output, output
+    assert "recreate" in output and "f640de65" in output, output
+    # The refusal names the way to mean it, or it is a dead end with an explanation.
+    assert "SAMEGOLD_ALLOW_REPLACE=1" in output, output
+    # AND THE DEPLOY NEVER RAN. This is the whole difference from printing it.
+    calls = (tmp_path / "calls").read_text(encoding="utf-8")
+    assert "bundle plan" in calls, calls
+    assert "bundle deploy" not in calls, calls
+
+
+@pytest.mark.parametrize(
+    ("what", "plan", "fails"),
+    [
+        ("the plan is not JSON", "{oops", False),
+        ("the plan has no plan object", "{}", False),
+        ("the plan command itself fails", PLAN_ALL_UPDATE, True),
+    ],
+)
+def test_it_fails_closed(tmp_path: Path, what: str, plan: str, fails: bool) -> None:
+    """A guard that could not run must not look like a guard that found nothing.
+
+    Each of these would let a deploy through if the step treated "no offending lines" and "no
+    answer" as the same thing - which is the easiest way to write it and the reason this is
+    three cases rather than a comment.
+    """
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=1,
+        plan=plan,
+        extra_env={"SG_PLAN_FAIL": "1"} if fails else None,
+    )
+    assert result.returncode != 0, what
+    assert "bundle deploy" not in (tmp_path / "calls").read_text(encoding="utf-8"), what
+
+
+def test_the_override_is_explicit_and_says_what_it_is_allowing(tmp_path: Path) -> None:
+    """There has to be a way to replace a resource on purpose. It is one variable and it is loud."""
+    result = _run(
+        tmp_path,
+        [_state("SUCCEEDED")],
+        subcommand="deploy-definitions",
+        exists_from_call=1,
+        plan=PLAN_RECREATES_THE_PIPELINE,
+        extra_env={"SAMEGOLD_ALLOW_REPLACE": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "the ids above will change" in result.stdout
+    assert "bundle deploy" in (tmp_path / "calls").read_text(encoding="utf-8")
