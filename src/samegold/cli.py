@@ -18,19 +18,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from collections.abc import Iterator
 from pathlib import Path
 
 from samegold import claims as claim_module
-from samegold.domain.money import euros, signed_euros
+from samegold.evidence import render, reproduce
 from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.render import check_readme, render_readme
 from samegold.evidence.store import EvidenceStore
+from samegold.generator import seeds as seeds_module
 from samegold.generator.events import CI, FAST, FULL
 from samegold.generator.seeds import current_commit_sha, seeds_from_commit
-from samegold.oracle.duckdb_gold import DuckDBWitness
-from samegold.verify.invariants import scd2_well_formed
 
 PROFILES = {"fast": FAST, "ci": CI, "full": FULL}
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -72,45 +70,14 @@ def _work_dir(explicit: str | None) -> Path:
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
-    started = time.monotonic()
-    work = _work_dir(args.work)
-    seed = seeds_from_commit(1, purpose="demo")[0]
-    from samegold.generator.events import generate
+    """The first command anybody runs, and the one whose output the README quotes.
 
-    result = generate(work / "demo", seed=seed, profile=FAST)
-    witness = DuckDBWitness()
-    closes = result.ledger.closes
-    first, last = dt.datetime.fromisoformat(closes[0]), dt.datetime.fromisoformat(closes[-1])
-    at_close = witness.revenue(work / "demo" / "bronze", first)
-    final = witness.revenue(work / "demo" / "bronze", last)
-    month = sorted(at_close)[0]
-    before, after = at_close[month]["net_cents"], final[month]["net_cents"]
-    delta = after - before
-    scd2_ok = not scd2_well_formed(witness.scd2(work / "demo" / "bronze", last))
-    print(f"samegold demo - {result.event_count} events, {len(result.files)} files, seed {seed}")
-    print()
-    print(
-        f"  Month {month} was closed at {first:%Y-%m-%d} reporting "
-        f"{euros(before)} EUR of net revenue."
-    )
-    print(
-        f"  By {last:%Y-%m-%d}, late returns and late amendments had moved it to "
-        f"{euros(after)} EUR."
-    )
-    pct = (100.0 * delta / before) if before else 0.0
-    print(
-        f"  That is {signed_euros(delta)} EUR, {pct:+.2f}% of a month that finance "
-        f"had "
-        f"already signed off."
-    )
-    print()
-    print(f"  The customer dimension is well formed: {'yes' if scd2_ok else 'NO'}.")
-    print("  Two implementations of that number are compared on this data by `samegold evidence`.")
-    print()
-    print(
-        f"  {time.monotonic() - started:.1f}s, no account, no credentials, nothing installed "
-        f"beyond this package."
-    )
+    It prints through `demo_transcript`, the same function that renders the README's block out
+    of SG-00's record, so the front page cannot disagree with the program about what the
+    program prints. It used to disagree about every number in it.
+    """
+    work = _work_dir(args.work)
+    print(render.demo_transcript(claim_module.demo_figures(work / "demo")))
     if not args.work:
         shutil.rmtree(work, ignore_errors=True)
     return 0
@@ -305,6 +272,91 @@ def cmd_check(args: argparse.Namespace) -> int:
         f"evidence chain verified ({store.counts()['total']} records) and the documents "
         f"match it ({len(latest)} claims)"
     )
+    return 0
+
+
+def cmd_verify_latest(args: argparse.Namespace) -> int:
+    """Recompute every published figure from the seeds its own record names.
+
+    `samegold check` answers "is this record well formed and does the document match it".
+    This answers the other question, the one four layers of hashing never asked: "if I run
+    the claim again, does that number come back". An adversarial review published
+    `SG-03 999/999` on the front page by APPENDING one well-formed record, with real seeds, a
+    real commit and a hash computed by this repository's own hasher, and `samegold check`
+    exited 0 on it. Nothing here had ever recomputed anything.
+
+    Two passes, and they fail differently. The arithmetic pass reads each record and asks
+    whether its rate is the one its own artifacts imply - free, and it is what the fast lane
+    runs. The recompute pass re-runs the claims, which costs minutes and is exact.
+    """
+    store = EvidenceStore(Path(args.evidence_dir))
+    latest = store.latest()
+    if not latest:
+        raise UserError(
+            "there is no evidence to verify",
+            "run `make evidence` first: this command recomputes records, it does not make them",
+        )
+    wanted: list[str] | None = list(args.claims) if args.claims else None
+
+    arithmetic, unchecked = reproduce.arithmetic_mismatches(latest, wanted)
+    for mismatch in arithmetic:
+        print(f"ARITHMETIC {mismatch}")
+    if unchecked:
+        print(f"note: no artifact rule could check the rate of {', '.join(unchecked)}")
+
+    work = _work_dir(args.work)
+
+    def run_claim(claim_id: str, sha: str) -> dict[str, object]:
+        """One claim, with its seeds pinned to the commit the record names.
+
+        The pin is what makes this a recomputation rather than a fresh measurement: the
+        record was written at the commit the evidence job ran on, HEAD is at least two commits
+        past it by the time the record is merged and rendered, and seeds derive from the sha.
+        Without the pin every comparison here would be a false alarm. A record produced under
+        the pin can never enter the chain - `seed_source` reports "pinned" and the store
+        refuses it - and this command appends nothing in any case.
+        """
+        previous = os.environ.get(seeds_module.SEED_COMMIT_ENV)
+        os.environ[seeds_module.SEED_COMMIT_ENV] = sha
+        try:
+            record = next(
+                iter(
+                    _run_claims(
+                        [claim_id],
+                        args.profile,
+                        work,
+                        REPO_ROOT / "evidence",
+                        repetitions=args.repetitions,
+                    )
+                )
+            )
+        finally:
+            if previous is None:
+                os.environ.pop(seeds_module.SEED_COMMIT_ENV, None)
+            else:
+                os.environ[seeds_module.SEED_COMMIT_ENV] = previous
+        return record.to_json()
+
+    try:
+        result = reproduce.reproduce_latest(
+            latest, run_claim, repo_root=REPO_ROOT, claim_ids=wanted
+        )
+    finally:
+        if not args.work:
+            shutil.rmtree(work, ignore_errors=True)
+
+    for skipped in result.not_recomputed:
+        print(f"SKIP  {skipped}")
+    for mismatch in result.mismatches:
+        print(f"MISMATCH {mismatch}")
+    print(result.summary())
+    if arithmetic or result.mismatches:
+        raise UserError(
+            f"{len(arithmetic) + len(result.mismatches)} published figure(s) do not reproduce",
+            "a number that cannot be recomputed has no business on the front page: re-run "
+            "`make evidence` to append a record that was actually measured, or "
+            "`git checkout evidence/` if this history was edited",
+        )
     return 0
 
 
@@ -531,6 +583,23 @@ def build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("check", help="fail if the documents and the evidence disagree")
     ck.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
     ck.set_defaults(func=cmd_check)
+
+    vl = sub.add_parser(
+        "verify-latest",
+        help="recompute every published figure from the seeds its own record names",
+    )
+    vl.add_argument("--evidence-dir", default=str(REPO_ROOT / "evidence"))
+    vl.add_argument(
+        "--claims",
+        nargs="*",
+        default=None,
+        help="claims to recompute. Naming one overrides the default policy, so "
+        "`--claims SG-07` runs the crash campaign where a JVM exists",
+    )
+    vl.add_argument("--profile", choices=sorted(PROFILES), default="ci")
+    vl.add_argument("--work", default=None)
+    vl.add_argument("--repetitions", type=int, default=10)
+    vl.set_defaults(func=cmd_verify_latest)
 
     rf = sub.add_parser("refute", help="run every claim with a seed of your choosing")
     rf.add_argument("--seed", required=True)

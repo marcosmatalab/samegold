@@ -18,13 +18,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from samegold.domain.bitemporal import accounting_month_of, versions_from_snapshots
-from samegold.domain.money import euros
+from samegold.domain.money import euros, signed_euros
 from samegold.evidence.lane_split import split as lane_split
 from samegold.evidence.record import EvidenceRecord, artifact_digest
 from samegold.evidence.registry import CLAIM_TITLES
@@ -134,6 +135,60 @@ def _line_coverage(root: Path) -> float | None:
         return float(result.stdout.strip())
     except ValueError:
         return None
+
+
+def demo_figures(work: Path) -> dict[str, str]:
+    """Every number `samegold demo` prints, measured once and formatted once.
+
+    The command used to compute these and print them, and the README used to carry a PASTED
+    copy of that output. The seeds derive from the commit sha, so the paste was wrong one
+    commit later and stayed wrong for eighteen: the front page announced 780 events and seed
+    6569293562773694097 while the program printed 694 and 9769305124036219406, and it was the
+    only figure in this repository that a reviewer could falsify by running the one command
+    the first screen asks them to run.
+
+    So the figures come from here, the command prints them through
+    `evidence.render.demo_transcript`, and the README block is rendered from the record this
+    dictionary lands in. There is no longer a copy of the transcript that the program does not
+    produce.
+
+    Values are STRINGS, already formatted. The euro formatting is a contract rule
+    (`domain.money`) and the renderer is not allowed to import the domain - see the layer map
+    in tests/fast/test_architecture.py - so the alternative was a second money formatter
+    inside the renderer, which is the duplicated-rule shape this repository spends most of its
+    time hunting.
+    """
+    started = time.monotonic()
+    from samegold.generator.events import generate
+
+    seed = seeds_from_commit(1, purpose="demo")[0]
+    result = generate(work, seed=seed, profile=FAST)
+    witness = DuckDBWitness()
+    closes = result.ledger.closes
+    first = dt.datetime.fromisoformat(closes[0])
+    last = dt.datetime.fromisoformat(closes[-1])
+    at_close = witness.revenue(work / "bronze", first)
+    final = witness.revenue(work / "bronze", last)
+    month = sorted(at_close)[0]
+    before = at_close[month]["net_cents"]
+    after = final[month]["net_cents"]
+    delta = after - before
+    scd2_ok = not scd2_well_formed(witness.scd2(work / "bronze", last))
+    pct = (100.0 * delta / before) if before else 0.0
+    return {
+        "demo_events": str(result.event_count),
+        "demo_files": str(len(result.files)),
+        "demo_seed": str(seed),
+        "demo_month": str(month),
+        "demo_closed_at": f"{first:%Y-%m-%d}",
+        "demo_observed_at": f"{last:%Y-%m-%d}",
+        "demo_revenue_at_close": euros(before),
+        "demo_revenue_now": euros(after),
+        "demo_move": signed_euros(delta),
+        "demo_move_pct": f"{pct:+.2f}",
+        "demo_dimension_well_formed": "yes" if scd2_ok else "NO",
+        "demo_seconds": f"{time.monotonic() - started:.1f}",
+    }
 
 
 def _pytest_counts(output: str) -> tuple[int, int]:
@@ -265,6 +320,12 @@ def claim_repository_facts(repo_root: Path | None = None) -> EvidenceRecord:
     coverage_pct = _line_coverage(root)
     if coverage_pct is not None:
         facts["line_coverage_pct"] = coverage_pct
+    # WHAT THE FRONT PAGE PRINTS, so that the front page can stop typing it. About half a
+    # second at the FAST profile; a temporary directory because the demo's own command uses
+    # one and a claim that leaves a bronze tree behind in the checkout would dirty the tree
+    # its own record reports on.
+    with tempfile.TemporaryDirectory(prefix="samegold-demo-facts-") as tmp:
+        facts.update(demo_figures(Path(tmp) / "demo"))
     # PASSED over COLLECTED, parsed from pytest's own summary line, not collected over
     # collected. The rate used to be Rate(tests_fast, tests_fast), which reads like a pass
     # rate and is 100% by construction for any suite, however red - and on a failing run the
@@ -1153,6 +1214,7 @@ def claim_privacy_controls(work: Path, profile_name: str = "fast") -> EvidenceRe
     }
     failed = [name for name, ok in checks.items() if not ok]
     rate = Rate(len(checks) - len(failed), len(checks))
+    # PUBLISHED, because the rate is `len(checks) - len(failed)` over `len(checks)` and until
     verdict: Verdict = (
         Pass("SG-08", runset, rate, "masking, exposure check and purge")
         if not failed
@@ -1179,6 +1241,12 @@ def claim_privacy_controls(work: Path, profile_name: str = "fast") -> EvidenceRe
             "leaks_in_masked_dimension": len(leaks_masked),
             "purge": purge,
             "identifiers_left_in_the_log": residual[:5],
+            # PUBLISHED, because the rate is `len(checks) - len(failed)` over `len(checks)`
+            # and until now neither list left this function. A reader saw "6/6" with no way
+            # to know what the six were, and `evidence/reproduce.py` had no way to tell
+            # whether the six were six.
+            "checks": sorted(checks),
+            "checks_failed": sorted(failed),
         },
         not_claimed=(
             "that these controls are enforced by a platform: they run in code here, and the "
@@ -1275,6 +1343,10 @@ def claim_cost_lab(work: Path, repetitions: int = 2) -> EvidenceRecord:
             "repetitions": len(runs),
             "file_counts_identical_across_runs": len(set(file_counts)) == 1,
             "measurements": measurements,
+            # The five experiments the rate is over, by name, for the same reason SG-08
+            # publishes its six: "5/5" is not checkable against a list nobody can see.
+            "checks": sorted(checks),
+            "checks_failed": sorted(failed),
         },
         not_claimed=(
             "anything about query latency: no timing is measured, on purpose",

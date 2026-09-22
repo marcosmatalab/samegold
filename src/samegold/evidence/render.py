@@ -31,6 +31,15 @@ from typing import Any
 
 BEGIN = "<!-- samegold:begin claims -->"
 END = "<!-- samegold:end claims -->"
+#: The demo transcript on the front page. It was TYPED, and it was the only defect in this
+#: repository a reviewer could find by running the command the first screen tells them to run:
+#: it claimed 780 events, 284 files, seed 6569293562773694097 and 149 864,69 EUR, and the
+#: commit it was typed at printed 694, 263, 9769305124036219406 and 123 105,25. Not one number
+#: matched, and one whole line of the real output was missing. The seeds derive from the commit
+#: sha, so a transcript is stale one commit after it is pasted, and nothing was watching:
+#: `grep -rn '780 events' --include=*.py .` found nothing to watch it with.
+DEMO_BEGIN = "<!-- samegold:begin demo -->"
+DEMO_END = "<!-- samegold:end demo -->"
 # An inline value is wrapped in HTML comments so the anchor survives rendering and the
 # reader never sees it: GitHub hides comments and shows only the value. Replacing a token
 # in place would consume the anchor on the first render, after which the number could
@@ -98,6 +107,11 @@ def _value_for(record: dict[str, Any], field: str) -> str:
 
 _UNSAFE = re.compile(r"<!--|-->|\r?\n|\|")
 
+#: A GitHub Actions run url, matched whole. Narrow on purpose: this is the one shape the
+#: evidence workflow writes, and the value goes inside `](...)`, where a stray `)` or space
+#: ends the link and spills the rest of the url into the table as prose.
+_RUN_URL = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
+
 
 def _registry_title(claim_id: str, record: dict[str, Any]) -> str:
     from samegold.evidence.registry import CLAIM_TITLES
@@ -151,14 +165,31 @@ def _provenance(record: dict[str, Any]) -> str:
 
     On a dirty tree the commit is not enough on its own - it names code that is not what ran -
     so the tree hash goes beside it. Both are short; the full values are in the record.
+
+    AND IT IS A LINK NOW, when the record has one. "CI" as plain text asks the reader to take
+    on trust that a run exists; `grep -rno 'actions/runs/[0-9]*' --include=*.md .` over this
+    repository answered with nothing at all, so the word "CI" on the front page was the least
+    checkable thing on it. The url comes from the record, which the chain hashes, so it cannot
+    be edited into the table by hand without breaking `samegold check`.
+
+    The url is checked against `_RUN_URL` before it is rendered, for the same reason `_safe`
+    exists: a value that lands inside `](...)` can close the link early and put the rest of
+    itself into the document as prose. Anything that is not a GitHub Actions run url is
+    rendered as the plain text it used to be, rather than refused - a record with an odd url
+    is not a reason to stop publishing the other nine rows.
     """
     runs = record.get("verdict", {}).get("runs", {})
     commit = str(runs.get("commit_sha") or record.get("ci_commit_sha") or "")[:9] or "no commit"
-    where = "CI" if record.get("ci_run_url") else "local run, not reproduced in CI"
+    url = str(record.get("ci_run_url") or "")
+    where = "CI" if url else "local run, not reproduced in CI"
     if runs.get("tree_dirty"):
         tree = str(runs.get("tree_sha") or "")[:9] or "unknown"
-        return f"{where}, {commit} on an uncommitted tree ({tree})"
-    return f"{where}, {commit}"
+        text = f"{where}, {commit} on an uncommitted tree ({tree})"
+    else:
+        text = f"{where}, {commit}"
+    if url and _RUN_URL.fullmatch(url):
+        return f"[{text}]({url})"
+    return text
 
 
 def render_claims_block(latest: dict[str, dict[str, Any]]) -> str:
@@ -189,11 +220,94 @@ def render_claims_block(latest: dict[str, dict[str, Any]]) -> str:
     return BEGIN + "\n\n" + header + "\n".join(rows) + "\n\n" + END
 
 
+#: The artifact keys the demo transcript is built from, in no particular order. Named here so
+#: that a key renamed in `claims.py` and not here is a KeyError at render time rather than a
+#: transcript with a hole in it.
+DEMO_FIELDS = (
+    "demo_events",
+    "demo_files",
+    "demo_seed",
+    "demo_month",
+    "demo_closed_at",
+    "demo_observed_at",
+    "demo_revenue_at_close",
+    "demo_revenue_now",
+    "demo_move",
+    "demo_move_pct",
+    "demo_dimension_well_formed",
+    "demo_seconds",
+)
+
+#: Anything that would end the fenced block early, or open an anchor inside it. Narrower than
+#: `_UNSAFE` in one direction and wider in another: a pipe is harmless inside a code fence,
+#: a line of backticks is not.
+_UNSAFE_IN_FENCE = re.compile(r"```|<!--|-->|\r?\n")
+
+
+def demo_transcript(values: dict[str, str]) -> str:
+    """What `samegold demo` prints, from figures rather than from a run.
+
+    ONE template, used by the command and by the renderer. That is the whole point of this
+    function existing rather than the renderer having its own copy of the wording: the defect
+    it replaces was a transcript that could disagree with the program, and two format strings
+    in two modules is that defect with extra steps. `cli.cmd_demo` formats the figures and
+    prints this; `claim_repository_facts` formats the same figures into the record; the README
+    block is rendered from the record. A wording change lands in all three or in none.
+    """
+    for key in DEMO_FIELDS:
+        if key not in values:
+            raise KeyError(f"the demo transcript needs {key!r} and the record has no such key")
+        if _UNSAFE_IN_FENCE.search(values[key]):
+            raise ValueError(
+                f"demo.{key}: the value {values[key]!r} contains a code fence, a comment "
+                f"delimiter or a newline, and rendering it would break the block around it"
+            )
+    v = values
+    return (
+        f"samegold demo - {v['demo_events']} events, {v['demo_files']} files, "
+        f"seed {v['demo_seed']}\n"
+        f"\n"
+        f"  Month {v['demo_month']} was closed at {v['demo_closed_at']} reporting "
+        f"{v['demo_revenue_at_close']} EUR of net revenue.\n"
+        f"  By {v['demo_observed_at']}, late returns and late amendments had moved it to "
+        f"{v['demo_revenue_now']} EUR.\n"
+        f"  That is {v['demo_move']} EUR, {v['demo_move_pct']}% of a month that finance "
+        f"had already signed off.\n"
+        f"\n"
+        f"  The customer dimension is well formed: {v['demo_dimension_well_formed']}.\n"
+        f"  Two implementations of that number are compared on this data by "
+        f"`samegold evidence`.\n"
+        f"\n"
+        f"  {v['demo_seconds']}s, no account, no credentials, nothing installed beyond "
+        f"this package."
+    )
+
+
+def render_demo_block(latest: dict[str, dict[str, Any]]) -> str:
+    """The front page's transcript, rebuilt from SG-00's record.
+
+    A record without the demo figures renders the absence rather than a stale transcript: the
+    documents may say "no evidence recorded yet", and may not keep showing last month's
+    numbers under a heading that says this is what the command prints.
+    """
+    record = latest.get("SG-00")
+    artifacts = (record or {}).get("artifacts", {})
+    if not record or any(key not in artifacts for key in DEMO_FIELDS):
+        body = "_No demo evidence recorded yet. Run `make evidence`._"
+    else:
+        body = "```text\n" + demo_transcript({k: str(artifacts[k]) for k in DEMO_FIELDS}) + "\n```"
+    return DEMO_BEGIN + "\n" + body + "\n" + DEMO_END
+
+
 def render_readme(text: str, latest: dict[str, dict[str, Any]]) -> str:
     if BEGIN in text and END in text:
         start, rest = text.split(BEGIN, 1)
         _, tail = rest.split(END, 1)
         text = start + render_claims_block(latest) + tail
+    if DEMO_BEGIN in text and DEMO_END in text:
+        start, rest = text.split(DEMO_BEGIN, 1)
+        _, tail = rest.split(DEMO_END, 1)
+        text = start + render_demo_block(latest) + tail
 
     def replace(match: re.Match[str]) -> str:
         anchor = match.group(1)
