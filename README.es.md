@@ -27,9 +27,14 @@ evidencia que cualquiera puede recalcular.**
 </div>
 
 > [!TIP]
-> **En una frase:** samegold cierra los ingresos mensuales de un negocio sobre Spark y Delta
-> Lake, conserva cada versión que firmó finanzas y solo publica claims que una máquina puede
-> volver a medir.
+> **En una frase:** samegold cierra los ingresos mensuales de un negocio sintético sobre Spark
+> y Delta Lake, conserva cada versión que firmó finanzas y solo publica claims que una máquina
+> puede volver a medir.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
+  <img alt="bronze_events hacia silver_classified, que se divide en silver_events y silver_quarantine; gold lee silver_classified para construir revenue_by_month y dim_customer_scd2; el close_month bitemporal escribe una versión inmutable por cierre en revenue_closed. La vía de Databricks se contrasta al céntimo con la referencia DuckDB." src="docs/img/pipeline-light.svg">
+</picture>
 
 ## 💡 El problema, en pocas palabras
 
@@ -133,17 +138,12 @@ puede ejecutar.
 
 ## 🏗️ Arquitectura
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
-  <img alt="bronze_events hacia silver_classified, que se divide en silver_events y silver_quarantine; gold lee silver_classified para construir revenue_by_month y dim_customer_scd2; el close_month bitemporal escribe una versión inmutable por cierre en revenue_closed. La vía de Databricks se contrasta al céntimo con la referencia DuckDB." src="docs/img/pipeline-light.svg">
-</picture>
-
 **Un pipeline medallion con un contrato en la puerta.** Los eventos en bruto llegan a
 `bronze_events`, `silver_classified` aplica el contrato de datos, los registros inválidos van a
 `silver_quarantine`, y gold contiene `revenue_by_month`, una dimensión de clientes de Tipo 2
 `dim_customer_scd2` y el cierre versionado `revenue_closed`.
 
-**El diagrama se comprueba contra el código.**
+**El diagrama del pipeline, al principio de esta página, se comprueba contra el código.**
 `tests/fast/test_documentation.py::test_the_figures_agree_with_the_repository` deriva los nombres
 de las tablas y las lecturas entre ellas parseando `databricks/src/`, y las cifras de dinero de
 `evidence/databricks/SG-DBX-01.json`, así que una tabla renombrada o una flecha invertida hacen

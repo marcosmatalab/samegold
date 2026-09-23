@@ -27,8 +27,14 @@ evidence anyone can recompute.**
 </div>
 
 > [!TIP]
-> **In one sentence:** samegold closes a business's monthly revenue on Spark and Delta Lake,
-> keeps every version finance signed off, and publishes only claims a machine can re-measure.
+> **In one sentence:** samegold closes the monthly revenue of a synthetic business on Spark
+> and Delta Lake, keeps every version finance signed off, and publishes only claims a machine
+> can re-measure.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
+  <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; gold reads silver_classified to build revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane is checked against the DuckDB reference to the cent." src="docs/img/pipeline-light.svg">
+</picture>
 
 ## 💡 The problem, in plain words
 
@@ -129,17 +135,12 @@ it from a fresh run.
 
 ## 🏗️ Architecture
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
-  <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; gold reads silver_classified to build revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane is checked against the DuckDB reference to the cent." src="docs/img/pipeline-light.svg">
-</picture>
-
 **A medallion pipeline with a contract at the door.** Raw events land in `bronze_events`,
 `silver_classified` applies the data contract, invalid records go to `silver_quarantine`, and
 gold holds `revenue_by_month`, a Type 2 customer dimension `dim_customer_scd2` and the
 versioned close `revenue_closed`.
 
-**The diagram is tested against the code.**
+**The pipeline diagram at the top of this page is tested against the code.**
 `tests/fast/test_documentation.py::test_the_figures_agree_with_the_repository` derives the table
 names and the reads between them by parsing `databricks/src/`, and the money figures from
 `evidence/databricks/SG-DBX-01.json`, so a renamed table or a reversed arrow fails the build.

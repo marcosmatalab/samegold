@@ -9,6 +9,26 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the vers
 "version" means the state of the repository at a tag, not a package a dependency resolver
 will see.
 
+## [Unreleased]
+
+### Changed
+
+- **Evidence pull requests wait for the repository's own checks before they merge.**
+  `evidence.yml` opens its pull request and merges it in the same step, and both are made
+  with GITHUB_TOKEN, for which GitHub starts no workflow - so no check had ever run on an
+  evidence pull request. The job now dispatches `fast` and `databricks evidence` on the
+  evidence branch, waits for both, and merges only when both pass; a red one fails the job
+  and leaves the pull request open. `tests/fast/test_evidence_pr_checks.py` holds the
+  order, and ADR 0014 is amended. (#17)
+
+### Removed
+
+- **The `commit` input of `evidence.yml`**, added in #17 to measure a release's own commit
+  after `main` had moved. Its first run was refused by the store before it wrote anything:
+  a record's `ci_commit_sha` is the run's `GITHUB_SHA`, the tip of the dispatching ref, and
+  the chain rejects a record whose CI commit is not its seed commit. A run measures the tip
+  of the ref it is dispatched on, and a test keeps it that way. (#18)
+
 ## [0.3.0] - 2026-09-23
 
 The release in which the front pages stopped being able to say something the repository
