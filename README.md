@@ -1,29 +1,71 @@
 **English** | [Español](README.es.md)
 
-# samegold
+<div align="center">
 
-**How you prove a data pipeline does what it says.** The pipeline is a bitemporal month-end
-close on Delta Lake and Spark, computed three times by three engines. The rest is a harness
-whose whole job is to prove it wrong, and a record of every time it did.
+# 🥇 samegold
 
-[![fast](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml)
-[![spark](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml)
-[![evidence](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml)
-[![databricks](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml/badge.svg)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml)
+**A month-end revenue close on Spark and Delta Lake that backs every number it publishes with
+evidence anyone can recompute.**
+
+[![fast](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml)
+[![spark](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml)
+[![evidence](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml)
+[![databricks](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml)
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-**It exists because a green pipeline published 2.767e19 cents of January revenue,** six and a
-half million times what its own contract allows for the lines involved, **and none of the three
-engines saw it.** Two implementations agreed with each other and with a by-construction ledger.
-A mutation campaign killed every mutant it had not classified as equivalent. Sixteen rounds of
-adversarial review had found nothing. Three events the generator emits *in order to be rejected*
-were booked as revenue, because the classification read "I cannot answer" as "accept".
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![PySpark](https://img.shields.io/badge/PySpark-4.2.0-E25A1C?logo=apachespark&logoColor=white)
+![Delta Lake](https://img.shields.io/badge/Delta%20Lake-4.4.0-00ADD4)
+![Databricks](https://img.shields.io/badge/Databricks-Asset%20Bundles-FF3621?logo=databricks&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-reference%20engine-FFF000?logo=duckdb&logoColor=black)
+![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
+![ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
 
-So this is not a pipeline that works. It is one whose claims about itself are checkable, with a
-record of every time one of them turned out to be false.
+🧾 bitemporal close · ⚖️ cross-engine parity · 🧬 mutation testing · 💥 crash injection · 🔒 privacy purge · 🔗 hash-chained evidence
 
-## Check it yourself, in seven minutes
+</div>
+
+> [!TIP]
+> **In one sentence:** samegold closes a business's monthly revenue on Spark and Delta Lake,
+> keeps every signed-off version when late returns move a month, checks the close against an
+> independent reference that must agree to the cent, and publishes every claim from measurements
+> that are hash-chained and can be recomputed on demand.
+
+## 🎯 What it does
+
+- 🧾 **Closes the month.** Sales, returns and amendments flow bronze → silver → gold on Delta
+  Lake and land in a versioned, immutable monthly revenue close.
+- ⏳ **Keeps history exact.** A return books into the month of the sale, so a month finance has
+  already signed off can move. Every closed version is kept beside the one that replaced it.
+- ⚖️ **Checks it against an independent reference.** The Spark and Delta Lake pipeline and an
+  independent DuckDB reference must produce one canonical digest, and the Databricks deployment
+  is checked against that reference to the cent, version by version.
+- 🔬 **Re-measures its own claims.** Each claim, `SG-00` to `SG-09`, is re-measured from seeds derived
+  from the commit sha, appended to a hash-chained evidence log and rendered onto this page.
+
+## 📊 Key metrics
+
+**Every metric in this table is rendered from `evidence/`, not typed by hand.** `make readme`
+writes them and `samegold check` fails the build if one drifts from its record.
+
+| | What is measured | Result | Claim |
+|---|---|---|---|
+| ✅ | Fast lane, no JVM and no credentials | <!--sg:SG-00.artifact.tests_passed-->737<!--/sg--> tests pass in <!--sg:SG-00.artifact.fast_lane_seconds-->79.5<!--/sg--> s | `SG-00` |
+| ⚖️ | DuckDB reference and by-construction ledger agree at every close | <!--sg:SG-01.rate-->15/15 (95% CI 79.6%-100.0%)<!--/sg--> | `SG-01` |
+| 🔁 | Re-delivering every file under a new path changes nothing | <!--sg:SG-02.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-02` |
+| 🧬 | Non-equivalent generated SQL mutants killed | <!--sg:SG-03.rate-->67/67 (95% CI 94.6%-100.0%)<!--/sg--> | `SG-03` |
+| ⏳ | Closed months that moved after sign-off, every version matching the reference | <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> | `SG-04` |
+| 🧮 | Dimension and conservation invariants, no oracle needed | <!--sg:SG-05.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-05` |
+| 🔗 | Evidence records verified in the hash chain | <!--sg:SG-06.artifact.records_verified-->251<!--/sg--> | `SG-06` |
+| 💥 | Injected crashes the silver writer survives | <!--sg:SG-07.rate-->20/20 (95% CI 83.9%-100.0%)<!--/sg--> | `SG-07` |
+| 🔒 | Direct identifiers kept out of gold, purge verified | <!--sg:SG-08.rate-->6/6 (95% CI 61.0%-100.0%)<!--/sg--> | `SG-08` |
+| 📦 | Files removed by compaction | <!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->% | `SG-09` |
+| 📉 | Cut in the share of the table a sku query reads, from clustering | <!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->% | `SG-09` |
+| ☁️ | Events the Databricks lane closed, every version matching the open-source lane to the cent | <!--dbx:rows.bronze_events-->1883<!--/dbx--> events | `SG-DBX-01` |
+| 🧱 | Verification harness against platform code, in lines | <!--sg:SG-00.artifact.harness_lines-->23 967<!--/sg--> against <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> | `SG-00` |
+
+## 🚀 Try it in minutes
 
 No account, no credentials, no network beyond PyPI.
 
@@ -32,12 +74,10 @@ git clone https://github.com/marcosmatalab/samegold && cd samegold
 make install
 make demo                 # the close, and the month that moved after it was signed off
 make fast                 # the whole fast lane, no JVM
-make refute SEED=424242   # every claim again, on a seed nobody chose
+make refute SEED=424242   # the seven data claims again, on a seed nobody chose
 ```
 
-About seven minutes end to end on a clean clone, most of it the last command. No duration is
-typed on this page: `make doctor` prints what your machine took, and the lane's own time is
-the anchored figure below. What `make demo` prints:
+What `make demo` prints:
 
 <!-- samegold:begin demo -->
 ```text
@@ -54,91 +94,91 @@ samegold demo - 772 events, 301 files, seed 3606824677207351751
 ```
 <!-- samegold:end demo -->
 
-**That block is rendered from evidence, not pasted.** It used to be pasted, and it was the one
-defect here a reviewer could find by running the command this section tells them to run: it
-announced 780 events where the program printed 694, and had been wrong for eighteen commits,
-because the seeds derive from the commit sha and a transcript is stale the moment it is copied.
+**That output is rendered from the evidence, not pasted,** so it always matches what the
+program prints on the current commit.
 
-**The last command is the point.** Seeds deriving from the commit sha means picking a
-favourable one requires changing the code, which changes the seed. `make refute` lets you pick
-one anyway, and the chain refuses the result as evidence. **A claim that fails under your seed
-is the most useful issue anyone can open here.**
+**The last command is the point.** Seeds derive from the commit sha, so a favourable seed cannot
+be picked without making a new commit, which the history shows. `make refute` lets anyone choose
+their own and runs the seven claims about the data on it, which turns each of them into an
+invitation to falsify it.
 
-![make refute on seed 424242: the seven claims about the data run again, and printed as each one passes](docs/img/refute.gif)
+![make refute on seed 424242: the seven claims about the data run again, each printed as it passes](docs/img/refute.gif)
 
-**That GIF is a recording, not a drawing** - **played at 4x, over a real run of 73,1 s.**
-[`docs/refute.tape`](docs/refute.tape) is the script `vhs` executes and `make gif` regenerates
-it; the only thing not in real time is when the frames are shown, and both numbers are here so
-you are told the acceleration rather than left to assume the program is fast. A drawn one would
-be the transcript this page already removed once, in colour.
+**A real recording, not an animation:** played at 4x, over a real run of 73,1 s.
+[`docs/refute.tape`](docs/refute.tape) is the script `vhs` executes, and `make gif` re-records
+it from a fresh run.
 
-`make fast` is the whole fast lane (<!--sg:SG-00.artifact.tests_fast-->753<!--/sg--> tests in
-<!--sg:SG-00.artifact.fast_lane_seconds-->79.5<!--/sg--> s, no JVM, no credentials), `make
-preflight` the gate before a push, `make doctor` what this machine can run.
+`make preflight` is the gate before a push and `make doctor` reports what this machine can run.
 
-## What it computes
+## 🏗️ Architecture
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
-  <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; silver_events feeds revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane and the DuckDB reference compute it twice and must agree on one canonical digest." src="docs/img/pipeline-light.svg">
+  <img alt="bronze_events to silver_classified, which splits into silver_events and silver_quarantine; gold reads silver_classified to build revenue_by_month and dim_customer_scd2; the bitemporal close_month writes one immutable version per close into revenue_closed. The Databricks lane is checked against the DuckDB reference to the cent." src="docs/img/pipeline-light.svg">
 </picture>
 
-**That diagram is checked against the code, in three ways.**
-`tests/fast/test_documentation.py::test_the_figures_agree_with_the_repository` derives the
-table names and the reads between them from `databricks/src/` by parsing it, and the money
-figures from `evidence/databricks/SG-DBX-01.json`. A renamed table, a reversed arrow or a
-changed digit each turns it red, and each turns red on its own.
+**A medallion pipeline with a contract at the door.** Raw events land in `bronze_events`,
+`silver_classified` applies the data contract, invalid records go to `silver_quarantine`, and
+gold holds `revenue_by_month`, a Type 2 customer dimension `dim_customer_scd2` and the
+versioned close `revenue_closed`.
 
-It earned that on the first run. The picture drew the tidy chain bronze to classified to events
-to gold, and the lane does not do that: gold reads `silver_classified`, which the code says in
-one line of docstring and the drawing contradicted. A diagram that drifts is the same defect
-class as a sentence that drifts.
+**The diagram is tested against the code.**
+`tests/fast/test_documentation.py::test_the_figures_agree_with_the_repository` derives the table
+names and the reads between them by parsing `databricks/src/`, and the money figures from
+`evidence/databricks/SG-DBX-01.json`, so a renamed table or a reversed arrow fails the build.
 
-## Why a close needs two time axes, in one picture
+## ⏳ The bitemporal close
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/restatement-dark.svg">
   <img alt="Timeline: a sale on 5 January, January closes on 5 February at gross 14198046, a return for that January sale arrives on 18 February, and on 5 March January is restated as version 1 while version 0 stays unchanged." src="docs/img/restatement-light.svg">
 </picture>
 
-A return books into the month of the **sale**, not the month it arrived. So a month that
-finance has already signed off can move afterwards, and the version they signed off has to
-still be there, unchanged, next to the one that replaced it. That is what "bitemporal" buys,
-and it is the property `SG-04` measures.
+A return may arrive up to 45 days after the sale and books into the month of the **sale**. The close
+therefore tracks two time axes: when something happened and when the business learned about it.
+The version finance signed off stays exactly as it was, next to the one that replaced it, and
+`SG-04` measures how far each closed month moves and checks every version against the DuckDB
+reference on every run.
 
-## What this repository is mostly made of, since somebody was going to count it
+**January, closed three times on Databricks, with no version rewritten:** gross 14 198 046 cents
+at sign-off, 25 582 615 after the first late arrivals, and
+<!--dbx:revenue.2026_01.gross_cents-->37 622 605<!--/dbx--> after the second, each matching the
+open-source lane to the cent. The lane ran end to end on Databricks Free Edition.
+[`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) writes the restatement up as an
+incident report.
 
-**<!--sg:SG-00.artifact.platform_share_pct-->24.0<!--/sg-->% of the code is Spark, Delta and
-Databricks. <!--sg:SG-00.artifact.harness_share_pct-->76.0<!--/sg-->% is the harness that tries
-to break it.** In lines: <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> against
-<!--sg:SG-00.artifact.harness_lines-->23 967<!--/sg-->. Of the fast lane's
-<!--sg:SG-00.artifact.tests_fast-->753<!--/sg--> tests,
-<!--sg:SG-00.artifact.fast_lane_domain_tests-->175<!--/sg--> exercise the pipeline and
-<!--sg:SG-00.artifact.fast_lane_repository_tests-->578<!--/sg--> check this repository's own
-claims about itself - a test of the close, against a test of this repository's own paperwork.
+## 🔬 How every number is proven
 
-Those figures are measured by `make evidence` and rendered here, like every other number on
-this page. The split is an addition over a classification that is a JUDGEMENT, so the
-classification is written out in `src/samegold/evidence/lane_split.py` where it can be argued
-with, and <!--sg:SG-00.artifact.fast_lane_unclassified_files-->0<!--/sg--> test files are in
-neither class - a file nobody has classified fails the fast lane rather than being assigned a
-side, because the published sum is that addition.
+```mermaid
+flowchart TD
+    SHA["commit sha"] --> SEEDS["deterministic seeds"]
+    SEEDS --> GEN["generator: sales, returns, amendments"]
+    GEN --> LEDGER["by-construction ledger"]
+    GEN --> DUCK["DuckDB reference close"]
+    GEN --> SPARK["Spark + Delta Lake<br/>bronze → silver → gold"]
+    GEN --> ATTACK["mutation · crash injection<br/>privacy purge · layout cost"]
+    LEDGER --> AGREE{"SG-01: agree to the cent<br/>at every close"}
+    DUCK --> AGREE
+    DUCK --> DIGEST{"same canonical digest<br/>spark + delta lanes"}
+    SPARK --> DIGEST
+    AGREE --> CLAIMS["claims SG-00 … SG-09"]
+    ATTACK --> CLAIMS
+    CLAIMS --> CHAIN[("evidence/history.jsonl<br/>hash chain")]
+    CHAIN --> PAGE["README + CLAIMS.md<br/>make readme"]
+    CHAIN --> VERIFY["samegold verify-latest<br/>recomputes each record"]
+    classDef input fill:#1f6feb,stroke:#1f6feb,color:#ffffff
+    classDef engine fill:#e25a1c,stroke:#e25a1c,color:#ffffff
+    classDef proof fill:#2da44e,stroke:#2da44e,color:#ffffff
+    class SHA,SEEDS,GEN input
+    class SPARK,DUCK,LEDGER,ATTACK engine
+    class AGREE,DIGEST,CLAIMS,CHAIN,PAGE,VERIFY proof
+```
 
-**That ratio is the point rather than an accident.** Anybody can write a month-end close. What
-is hard, and what this is about, is knowing whether the one you wrote is right, and being able
-to hand somebody else a command that answers it. The pipeline is the subject. The harness is
-the work.
-
-If you are here for Spark and Delta specifically: `src/samegold/pipelines/`, `databricks/src/`,
-`tests/spark/` and `tests/delta/`, and the Databricks lane below ran against a real workspace.
-
-## The claims
-
-Rendered from `evidence/history.jsonl`, an append-only hash chain, from the most recent record for
-each claim. When the population moves the rule is: run the claims again and append a new record;
-**never edit or replace** the ones already in the chain.
-[ADR 0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) is the
-full policy.
+The claims below are rendered from `evidence/history.jsonl`, an append-only hash chain, using the
+most recent record for each claim. When the population moves, the claims run again and a new
+record is appended, and the ones already in the chain are kept as they are:
+**never edit or replace** a record. [ADR 0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) is
+the full policy.
 
 <!-- samegold:begin claims -->
 
@@ -157,79 +197,63 @@ full policy.
 
 <!-- samegold:end claims -->
 
-Every row links the workflow run that produced it, and `samegold verify-latest` recomputes each
-one from the seeds its own record names. That command exists because the four defences before
-it all answered "is this record well formed" and none of them answered "is this number true":
-an adversarial review put a perfect mutation score on this page by appending one well-formed
-record, with real seeds and a hash computed by this repository's own hasher, and `samegold
-check` exited 0 on it with the whole fast lane green.
-[ADR 0011](docs/adr/0011-the-gate-recomputes-the-record.md) is the fix, the two claims it does
-not recompute by default, and the hole it still leaves.
+**Every row links the CI run that produced it, and `samegold verify-latest` recomputes each one
+from the seeds its own record names.** A well-formed record is not enough: the number has to
+reproduce. [ADR 0011](docs/adr/0011-the-gate-recomputes-the-record.md) documents the recompute
+gate.
 
-## The month that closed twice
-
-A return may arrive 45 days after the sale and is imputed to the month of the **sale**, so a month
-finance signed off can move. January did: 14 198 046 cents at signature, restated to 25 582 615
-when late events arrived, and to <!--dbx:revenue.2026_01.gross_cents-->37 622 605<!--/dbx--> when
-more did - three versions, none of them rewritten. That last one is the Databricks lane, deployed
-and run end to end on Free Edition over <!--dbx:rows.bronze_events-->1883<!--/dbx--> events, and
-it agrees with the open-source lane **to the cent** - which computes it with no workspace at all.
-[`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) writes the restatement up as an
-incident; the cloud figures are anchored to `evidence/databricks/SG-DBX-01.json` and checked on
-every run of the fast lane.
-
-## The Databricks lane: what you can check, and what you have to take on trust
+## ☁️ The Databricks lane
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/job-graph-dark.svg">
   <img alt="The samegold monthly close job: ingest_and_transform runs the Lakeflow pipeline, close_month writes the versioned close, and the condition task did_the_close_restate sends a close that restated a month to verify_each_restated_month, once per month, and a close that restated nothing to verify_no_restatement. publish_evidence runs after either of them." src="docs/img/job-graph-light.svg">
 </picture>
 
-**The bundle is checked from a clone; the workspace is not.** Those are different claims and
-mixing them is how a repository ends up sounding better than it is.
+**Deployed and run end to end on a real Databricks workspace.** A Databricks Asset Bundle
+deploys a Lakeflow pipeline and a monthly close job whose condition task branches on whether the
+close restated a month. The run records are committed under
+[`evidence/databricks/`](evidence/databricks/) with their job run, pipeline and update ids, and
+[`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) renders what the workspace
+measured: the Type 2 dimension row by row with its `__START_AT` and `__END_AT`, the closed
+versions, the expectations with their pass and fail counts, and every event the contract refused.
 
-**Checkable here, with no account:**
+**Verified from a clone, with no account:**
 <!--sg:SG-00.artifact.tests_databricks_bundle-->135<!--/sg--> tests drive `databricks/` and
-`scripts/databricks_run.sh` against a stub CLI on `PATH` - every notebook path, every widget,
-every job parameter, the concurrent-task ceiling computed as the width of the dependency graph
-above, and the guard that refuses to run a job deployed from a commit that is not `HEAD`. The
-figure above is checked against `databricks/resources/jobs.yml` by
-`tests/fast/test_documentation.py`: a task renamed in the YAML turns it red.
+`scripts/databricks_run.sh` against a stub CLI on `PATH`: every notebook path, widget and job
+parameter, the concurrent-task ceiling computed from the dependency graph above, and the guard
+that refuses to run a job deployed from a commit that is not `HEAD`.
 
-**Not checkable here:** the workspace. The lane ran four times between 3 and 6 September 2026
-against a Databricks Free Edition workspace, and the records are committed under
-[`evidence/databricks/`](evidence/databricks/) with their job run, pipeline and update ids.
-**A clone of this repository contains no credential for it** - `databricks.yml` takes
-`workflow_dispatch` and nothing else, defaults to `validate`, offers no option that starts
-compute, and reads its token from a GitHub environment rather than a repository secret, with
-the job guarded to this repository so a fork's pull request cannot reach it. The badge above
-says whether it has run. **A green tick there means the bundle resolved and the credentials
-worked, and nothing about the close**: the job's own comment says so, and the fields the API
-requires are asserted in the fast lane instead. Those records are the one thing here you have
-to take on trust, and they say so themselves: `"chain": {"chained": false}`.
+**Secure by design.** `.github/workflows/databricks.yml` takes `workflow_dispatch` only, defaults
+to `validate`, starts no compute, pins every action to a commit sha and reads its token from a
+GitHub environment rather than a repository secret; with no `pull_request` trigger, a fork's pull
+request cannot reach it.
 
-What that buys instead of a screenshot:
-[**`docs/databricks-run-evidence.md`**](docs/databricks-run-evidence.md) renders what the
-workspace measured out of those records - the Type 2 dimension row by row with its `__START_AT`
-and `__END_AT`, the four closed versions of two months, the expectations with their pass and
-fail counts, the four events the contract refused with the value that did it. `samegold check`
-fails if one figure on it stops matching the records.
+## 🧰 Tech stack
 
-## Where to go next
+| Layer | Technology |
+|---|---|
+| ⚙️ Processing | PySpark 4.2.0 · Delta Lake 4.4.0 · delta-rs 1.6 · medallion architecture · SCD Type 2 |
+| ☁️ Cloud | Databricks Asset Bundles · Lakeflow pipelines · Jobs with condition tasks · Unity Catalog |
+| 🦆 Reference engine | DuckDB, computing the same close independently |
+| 🧪 Verification | pytest · Hypothesis · SQL mutants generated with sqlglot · crash injection · Wilson 95% intervals |
+| 🔗 Evidence | append-only JSONL hash chain · seeds derived from the commit sha |
+| 🛠️ Quality | Python 3.11+ · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
 
-- [`FINDINGS.md`](FINDINGS.md) - every defect this repository found in itself, by what it teaches
-- [`CLAIMS.md`](CLAIMS.md) - every claim, its experiment, and what it does **not** show
-- [`CHANGELOG.md`](CHANGELOG.md) - what each release changed
+## 🗺️ Documentation
+
 - [`docs/how-it-works.md`](docs/how-it-works.md) - the design: three witnesses, the digest, the evidence gate, what layout costs
-- [`docs/adr/`](docs/adr/) - the decisions, each with the alternative it rejected and why
+- [`CLAIMS.md`](CLAIMS.md) - every claim, its experiment and its scope
+- [`FINDINGS.md`](FINDINGS.md) - the adversarial review log: every defect the harness caught, by what it teaches
+- [`CHANGELOG.md`](CHANGELOG.md) - what each release changed
+- [`docs/adr/`](docs/adr/) - the architecture decisions, each with the alternative it rejected and why
 - [`docs/databricks-run.md`](docs/databricks-run.md) - what the cloud lane deploys and what it ran
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - what the workspace measured, rendered from the records it left
-- [`docs/runbook.md`](docs/runbook.md) - the alert has fired at three in the morning: what it means, data problem or platform problem, and how to repair a run without spending the day's quota
-- [`docs/findings/`](docs/findings/) - the write-ups: what the recompute gate found on its first run, and how two of the three were the gate
-- [`docs/join-skew.md`](docs/join-skew.md) - one key takes 30% of the rows: what happens to the join, measured, and why it is not a claim
-- [`docs/limits.md`](docs/limits.md) - what this repository could not verify, and why
+- [`docs/runbook.md`](docs/runbook.md) - on-call runbook: what an alert means, data problem or platform problem, and how to repair a run
+- [`docs/findings/`](docs/findings/) - write-ups of what the recompute gate found
+- [`docs/join-skew.md`](docs/join-skew.md) - one key takes 30% of the rows: what happens to the join, measured
 - [`EXAM_MAP.md`](EXAM_MAP.md) - the Databricks Professional guide, objective by objective
-- [`PARITY.md`](PARITY.md) - open-source lane versus Databricks, claim by claim
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) - `make preflight` is the gate, and why it refuses to exit 0 on a machine that cannot run the Spark lanes
+- [`PARITY.md`](PARITY.md) - open-source lane against Databricks, claim by claim
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) - how to contribute: `make preflight` is the gate
+- [`docs/limits.md`](docs/limits.md) - known limitations and residual risk
 
 Apache-2.0.

@@ -443,8 +443,8 @@ in `evidence/databricks/`, so a destroy-and-create would leave those citations p
 nothing, and the plan and the deploy run in the same job: printing the plan would have meant
 reading about the replacement after it happened.
 
-Until a green deploy exists, the honest sentence about this lane is the one on the front page:
-the bundle is checked from a clone, and the workspace is not.
+Until a green deploy exists, the honest sentence about this lane is this one: the bundle is
+checked from a clone, and the workspace is not.
 
 ## Things a reader should distrust
 
@@ -453,6 +453,15 @@ the bundle is checked from a clone, and the workspace is not.
 - The percentages describe a simulation whose return rate is deliberately high.
 - A claim rendered as "local run, not reproduced in CI" was produced on a laptop. The
   renderer labels it; treat it as weaker evidence than a CI-produced one.
-- The equivalence classification in `mutation/equivalents.py` is a judgement call. The strict
-  score, which refuses it entirely, is published next to the one that accepts it, and the
-  assumption probe tries to falsify each entry.
+- The equivalence classification in `mutation/equivalents.py` is a judgement call. The front
+  page quotes the rate over non-equivalent mutants; the strict score, which refuses the
+  classification entirely, is published next to it in `CLAIMS.md`, and the assumption probe
+  tries to falsify each entry.
+- The Databricks run records under `evidence/databricks/` are the one thing in this repository
+  a reader has to take on trust: they are fetched from a workspace a clone has no credential
+  for, and they say so themselves with `"chain": {"chained": false}`.
+- A green `databricks` badge means the bundle resolved and the credentials worked, and nothing
+  about the close. The fields the close depends on are asserted in the fast lane instead.
+- The split between platform code and harness code quoted on the front page is an addition
+  over a classification, and the classification is a judgement written out in
+  `src/samegold/evidence/lane_split.py`.

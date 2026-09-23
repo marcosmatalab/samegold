@@ -72,8 +72,8 @@ MUTATIONS: tuple[tuple[str, str, str, str], ...] = (
     (
         "a number in the prose drifting",
         "numbers",
-        "anunciaba 780 eventos",
-        "anunciaba 781 eventos",
+        "hasta 45 d\N{LATIN SMALL LETTER I WITH ACUTE}as",
+        "hasta 46 d\N{LATIN SMALL LETTER I WITH ACUTE}as",
     ),
     (
         "a number inside an image alt text drifting",
@@ -84,8 +84,8 @@ MUTATIONS: tuple[tuple[str, str, str, str], ...] = (
     (
         "a command translated, so the reader is given one that does not exist",
         "backticks",
-        "`make refute` te deja",
-        "`make refutar` te deja",
+        "`make refute` deja que",
+        "`make refutar` deja que",
     ),
     (
         "a link pointing somewhere else",
@@ -102,41 +102,39 @@ MUTATIONS: tuple[tuple[str, str, str, str], ...] = (
     (
         "an assertion quietly losing its emphasis",
         "bold",
-        "**El bundle se comprueba desde un clon; el workspace no.**",
-        "El bundle se comprueba desde un clon; el workspace no.",
+        "**Seguro por dise\N{LATIN SMALL LETTER N WITH TILDE}o.**",
+        "Seguro por dise\N{LATIN SMALL LETTER N WITH TILDE}o.",
     ),
     (
         "a bullet dropped from the index",
         "list",
-        "- [`docs/limits.md`](docs/limits.md) - lo que este repositorio no pudo verificar, y "
-        "por qu\N{LATIN SMALL LETTER E WITH ACUTE}\n",
+        "- [`docs/limits.md`](docs/limits.md) - limitaciones conocidas y riesgo residual\n",
         "",
     ),
     (
         "a whole paragraph never translated",
         "paragraphs",
-        "El pipeline es el sujeto. El arn\N{LATIN SMALL LETTER E WITH ACUTE}s es el trabajo.\n\n",
+        "Sin cuenta, sin credenciales, sin m\N{LATIN SMALL LETTER A WITH ACUTE}s red que PyPI.\n\n",
         "",
     ),
     (
         "a section added to one page only",
         "sections",
-        "## Ad\N{LATIN SMALL LETTER O WITH ACUTE}nde ir despu\N{LATIN SMALL LETTER E WITH ACUTE}s",
-        "## Una secci\N{LATIN SMALL LETTER O WITH ACUTE}n de m\N{LATIN SMALL LETTER A WITH ACUTE}s"
-        "\n\nque el otro no tiene.\n\n## Ad\N{LATIN SMALL LETTER O WITH ACUTE}nde ir "
-        "despu\N{LATIN SMALL LETTER E WITH ACUTE}s",
+        "\nApache-2.0.",
+        "\n## Una secci\N{LATIN SMALL LETTER O WITH ACUTE}n de "
+        "m\N{LATIN SMALL LETTER A WITH ACUTE}s\n\nque el otro no tiene.\n\nApache-2.0.",
     ),
     (
         "a fenced command block edited, so the two pages tell you to run different things",
         "fenced",
-        "make refute SEED=424242   # every claim",
-        "make refute SEED=424243   # every claim",
+        "make refute SEED=424242   # the seven",
+        "make refute SEED=424243   # the seven",
     ),
     (
         "a claim discussed under the wrong id",
         "claim ids",
-        "propiedad que mide `SG-04`",
-        "propiedad que mide `SG-05`",
+        "`SG-04` mide cu\N{LATIN SMALL LETTER A WITH ACUTE}nto",
+        "`SG-05` mide cu\N{LATIN SMALL LETTER A WITH ACUTE}nto",
     ),
     (
         "a generated block missing, so one page has a table the other does not",
