@@ -105,12 +105,14 @@ samegold demo - 772 events, 301 files, seed 3606824677207351751
   The customer dimension is well formed: yes.
   Two implementations of that number are compared on this data by `samegold evidence`.
 
-  0.2s, no account, no credentials, nothing installed beyond this package.
+  No account, no credentials, nothing installed beyond this package.
 ```
 <!-- samegold:end demo -->
 
-**That output is rendered from the evidence, not pasted,** so it always matches what the
-program prints on the current commit.
+**That block is produced by running the demo, not pasted,** and `samegold check` runs it
+again and fails if one byte differs. The demo uses a fixed seed, so it prints the same
+thing on every commit until the code changes; the claims below keep seeds derived from
+the commit sha.
 
 **The last command is the point.** Seeds derive from the commit sha, so a favourable seed cannot
 be picked without making a new commit, which the history shows. `make refute` lets anyone choose

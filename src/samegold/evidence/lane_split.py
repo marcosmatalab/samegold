@@ -79,6 +79,8 @@ REPOSITORY_TESTS = {
     "test_version.py",
     # Whether a figure on a front page has a source is paperwork about this repository.
     "test_front_page_figures.py",
+    # Whether the front page's demo block is what the demo prints: the page, not the close.
+    "test_demo_block.py",
 }
 DOMAIN_TESTS = {
     "test_databricks_close_parity.py",

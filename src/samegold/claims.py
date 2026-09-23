@@ -279,6 +279,18 @@ def _line_coverage(root: Path) -> float | None:
         return None
 
 
+#: The demo's seed. FIXED, unlike every claim's, and ADR 0017 is why.
+#:
+#: The demo used to draw `seeds_from_commit(1, purpose="demo")`, like the claims do, and its
+#: README block was rendered from SG-00's record. The seed moved on every commit and the record
+#: did not, so the block showed the output of an older commit under a sentence saying it matched
+#: the current one - at 9bd66c1 the page said 772 events and the program printed 802. Deriving
+#: seeds from the commit is what stops anyone choosing a favourable population for a CLAIM; the
+#: demo proves nothing, it illustrates, and an illustration that changes on every commit cannot
+#: be quoted. This is the seed the block showed when it was last right.
+DEMO_SEED = 3606824677207351751
+
+
 def demo_figures(work: Path) -> dict[str, str]:
     """Every number `samegold demo` prints, measured once and formatted once.
 
@@ -300,10 +312,9 @@ def demo_figures(work: Path) -> dict[str, str]:
     inside the renderer, which is the duplicated-rule shape this repository spends most of its
     time hunting.
     """
-    started = time.monotonic()
     from samegold.generator.events import generate
 
-    seed = seeds_from_commit(1, purpose="demo")[0]
+    seed = DEMO_SEED
     result = generate(work, seed=seed, profile=FAST)
     witness = DuckDBWitness()
     closes = result.ledger.closes
@@ -329,7 +340,6 @@ def demo_figures(work: Path) -> dict[str, str]:
         "demo_move": signed_euros(delta),
         "demo_move_pct": f"{pct:+.2f}",
         "demo_dimension_well_formed": "yes" if scd2_ok else "NO",
-        "demo_seconds": f"{time.monotonic() - started:.1f}",
     }
 
 

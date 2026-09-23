@@ -62,7 +62,8 @@ install-spark: $(VENV)/.installed ## add pyspark 4.2.0 + delta-spark 4.4.0 (abou
 
 .PHONY: demo
 demo: install ## 0.4 s in the container / 4.0 s on Windows, once installed; one finding
-	$(BIN)/samegold demo
+	@# Silent, so stdout is the program's alone and matches the README block byte for byte.
+	@$(BIN)/samegold demo
 
 .PHONY: fast
 fast: install ## the fast lane: no JVM, no network, no credentials

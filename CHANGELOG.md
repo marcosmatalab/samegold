@@ -28,6 +28,14 @@ will see.
   badges are rendered from `pyproject.toml`, and any other number in the prose of either
   front page is reported with its line. `tests/fast/test_front_page_figures.py` edits each
   figure by hand and requires the check to name it. ADR 0016.
+- **The demo block is what the demo prints.** The README's block showed the output of commit
+  `d69164100` - 772 events, -2,28 % - while `make demo` at `9bd66c1` printed 802 events and
+  -3,03 %: the demo's seed came from the commit sha and the block from an older evidence
+  record. The demo now uses a fixed seed, `samegold readme` renders the block by running it,
+  `samegold check` runs it again and compares, and the run's duration goes to stderr so the
+  comparison can be byte for byte. `tests/fast/test_demo_block.py` compares the real
+  command's stdout with both front pages. The claims keep their commit-derived seeds.
+  ADR 0017.
 
 ## [0.2.0] - 2026-09-22
 

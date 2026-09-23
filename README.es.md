@@ -108,12 +108,14 @@ samegold demo - 772 events, 301 files, seed 3606824677207351751
   The customer dimension is well formed: yes.
   Two implementations of that number are compared on this data by `samegold evidence`.
 
-  0.2s, no account, no credentials, nothing installed beyond this package.
+  No account, no credentials, nothing installed beyond this package.
 ```
 <!-- samegold:end demo -->
 
-**Esa salida se renderiza desde la evidencia, no está pegada,** así que siempre coincide con lo
-que imprime el programa en el commit actual.
+**Ese bloque sale de ejecutar la demo, no está pegado,** y `samegold check` la vuelve a
+ejecutar y falla si cambia un solo byte. La demo usa una semilla fija, así que imprime lo
+mismo en cada commit hasta que cambia el código; las claims de abajo mantienen semillas
+derivadas del sha del commit.
 
 **El último comando es la clave.** Las semillas derivan del sha del commit, así que no se puede
 elegir una favorable sin hacer un commit nuevo, que queda en el historial. `make refute` deja que

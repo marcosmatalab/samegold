@@ -235,7 +235,6 @@ DEMO_FIELDS = (
     "demo_move",
     "demo_move_pct",
     "demo_dimension_well_formed",
-    "demo_seconds",
 )
 
 #: Anything that would end the fenced block early, or open an anchor inside it. Narrower than
@@ -278,36 +277,38 @@ def demo_transcript(values: dict[str, str]) -> str:
         f"  Two implementations of that number are compared on this data by "
         f"`samegold evidence`.\n"
         f"\n"
-        f"  {v['demo_seconds']}s, no account, no credentials, nothing installed beyond "
-        f"this package."
+        f"  No account, no credentials, nothing installed beyond this package."
     )
 
 
-def render_demo_block(latest: dict[str, dict[str, Any]]) -> str:
-    """The front page's transcript, rebuilt from SG-00's record.
+def render_demo_block(transcript: str) -> str:
+    """The front page's transcript: what `samegold demo` printed, run on this commit.
 
-    A record without the demo figures renders the absence rather than a stale transcript: the
-    documents may say "no evidence recorded yet", and may not keep showing last month's
-    numbers under a heading that says this is what the command prints.
+    It used to be rebuilt from SG-00's record, which is written by a sweep on SOME commit, while
+    the demo's seed moved on every commit - so the block showed an older commit's output under a
+    sentence saying it was this one's. The CLI runs the demo and hands the output in; this only
+    wraps it. ADR 0017.
     """
-    record = latest.get("SG-00")
-    artifacts = (record or {}).get("artifacts", {})
-    if not record or any(key not in artifacts for key in DEMO_FIELDS):
-        body = "_No demo evidence recorded yet. Run `make evidence`._"
-    else:
-        body = "```text\n" + demo_transcript({k: str(artifacts[k]) for k in DEMO_FIELDS}) + "\n```"
-    return DEMO_BEGIN + "\n" + body + "\n" + DEMO_END
+    if _UNSAFE_IN_FENCE.search(transcript.replace("\n", " ")):
+        raise ValueError("the demo transcript contains a code fence or a comment delimiter")
+    return DEMO_BEGIN + "\n```text\n" + transcript + "\n```\n" + DEMO_END
 
 
-def render_readme(text: str, latest: dict[str, dict[str, Any]]) -> str:
+def render_readme(text: str, latest: dict[str, dict[str, Any]], demo: str | None = None) -> str:
+    """Render the claims table, the `sg:` anchors and - when `demo` is given - the demo block.
+
+    `demo` is the transcript of a run on this commit. Without it the block is left as it is,
+    which is what a caller that only asks about the chain wants; `samegold readme` and
+    `samegold check` always pass it.
+    """
     if BEGIN in text and END in text:
         start, rest = text.split(BEGIN, 1)
         _, tail = rest.split(END, 1)
         text = start + render_claims_block(latest) + tail
-    if DEMO_BEGIN in text and DEMO_END in text:
+    if demo is not None and DEMO_BEGIN in text and DEMO_END in text:
         start, rest = text.split(DEMO_BEGIN, 1)
         _, tail = rest.split(DEMO_END, 1)
-        text = start + render_demo_block(latest) + tail
+        text = start + render_demo_block(demo) + tail
 
     def replace(match: re.Match[str]) -> str:
         anchor = match.group(1)
@@ -321,12 +322,18 @@ def render_readme(text: str, latest: dict[str, dict[str, Any]]) -> str:
     return TOKEN.sub(replace, text)
 
 
-def check_readme(path: Path, latest: dict[str, dict[str, Any]]) -> list[RenderDrift]:
-    """Return the drifts between a markdown file and the evidence. Empty means consistent."""
+def check_readme(
+    path: Path, latest: dict[str, dict[str, Any]], demo: str | None = None
+) -> list[RenderDrift]:
+    """Return the drifts between a markdown file and the evidence. Empty means consistent.
+
+    With `demo`, the transcript of a run of the demo on this commit, the demo block is compared
+    too - byte for byte, because that is what the page promises.
+    """
     text = path.read_text(encoding="utf-8")
     drifts: list[RenderDrift] = []
     try:
-        rendered = render_readme(text, latest)
+        rendered = render_readme(text, latest, demo)
     except ValueError as error:
         # A value the renderer refuses is a finding about the EVIDENCE, and `samegold check`
         # is the command whose job is to report findings. Letting it escape turned the check

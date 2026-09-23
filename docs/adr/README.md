@@ -30,6 +30,7 @@ One line each, saying what was decided rather than what the file is about.
 | [0014](0014-the-evidence-pull-request-merges-itself.md) | the evidence pull request is merged by the job that opened it | `--auto`, measured impossible here, and a required-check ruleset, measured worse |
 | [0015](0015-the-version-has-one-source.md) | the version has one source, `pyproject.toml`, and the changelog is held to it by a test | deriving the version from git tags, which makes the number depend on how the repository was fetched |
 | [0016](0016-every-front-page-figure-has-a-source.md) | every figure on a front page is an anchor, a generated block or an identifier, `samegold check` compares all of them, and the Databricks record is pinned by digest | chaining the Databricks record, which its own `chain.why` argues against; and pinning raw bytes, which fails on a line-ending change |
+| [0017](0017-the-demo-has-a-fixed-seed.md) | the demo draws a fixed seed and its README block is rendered by running it, so `samegold check` can compare it byte for byte | a commit-derived seed for the demo, which makes a committed transcript one commit stale by construction |
 
 All of them are in `Accepted` status and none has ever been superseded by another file, so
 this index does not describe a supersession policy it has not used. What has happened once is

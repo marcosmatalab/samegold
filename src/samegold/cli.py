@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -85,11 +86,27 @@ def cmd_demo(args: argparse.Namespace) -> int:
     of SG-00's record, so the front page cannot disagree with the program about what the
     program prints. It used to disagree about every number in it.
     """
-    work = _work_dir(args.work)
-    print(render.demo_transcript(claim_module.demo_figures(work / "demo")))
-    if not args.work:
-        shutil.rmtree(work, ignore_errors=True)
+    started = time.monotonic()
+    print(demo_output(args.work))
+    # To stderr, so what stdout carries is exactly the block on the front page: a duration is
+    # different on every run, and a transcript with one in it can never match byte for byte.
+    print(f"({time.monotonic() - started:.1f} s)", file=sys.stderr)
     return 0
+
+
+def demo_output(work_dir: str | None = None) -> str:
+    """Exactly what `samegold demo` prints on stdout, less the final newline.
+
+    One function, so the command, `samegold readme` and `samegold check` cannot disagree about
+    it. The seed is `claims.DEMO_SEED`, fixed, so this is the same on every commit until the
+    code or the generator changes - and when they do, `samegold check` says the block is stale.
+    """
+    work = _work_dir(work_dir)
+    try:
+        return render.demo_transcript(claim_module.demo_figures(work / "demo"))
+    finally:
+        if not work_dir:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -221,6 +238,7 @@ def cmd_readme(args: argparse.Namespace) -> int:
             "there is no evidence to render from",
             "run `make evidence` first (about 60 seconds, no credentials needed)",
         )
+    demo = demo_output()
     for name in RENDERED_FILES:
         path = REPO_ROOT / name
         if not path.exists():
@@ -231,7 +249,7 @@ def cmd_readme(args: argparse.Namespace) -> int:
         # (this repository normalises on commit) and a second git on the same checkout does
         # not - and a document whose bytes say "modified" makes every evidence record produced
         # beside it claim an uncommitted tree.
-        path.write_text(render_readme(text, latest), encoding="utf-8", newline="\n")
+        path.write_text(render_readme(text, latest, demo), encoding="utf-8", newline="\n")
         print(f"rendered {name}")
     for line in _render_databricks_anchors():
         print(f"rendered {line}")
@@ -368,11 +386,12 @@ def cmd_check(args: argparse.Namespace) -> int:
             "new, verifiable record",
         )
     latest = store.latest()
+    demo = demo_output()
     drifts = []
     for name in RENDERED_FILES:
         path = REPO_ROOT / name
         if path.exists():
-            drifts.extend(check_readme(path, latest))
+            drifts.extend(check_readme(path, latest, demo))
     if drifts:
         for drift in drifts:
             print(f"DRIFT {drift}")
