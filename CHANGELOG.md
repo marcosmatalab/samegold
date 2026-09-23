@@ -9,6 +9,17 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the vers
 "version" means the state of the repository at a tag, not a package a dependency resolver
 will see.
 
+## [0.3.0] - Unreleased
+
+### Fixed
+
+- **The package version has one source.** At tag `v0.2.0`, `pyproject.toml` and
+  `src/samegold/__init__.py` both still said 0.1.0, so `pip show samegold` reported 0.1.0 for
+  the 0.2.0 release. `pyproject.toml` now declares the version, `samegold.__version__` reads it
+  back through `importlib.metadata`, and `tests/fast/test_version.py` fails if the declared
+  version, the installed one and the newest release in this file disagree. The existing tags
+  are not rewritten: this release is the first whose metadata carries its own number.
+
 ## [0.2.0] - 2026-09-22
 
 The release in which the cloud half stopped being a claim about a laptop. The short version is

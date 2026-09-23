@@ -14,4 +14,10 @@ The package is deliberately split so that every layer can be attacked on its own
 - ``cost``       measured cost and performance experiments.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version as _distribution_version
+
+# ONE SOURCE. `pyproject.toml` declares the version and the installed distribution carries it;
+# this reads it back instead of restating it. It used to be a second literal, and at tag v0.2.0
+# both copies still said 0.1.0. tests/fast/test_version.py holds pyproject, the installed
+# distribution and the newest CHANGELOG release to one number.
+__version__ = _distribution_version("samegold")

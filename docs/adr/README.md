@@ -28,8 +28,9 @@ One line each, saying what was decided rather than what the file is about.
 | [0012](0012-what-this-repository-is-mostly-made-of.md) | the repository says what it is mostly made of, on its front page | rebalancing by writing more pipeline until it is 50/50: two hundred hours for a worse repository, since the harness is the differentiated part |
 | [0013](0013-the-delta-lane-fails-when-it-cannot-verify.md) | the Delta lane fails when it cannot reach the jars, instead of skipping | vendoring the Delta jars: about 30 MB of binaries in a 4.7 MB repository, stale the moment the version moves |
 | [0014](0014-the-evidence-pull-request-merges-itself.md) | the evidence pull request is merged by the job that opened it | `--auto`, measured impossible here, and a required-check ruleset, measured worse |
+| [0015](0015-the-version-has-one-source.md) | the version has one source, `pyproject.toml`, and the changelog is held to it by a test | deriving the version from git tags, which makes the number depend on how the repository was fetched |
 
-All fourteen are in `Accepted` status and none has ever been superseded by another file, so
+All of them are in `Accepted` status and none has ever been superseded by another file, so
 this index does not describe a supersession policy it has not used. What has happened once is
 a reversal INSIDE a file: 0014 describes a mechanism that replaced the one its own first
 version described, and its status line says so - `accepted, 2026-09-22 (superseding the

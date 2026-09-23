@@ -75,6 +75,8 @@ REPOSITORY_TESTS = {
     "test_readme_parity.py",
     "test_reproduce.py",
     "test_seeds.py",
+    # The package version agreeing with the changelog is metadata about this repository.
+    "test_version.py",
 }
 DOMAIN_TESTS = {
     "test_databricks_close_parity.py",
