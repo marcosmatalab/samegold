@@ -104,9 +104,12 @@ are green; a red one leaves the pull request open and fails the job. The cost is
 the job, by the few minutes those two take. `tests/fast/test_evidence_pr_checks.py` holds the
 order.
 
-The same amendment added a `commit` input to the dispatch, so a run can measure a named commit
-- a release's own - after `main` has moved past it. The seeds still derive from that commit's
-sha: the input chooses what is measured, not how.
+The same amendment added, and the same day removed, a `commit` input for measuring a release's
+own commit after `main` had moved past it. Its first run was refused by the store before it
+wrote anything: a record's `ci_commit_sha` is the run's GITHUB_SHA, the tip of the dispatching
+ref, and the chain rejects a record whose CI commit is not the commit its seeds come from. That
+is the property that ties a published number to the run that produced it, so the input went
+and the property stayed: a run measures the tip of the ref it was dispatched on.
 
 **What this does not buy: a human reading the diff.** It never did. The honest description of
 the previous design is not "review" but "a branch nobody closed", and this ADR exists because

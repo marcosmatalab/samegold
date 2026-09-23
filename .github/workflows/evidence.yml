@@ -5,16 +5,14 @@ name: evidence
 # in CI", which is the honest label for a number produced on the author's laptop.
 
 on:
+  # NO INPUT THAT PICKS ANOTHER COMMIT. One was added on 23 September 2026, to measure a
+  # release's own commit after `main` had moved past it, and its first run was refused by the
+  # store before it wrote a record: `ci_commit_sha` is GITHUB_SHA, which GitHub sets to the tip
+  # of the dispatching ref, and a record whose CI commit is not its seed commit is rejected -
+  # rightly, since that is the property that ties a published number to the run that produced
+  # it. A run measures the tip of the ref it is dispatched on, with that ref's workflow.
+  # tests/fast/test_evidence_pr_checks.py keeps it that way.
   workflow_dispatch:
-    inputs:
-      commit:
-        # Measure a named commit instead of the tip of the branch the run was dispatched on -
-        # a release's own commit, typically, once `main` has moved past it. The seeds still
-        # derive from THAT commit's sha, so the input picks what is measured, not how; the
-        # evidence it produces is merged into the dispatching branch like any other run's.
-        description: "commit to measure (empty: the tip of the dispatching branch)"
-        type: string
-        default: ""
   schedule:
     - cron: "23 4 * * 1"
 
@@ -42,7 +40,7 @@ jobs:
       SAMEGOLD_STORAGE: parquet
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0, ref: "${{ inputs.commit || github.sha }}" }
+        with: { fetch-depth: 0 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
       - uses: actions/setup-python@v5

@@ -55,12 +55,19 @@ def test_the_job_may_dispatch_workflows() -> None:
     assert permissions.get("actions") == "write", "dispatching a workflow needs actions: write"
 
 
-def test_a_run_can_measure_a_named_commit() -> None:
-    """So the table can cite a release's own commit even after `main` has moved past it."""
+def test_the_run_measures_the_commit_it_was_dispatched_on() -> None:
+    """No input or ref may make the job measure a commit other than GITHUB_SHA.
+
+    A `commit` input was added for exactly that, to cite a release's own commit after `main`
+    had moved, and its first run was refused by `EvidenceStore` before any record was written:
+    `ci_commit_sha` is GITHUB_SHA, the tip of the dispatching ref, and a record whose CI commit
+    is not the commit its seeds come from is rejected. That refusal is the chain working, so the
+    workflow must not ask for it.
+    """
     spec = _spec()
     triggers = spec.get("on", spec.get(True))  # PyYAML reads the bare key `on` as True
-    inputs = triggers["workflow_dispatch"]["inputs"]  # type: ignore[index]
-    assert "commit" in inputs
+    dispatch = triggers["workflow_dispatch"] or {}  # type: ignore[index]
+    assert not dispatch.get("inputs"), "evidence.yml must not take an input that picks a commit"
     steps = spec["jobs"]["evidence"]["steps"]  # type: ignore[index]
     checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout"))
-    assert "inputs.commit" in str(checkout["with"]["ref"])
+    assert "ref" not in (checkout.get("with") or {}), "the checkout must be the dispatched commit"
