@@ -136,9 +136,9 @@ gif: ## re-record docs/img/refute.gif by RUNNING make refute, not by drawing it
 	# `setpts` changes when the frames are shown and not what is in them, the tape is
 	# untouched, and BOTH numbers are printed beside the image - so a reader is told the
 	# acceleration rather than left to assume the program is fast.
-	# tests/fast/test_readme_parity.py reads the frame delays out of the GIF itself and fails
-	# if the declared factor and the declared duration stop multiplying out to what the file
-	# actually plays. That is the only reason those two numbers are allowed to be hand-typed.
+	# Neither number is typed on the front pages: `make readme` renders both from the frame
+	# delays of the GIF and from the `setpts=PTS/N` on the next line, and `samegold check` fails
+	# when either stops matching. Change the divisor here and the pages follow on `make readme`.
 	ffmpeg -v error -i docs/img/refute.gif -filter_complex "[0:v]setpts=PTS/4,fps=15,split[a][b];[a]palettegen=max_colors=256[p];[b][p]paletteuse=dither=none" -y docs/img/.refute-fast.gif
 	mv docs/img/.refute-fast.gif docs/img/refute.gif
 

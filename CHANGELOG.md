@@ -19,6 +19,15 @@ will see.
   back through `importlib.metadata`, and `tests/fast/test_version.py` fails if the declared
   version, the installed one and the newest release in this file disagree. The existing tags
   are not rewritten: this release is the first whose metadata carries its own number.
+- **Every figure on the front pages is checked by `samegold check`.** Before this, a
+  Databricks figure edited by hand passed the check, and so did the Databricks record
+  itself, January's first two closed versions, the return window and the two numbers beside
+  the GIF. Now every `dbx:` anchor is compared with the record, the record and its capture
+  are pinned by content digest without joining the chain, the return window and the GIF
+  figures are `repo:` anchors rendered from the contract, the GIF and the Makefile, the stack
+  badges are rendered from `pyproject.toml`, and any other number in the prose of either
+  front page is reported with its line. `tests/fast/test_front_page_figures.py` edits each
+  figure by hand and requires the check to name it. ADR 0016.
 
 ## [0.2.0] - 2026-09-22
 

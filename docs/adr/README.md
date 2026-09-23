@@ -29,6 +29,7 @@ One line each, saying what was decided rather than what the file is about.
 | [0013](0013-the-delta-lane-fails-when-it-cannot-verify.md) | the Delta lane fails when it cannot reach the jars, instead of skipping | vendoring the Delta jars: about 30 MB of binaries in a 4.7 MB repository, stale the moment the version moves |
 | [0014](0014-the-evidence-pull-request-merges-itself.md) | the evidence pull request is merged by the job that opened it | `--auto`, measured impossible here, and a required-check ruleset, measured worse |
 | [0015](0015-the-version-has-one-source.md) | the version has one source, `pyproject.toml`, and the changelog is held to it by a test | deriving the version from git tags, which makes the number depend on how the repository was fetched |
+| [0016](0016-every-front-page-figure-has-a-source.md) | every figure on a front page is an anchor, a generated block or an identifier, `samegold check` compares all of them, and the Databricks record is pinned by digest | chaining the Databricks record, which its own `chain.why` argues against; and pinning raw bytes, which fails on a line-ending change |
 
 All of them are in `Accepted` status and none has ever been superseded by another file, so
 this index does not describe a supersession policy it has not used. What has happened once is

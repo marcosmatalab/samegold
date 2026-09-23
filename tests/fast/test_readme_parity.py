@@ -72,14 +72,18 @@ MUTATIONS: tuple[tuple[str, str, str, str], ...] = (
     (
         "a number in the prose drifting",
         "numbers",
-        "hasta 45 d\N{LATIN SMALL LETTER I WITH ACUTE}as",
-        "hasta 46 d\N{LATIN SMALL LETTER I WITH ACUTE}as",
+        # The front pages carry almost no bare numbers any more - every figure is an anchor, and
+        # samegold.evidence.front_page refuses the rest - so the number that drifts here is an
+        # ADR's, in the text of its link, which is one of the few that remain in prose.
+        "[ADR 0011](docs/adr/0011",
+        "[ADR 0012](docs/adr/0011",
     ),
     (
         "a number inside an image alt text drifting",
         "numbers",
-        "bruto de 14198046",
-        "bruto de 14198047",
+        # The alt text holds no figure now, so the drift is one appearing in one language only.
+        'alt="L\N{LATIN SMALL LETTER I WITH ACUTE}nea de tiempo: una venta',
+        'alt="L\N{LATIN SMALL LETTER I WITH ACUTE}nea de tiempo: 5 una venta',
     ),
     (
         "a command translated, so the reader is given one that does not exist",
@@ -127,8 +131,8 @@ MUTATIONS: tuple[tuple[str, str, str, str], ...] = (
     (
         "a fenced command block edited, so the two pages tell you to run different things",
         "fenced",
-        "make refute SEED=424242   # the seven",
-        "make refute SEED=424243   # the seven",
+        "make refute SEED=424242   # the data",
+        "make refute SEED=424243   # the data",
     ),
     (
         "a claim discussed under the wrong id",
@@ -238,19 +242,16 @@ def test_the_gate_catches_an_anchor_deleted_leaving_the_figure_as_plain_text(
     assert any(item.kind == "anchors" for item in breaks), breaks
 
 
-# The GIF's two hand-typed numbers, and why they are allowed to be hand-typed.
+# The GIF's two numbers, read a second time.
 #
-# Everything else on the front page goes through an evidence anchor. The acceleration factor
-# and the real duration cannot: they describe a binary artifact that no claim produces, and a
-# claim that re-recorded a terminal session on every `make evidence` would be absurd. So they
-# are checked against the FILE instead, here, from a clone, with no dependency: a GIF carries
-# the delay of each frame in its own Graphic Control Extension blocks, in hundredths of a
-# second, and they add up to how long the thing plays.
-#
-# What that ties together is the honest part of the claim. `make gif` records the run at real
-# speed and then divides the frame delays by four; if somebody changes the divisor and not the
-# sentence, or re-records a run of a different length and leaves `73,1` where it was, the
-# product stops matching and the fast lane says so.
+# They are no longer typed: `samegold readme` renders them into `repo:` anchors from the GIF's
+# own frame delays and the Makefile's `setpts=PTS/N` (`samegold.evidence.front_page.
+# recording_facts`), and `samegold check` fails when an anchor disagrees. What stays here is an
+# INDEPENDENT reading of the same file - its own parser, written separately - because a
+# renderer and its only check sharing one parser would agree with each other whatever the GIF
+# holds. A GIF carries the delay of each frame in its Graphic Control Extension blocks, in
+# hundredths of a second, and they add up to how long the thing plays; the declared real
+# duration divided by the declared factor has to be that.
 
 GIF = REPO / "docs" / "img" / "refute.gif"
 #: The sentence is found by the file it names rather than by its own wording, so that

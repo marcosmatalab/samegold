@@ -77,6 +77,8 @@ REPOSITORY_TESTS = {
     "test_seeds.py",
     # The package version agreeing with the changelog is metadata about this repository.
     "test_version.py",
+    # Whether a figure on a front page has a source is paperwork about this repository.
+    "test_front_page_figures.py",
 }
 DOMAIN_TESTS = {
     "test_databricks_close_parity.py",

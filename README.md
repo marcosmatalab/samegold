@@ -14,6 +14,7 @@ evidence anyone can recompute.**
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
+<!-- samegold:begin stack -->
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PySpark](https://img.shields.io/badge/PySpark-4.2.0-E25A1C?logo=apachespark&logoColor=white)
 ![Delta Lake](https://img.shields.io/badge/Delta%20Lake-4.4.0-00ADD4)
@@ -21,6 +22,7 @@ evidence anyone can recompute.**
 ![DuckDB](https://img.shields.io/badge/DuckDB-reference%20engine-FFF000?logo=duckdb&logoColor=black)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
 ![ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
+<!-- samegold:end stack -->
 
 </div>
 
@@ -31,7 +33,7 @@ evidence anyone can recompute.**
 ## 💡 The problem, in plain words
 
 Every month, finance **closes the books**: it adds up the month's sales, subtracts its returns
-and signs the result off. Customers can return an item up to 45 days after buying it, so returns
+and signs the result off. Customers can return an item up to <!--repo:contract.return_window_days-->45<!--/repo--> days after buying it, so returns
 keep arriving after that signature, and each one belongs to the month of the original sale. A
 month that is already closed keeps changing.
 
@@ -87,7 +89,7 @@ git clone https://github.com/marcosmatalab/samegold && cd samegold
 make install
 make demo                 # the close, and the month that moved after it was signed off
 make fast                 # the whole fast lane, no JVM
-make refute SEED=424242   # the seven data claims again, on a seed nobody chose
+make refute SEED=424242   # the data claims again, on a seed nobody chose
 ```
 
 What `make demo` prints:
@@ -112,12 +114,12 @@ program prints on the current commit.
 
 **The last command is the point.** Seeds derive from the commit sha, so a favourable seed cannot
 be picked without making a new commit, which the history shows. `make refute` lets anyone choose
-their own and runs the seven claims about the data on it, which turns each of them into an
+their own and runs every claim about the data on it, which turns each of them into an
 invitation to falsify it.
 
-![make refute on seed 424242: the seven claims about the data run again, each printed as it passes](docs/img/refute.gif)
+![make refute on a seed nobody chose: the claims about the data run again, each printed as it passes](docs/img/refute.gif)
 
-**A real recording, not an animation:** played at 4x, over a real run of 73,1 s.
+**A real recording, not an animation:** played at <!--repo:gif.refute.speed-->4x<!--/repo-->, over a real run of <!--repo:gif.refute.real_seconds-->73,1 s<!--/repo-->.
 [`docs/refute.tape`](docs/refute.tape) is the script `vhs` executes, and `make gif` re-records
 it from a fresh run.
 
@@ -144,18 +146,18 @@ names and the reads between them by parsing `databricks/src/`, and the money fig
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/restatement-dark.svg">
-  <img alt="Timeline: a sale on 5 January, January closes on 5 February at gross 14198046, a return for that January sale arrives on 18 February, and on 5 March January is restated as version 1 while version 0 stays unchanged." src="docs/img/restatement-light.svg">
+  <img alt="Timeline: a January sale, the first close of January, a return for that sale arriving after the close, and January restated as a new version while the first close stays unchanged." src="docs/img/restatement-light.svg">
 </picture>
 
-A return may arrive up to 45 days after the sale and books into the month of the **sale**. The close
+A return may arrive up to <!--repo:contract.return_window_days-->45<!--/repo--> days after the sale and books into the month of the **sale**. The close
 therefore tracks two time axes: when something happened and when the business learned about it.
 The version finance signed off stays exactly as it was, next to the one that replaced it, and
 `SG-04` measures how far each closed month moves and checks every version against the DuckDB
 reference on every run.
 
-**January, closed three times on Databricks, with no version rewritten:** gross 14 198 046 cents
-at sign-off, 25 582 615 after the first late arrivals, and
-<!--dbx:revenue.2026_01.gross_cents-->37 622 605<!--/dbx--> after the second, each matching the
+**January, closed three times on Databricks, with no version rewritten:** gross <!--dbx:closed.2026_01.v0.gross_cents-->14 198 046<!--/dbx--> cents
+at sign-off, <!--dbx:closed.2026_01.v1.gross_cents-->25 582 615<!--/dbx--> after the first late arrivals, and
+<!--dbx:closed.2026_01.v2.gross_cents-->37 622 605<!--/dbx--> after the second, each matching the
 open-source lane to the cent. The lane ran end to end on Databricks Free Edition.
 [`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) writes the restatement up as an
 incident report.
@@ -249,7 +251,7 @@ rejected and the reason.
 | Decision | Why | Trade-off accepted | ADR |
 |---|---|---|---|
 | **A second implementation, not more assertions** | Unit tests are blind in the same places as the code they test; an independent computation is not | Two implementations to maintain, and they share an author, so agreement is strong evidence rather than proof | [0001](docs/adr/0001-a-second-implementation-instead-of-more-tests.md) |
-| **Share the contract, duplicate the computation** | Column names, the 45-day window, the timezone and the currency are defined once; every derivation is written twice, so a misunderstanding surfaces as a disagreement | Every business rule exists twice, in DataFrame code and in SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
+| **Share the contract, duplicate the computation** | Column names, the <!--repo:contract.return_window_days-->45<!--/repo-->-day window, the timezone and the currency are defined once; every derivation is written twice, so a misunderstanding surfaces as a disagreement | Every business rule exists twice, in DataFrame code and in SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
 | **Adaptive query execution stays on** | The production configuration is the one under test | Parity is checked on a sorted digest, never byte for byte on the files, so every projection must declare a total order | [0005](docs/adr/0005-adaptive-execution-stays-on.md) |
 | **Seeds derive from the commit sha** | A favourable seed cannot be chosen quietly | Each commit changes the synthetic population, so figures move between commits; that is why they are rendered rather than typed | [0007](docs/adr/0007-the-evidence-gate.md) |
 | **Evidence is append-only** | A stale figure is fixed by adding a measurement, so every past one stays inspectable | The history only grows, and the page quotes the latest record, which can predate the latest commit | [0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) |
@@ -276,12 +278,12 @@ rejected and the reason.
 
 | Layer | Technology |
 |---|---|
-| ⚙️ Processing | PySpark 4.2.0 · Delta Lake 4.4.0 · delta-rs 1.6 · medallion architecture · SCD Type 2 |
+| ⚙️ Processing | PySpark · Delta Lake · delta-rs · medallion architecture · SCD Type 2 |
 | ☁️ Cloud | Databricks Asset Bundles · Lakeflow pipelines · Jobs with condition tasks · Unity Catalog |
 | 🦆 Reference engine | DuckDB, computing the same close independently |
-| 🧪 Verification | pytest · Hypothesis · SQL mutants generated with sqlglot · crash injection · Wilson 95% intervals |
+| 🧪 Verification | pytest · Hypothesis · SQL mutants generated with sqlglot · crash injection · Wilson score intervals |
 | 🔗 Evidence | append-only JSONL hash chain · seeds derived from the commit sha |
-| 🛠️ Quality | Python 3.11+ · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
+| 🛠️ Quality | Python · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
 
 ## 🗺️ Documentation
 
@@ -294,7 +296,7 @@ rejected and the reason.
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - what the workspace measured, rendered from the records it left
 - [`docs/runbook.md`](docs/runbook.md) - on-call runbook: what an alert means, data problem or platform problem, and how to repair a run
 - [`docs/findings/`](docs/findings/) - write-ups of what the recompute gate found
-- [`docs/join-skew.md`](docs/join-skew.md) - one key takes 30% of the rows: what happens to the join, measured
+- [`docs/join-skew.md`](docs/join-skew.md) - one key takes a large share of the rows: what happens to the join, measured
 - [`EXAM_MAP.md`](EXAM_MAP.md) - the Databricks Professional guide, objective by objective
 - [`PARITY.md`](PARITY.md) - open-source lane against Databricks, claim by claim
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) - how to contribute: `make preflight` is the gate

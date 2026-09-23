@@ -49,8 +49,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-#: An evidence anchor, of either flavour. Group 2 is the name, group 3 the rendered value.
-ANCHOR = re.compile(r"<!--(sg|dbx):(.+?)-->(.*?)<!--/(?:sg|dbx)-->", re.DOTALL)
+#: An anchor, of any of the three flavours: `sg:` from the chain, `dbx:` from the Databricks
+#: record, `repo:` from the file that defines the fact. Group 2 is the name, group 3 the value.
+ANCHOR = re.compile(r"<!--(sg|dbx|repo):(.+?)-->(.*?)<!--/(?:sg|dbx|repo)-->", re.DOTALL)
 #: A fenced block. The info string is kept: ```bash and ```text are different blocks.
 FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
 #: Inline code. Never spans a blank line, but DOES span a single newline, because both pages

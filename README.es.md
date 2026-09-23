@@ -14,6 +14,7 @@ evidencia que cualquiera puede recalcular.**
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
+<!-- samegold:begin stack -->
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PySpark](https://img.shields.io/badge/PySpark-4.2.0-E25A1C?logo=apachespark&logoColor=white)
 ![Delta Lake](https://img.shields.io/badge/Delta%20Lake-4.4.0-00ADD4)
@@ -21,6 +22,7 @@ evidencia que cualquiera puede recalcular.**
 ![DuckDB](https://img.shields.io/badge/DuckDB-reference%20engine-FFF000?logo=duckdb&logoColor=black)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
 ![ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
+<!-- samegold:end stack -->
 
 </div>
 
@@ -32,7 +34,7 @@ evidencia que cualquiera puede recalcular.**
 ## 💡 El problema, en pocas palabras
 
 Cada mes, finanzas **cierra el mes**: suma las ventas, resta las devoluciones y firma el
-resultado. Un cliente puede devolver un artículo hasta 45 días después de comprarlo, así que las
+resultado. Un cliente puede devolver un artículo hasta <!--repo:contract.return_window_days-->45<!--/repo--> días después de comprarlo, así que las
 devoluciones siguen llegando después de esa firma, y cada una pertenece al mes de la venta
 original. Un mes ya cerrado sigue cambiando.
 
@@ -90,7 +92,7 @@ git clone https://github.com/marcosmatalab/samegold && cd samegold
 make install
 make demo                 # the close, and the month that moved after it was signed off
 make fast                 # the whole fast lane, no JVM
-make refute SEED=424242   # the seven data claims again, on a seed nobody chose
+make refute SEED=424242   # the data claims again, on a seed nobody chose
 ```
 
 Lo que imprime `make demo`:
@@ -115,12 +117,12 @@ que imprime el programa en el commit actual.
 
 **El último comando es la clave.** Las semillas derivan del sha del commit, así que no se puede
 elegir una favorable sin hacer un commit nuevo, que queda en el historial. `make refute` deja que
-cualquiera elija la suya y ejecuta con ella las siete claims sobre los datos, lo que convierte
+cualquiera elija la suya y ejecuta con ella todas las claims sobre los datos, lo que convierte
 cada una en una invitación a refutarla.
 
-![make refute con la semilla 424242: las siete claims sobre los datos ejecutadas otra vez, que se imprimen a medida que pasan](docs/img/refute.gif)
+![make refute con una semilla que no eligió nadie: las claims sobre los datos se ejecutan otra vez y se imprimen a medida que pasan](docs/img/refute.gif)
 
-**Una grabación real, no una animación:** reproducida a 4x, sobre una ejecución real de 73,1 s.
+**Una grabación real, no una animación:** reproducida a <!--repo:gif.refute.speed-->4x<!--/repo-->, sobre una ejecución real de <!--repo:gif.refute.real_seconds-->73,1 s<!--/repo-->.
 [`docs/refute.tape`](docs/refute.tape) es el guion que ejecuta `vhs`, y `make gif` la vuelve a
 grabar desde una ejecución nueva.
 
@@ -149,18 +151,18 @@ fallar el build.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/restatement-dark.svg">
-  <img alt="Línea de tiempo: una venta el 5 de enero, enero cierra el 5 de febrero con un bruto de 14198046, una devolución de esa venta de enero llega el 18 de febrero, y el 5 de marzo enero se reexpresa como versión 1 mientras la versión 0 sigue sin cambios." src="docs/img/restatement-light.svg">
+  <img alt="Línea de tiempo: una venta de enero, el primer cierre de enero, una devolución de esa venta que llega después del cierre, y enero reexpresado como una versión nueva mientras el primer cierre sigue sin cambios." src="docs/img/restatement-light.svg">
 </picture>
 
-Una devolución puede llegar hasta 45 días después de la venta y se imputa al mes de la **venta**. Por
+Una devolución puede llegar hasta <!--repo:contract.return_window_days-->45<!--/repo--> días después de la venta y se imputa al mes de la **venta**. Por
 eso el cierre sigue dos ejes de tiempo: cuándo ocurrió algo y cuándo se enteró el negocio. La
 versión que firmó finanzas se queda exactamente como estaba, al lado de la que la sustituyó, y
 `SG-04` mide cuánto se mueve cada mes cerrado y contrasta cada versión con la referencia DuckDB en
 cada ejecución.
 
 **Enero, cerrado tres veces en Databricks, sin reescribir ninguna versión:** un bruto de
-14 198 046 céntimos en la firma, 25 582 615 tras los primeros eventos tardíos y
-<!--dbx:revenue.2026_01.gross_cents-->37 622 605<!--/dbx--> tras los segundos, cada uno igual al
+<!--dbx:closed.2026_01.v0.gross_cents-->14 198 046<!--/dbx--> céntimos en la firma, <!--dbx:closed.2026_01.v1.gross_cents-->25 582 615<!--/dbx--> tras los primeros eventos tardíos y
+<!--dbx:closed.2026_01.v2.gross_cents-->37 622 605<!--/dbx--> tras los segundos, cada uno igual al
 céntimo a la vía de código abierto. La vía se ejecutó de principio a fin en Databricks Free Edition.
 [`docs/postmortem-2026-03-06.md`](docs/postmortem-2026-03-06.md) documenta la reexpresión como un
 informe de incidente.
@@ -258,7 +260,7 @@ alternativas que descartó y el motivo.
 | Decisión | Por qué | Trade-off aceptado | ADR |
 |---|---|---|---|
 | **Una segunda implementación, no más aserciones** | Los tests unitarios están ciegos en los mismos sitios que el código que prueban; un cálculo independiente no | Dos implementaciones que mantener, y comparten autor, así que su acuerdo es evidencia sólida y no una prueba | [0001](docs/adr/0001-a-second-implementation-instead-of-more-tests.md) |
-| **Compartir el contrato, duplicar el cálculo** | Los nombres de columna, la ventana de 45 días, la zona horaria y la moneda se definen una vez; cada derivación se escribe dos veces, así que un malentendido aparece como un desacuerdo | Cada regla de negocio existe dos veces, en código DataFrame y en SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
+| **Compartir el contrato, duplicar el cálculo** | Los nombres de columna, la ventana de <!--repo:contract.return_window_days-->45<!--/repo--> días, la zona horaria y la moneda se definen una vez; cada derivación se escribe dos veces, así que un malentendido aparece como un desacuerdo | Cada regla de negocio existe dos veces, en código DataFrame y en SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
 | **La ejecución adaptativa sigue activada** | Lo que se prueba es la configuración de producción | La paridad se comprueba sobre un digest ordenado, nunca byte a byte sobre los ficheros, así que cada proyección tiene que declarar un orden total | [0005](docs/adr/0005-adaptive-execution-stays-on.md) |
 | **Las semillas derivan del sha del commit** | No se puede elegir en silencio una semilla favorable | Cada commit cambia la población sintética, así que las cifras se mueven entre commits; por eso se renderizan en lugar de escribirse a mano | [0007](docs/adr/0007-the-evidence-gate.md) |
 | **La evidencia solo admite añadidos** | Una cifra desfasada se corrige añadiendo una medición, así que todas las anteriores se pueden seguir inspeccionando | El historial solo crece, y la página cita el último registro, que puede ser anterior al último commit | [0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) |
@@ -285,12 +287,12 @@ alternativas que descartó y el motivo.
 
 | Capa | Tecnología |
 |---|---|
-| ⚙️ Procesamiento | PySpark 4.2.0 · Delta Lake 4.4.0 · delta-rs 1.6 · arquitectura medallion · SCD de Tipo 2 |
+| ⚙️ Procesamiento | PySpark · Delta Lake · delta-rs · arquitectura medallion · SCD de Tipo 2 |
 | ☁️ Nube | Databricks Asset Bundles · pipelines de Lakeflow · Jobs con tareas condicionales · Unity Catalog |
 | 🦆 Motor de referencia | DuckDB, que calcula el mismo cierre de forma independiente |
-| 🧪 Verificación | pytest · Hypothesis · mutantes SQL generados con sqlglot · inyección de fallos · intervalos de Wilson al 95% |
+| 🧪 Verificación | pytest · Hypothesis · mutantes SQL generados con sqlglot · inyección de fallos · intervalos de Wilson |
 | 🔗 Evidencia | cadena de hashes JSONL que solo admite añadidos · semillas derivadas del sha del commit |
-| 🛠️ Calidad | Python 3.11+ · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
+| 🛠️ Calidad | Python · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
 
 ## 🗺️ Documentación
 
@@ -303,7 +305,7 @@ alternativas que descartó y el motivo.
 - [`docs/databricks-run-evidence.md`](docs/databricks-run-evidence.md) - qué midió el workspace, renderizado desde los registros que dejó
 - [`docs/runbook.md`](docs/runbook.md) - runbook de guardia: qué significa una alerta, problema de datos o de plataforma, y cómo reparar una ejecución
 - [`docs/findings/`](docs/findings/) - los informes de lo que encontró la puerta de recálculo
-- [`docs/join-skew.md`](docs/join-skew.md) - una clave se lleva el 30% de las filas: qué le pasa al join, medido
+- [`docs/join-skew.md`](docs/join-skew.md) - una clave se lleva una gran parte de las filas: qué le pasa al join, medido
 - [`EXAM_MAP.md`](EXAM_MAP.md) - la guía de Databricks Professional, objetivo por objetivo
 - [`PARITY.md`](PARITY.md) - la vía de código abierto frente a Databricks, claim a claim
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) - cómo contribuir: `make preflight` es la puerta

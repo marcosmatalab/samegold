@@ -13,16 +13,18 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from samegold import claims as claim_module
-from samegold.evidence import render, reproduce
+from samegold.evidence import databricks_doc, front_page, render, reproduce, translation
 from samegold.evidence.record import EvidenceRecord
 from samegold.evidence.render import check_readme, render_readme
 from samegold.evidence.store import EvidenceStore
@@ -233,7 +235,88 @@ def cmd_readme(args: argparse.Namespace) -> int:
         print(f"rendered {name}")
     for line in _render_databricks_anchors():
         print(f"rendered {line}")
+    facts, pins = repo_facts(REPO_ROOT), stack_pins(REPO_ROOT)
+    for name in translation.PAIR:
+        path = REPO_ROOT / name
+        text = path.read_text(encoding="utf-8")
+        rendered, _ = front_page.render_repo_facts(front_page.render_stack(text, pins), facts)
+        if rendered != text:
+            path.write_text(rendered, encoding="utf-8", newline="\n")
+        print(f"rendered {name}: repo facts and stack badges")
     return 0
+
+
+def repo_facts(root: Path) -> dict[str, str]:
+    """The facts a front page quotes that are DEFINED in this repository rather than measured.
+
+    Each comes from the one file that defines it, and nowhere else: the return window from the
+    contract, and the two numbers beside the GIF from the GIF's own frame delays and the
+    Makefile's speed-up. Collected here because the evidence layer may not import the domain.
+    """
+    from samegold.domain.contract import RETURN_WINDOW_DAYS
+
+    facts = {"contract.return_window_days": str(RETURN_WINDOW_DAYS)}
+    facts.update(
+        front_page.recording_facts(
+            (root / "docs" / "img" / "refute.gif").read_bytes(),
+            (root / "Makefile").read_text(encoding="utf-8"),
+        )
+    )
+    return facts
+
+
+def stack_pins(root: Path) -> dict[str, str]:
+    """The versions the stack badges print, read from `pyproject.toml` and from nowhere else."""
+    with (root / "pyproject.toml").open("rb") as handle:
+        project = tomllib.load(handle)["project"]
+    pins = {"python": str(project["requires-python"]).removeprefix(">=")}
+    for requirement in project["optional-dependencies"]["spark"]:
+        name, _, pinned = requirement.partition("==")
+        if name in ("pyspark", "delta-spark") and pinned:
+            pins[name] = pinned
+    return pins
+
+
+def front_page_findings(root: Path) -> list[str]:
+    """Everything a front page states that is not what its source says, or has no source.
+
+    What `samegold check` adds to the chain and the `sg:` anchors, and the reason it exists:
+    a Databricks figure edited by hand, the Databricks record edited by hand, a closed version
+    typed beside a rendered one and the numbers beside the GIF all used to pass the check.
+
+      * every `dbx:` anchor in every document that quotes the record, against the record;
+      * the record and the capture themselves, against their pinned digests;
+      * every `repo:` anchor and the stack badges, against the files that define them;
+      * any other number in the prose of either front page, which is a hand-typed figure.
+    """
+    record_path, capture_path = root / DBX_RECORD, root / DBX_CAPTURE
+    record = json.loads(record_path.read_text(encoding="utf-8")) if record_path.exists() else None
+    capture = (
+        json.loads(capture_path.read_text(encoding="utf-8")) if capture_path.exists() else None
+    )
+    found = databricks_doc.pin_drifts(root)
+    for name in DBX_DOCUMENTS:
+        path = root / name
+        if path.exists():
+            found += databricks_doc.anchor_drifts(
+                path.read_text(encoding="utf-8"), record, capture, name
+            )
+    facts, pins = repo_facts(root), stack_pins(root)
+    for name in translation.PAIR:
+        text = (root / name).read_text(encoding="utf-8")
+        for match in front_page.REPO_ANCHOR.finditer(text):
+            expected = facts.get(match.group(1))
+            if expected != match.group(2):
+                line = text.count("\n", 0, match.start()) + 1
+                found.append(
+                    f"{name}:{line}: repo:{match.group(1)} shows {match.group(2)!r} and the "
+                    f"repository says {expected!r}"
+                )
+        if front_page.render_stack(text, pins) != text:
+            line = text.count("\n", 0, text.find(front_page.STACK_BEGIN)) + 1
+            found.append(f"{name}:{line}: the stack badges do not match pyproject.toml")
+        found += [str(item) for item in front_page.hand_typed_figures(text, name)]
+    return found
 
 
 # The documents that quote the Databricks record. The run document carries the whole closed
@@ -296,6 +379,16 @@ def cmd_check(args: argparse.Namespace) -> int:
         raise UserError(
             f"{len(drifts)} places where the documents and the evidence disagree",
             "run `make readme` to regenerate them from evidence/history.jsonl",
+        )
+    findings = front_page_findings(REPO_ROOT)
+    if findings:
+        for finding in findings:
+            print(f"DRIFT {finding}")
+        raise UserError(
+            f"{len(findings)} figures on the documents that their source does not support",
+            "run `make readme` to re-render them; a pinned Databricks file that changed "
+            "needs its digest moved in samegold.evidence.databricks_doc.PINNED_DIGESTS, and a "
+            "hand-typed figure has to become an anchor or go",
         )
     print(
         f"evidence chain verified ({store.counts()['total']} records) and the documents "

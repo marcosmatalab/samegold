@@ -18,6 +18,7 @@ set from the other side.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -81,6 +82,16 @@ def scalars_from(record: dict[str, Any]) -> dict[str, Any]:
         month = str(row["accounting_month"]).replace("-", "_")
         out[f"revenue.{month}.gross_cents"] = row.get("gross_cents")
         out[f"revenue.{month}.line_count"] = row.get("line_count")
+    # EVERY CLOSED VERSION, not only the last. The front page tells the story of one month
+    # closed three times, and until these existed the first two figures of that story were
+    # typed by hand beside a rendered third - so an edit to either passed every gate.
+    for row in record.get("revenue_closed") or []:
+        if not isinstance(row, dict) or not row.get("accounting_month"):
+            continue
+        if row.get("close_version") is None:
+            continue
+        month = str(row["accounting_month"]).replace("-", "_")
+        out[f"closed.{month}.v{row['close_version']}.gross_cents"] = row.get("gross_cents")
     return {name: value for name, value in out.items() if value is not None}
 
 
@@ -300,3 +311,83 @@ def render_files(
         )
         lines.append(f"{name}: {anchors} dbx anchor(s){note}")
     return lines
+
+
+def anchor_drifts(
+    text: str,
+    record: dict[str, Any] | None,
+    capture: dict[str, Any] | None,
+    document: str,
+) -> list[str]:
+    """Every `dbx:` anchor whose body is not what the record renders, with its line.
+
+    `render` rewrites a document; this says, without writing anything, which anchors a rewrite
+    would change. It is what `samegold check` runs over every document that quotes the record:
+    the check used to compare the `sg:` anchors with the chain and never looked at these, so a
+    Databricks figure edited by hand passed it.
+    """
+    rendered, _ = render(text, record, capture)
+    if rendered == text:
+        return []
+    shown = list(ANCHOR.finditer(text))
+    expected = list(ANCHOR.finditer(rendered))
+    out: list[str] = []
+    for before, after in zip(shown, expected, strict=True):
+        if before.group(2) != after.group(2):
+            line = text.count(chr(10), 0, before.start()) + 1
+            out.append(
+                f"{document}:{line}: dbx:{before.group(1)} shows {before.group(2).strip()!r} "
+                f"and the record says {after.group(2).strip()!r}"
+            )
+    return out
+
+
+def canonical_digest(path: Path) -> str:
+    """SHA-256 of a JSON file's CONTENT: sorted keys, no insignificant whitespace.
+
+    Over the parsed value rather than the bytes, so a checkout that rewrites line endings or a
+    formatter that re-indents does not move it, and any change to a value does.
+    """
+    value = json.loads(path.read_text(encoding="utf-8"))
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+#: The Databricks record and the capture beside it, pinned by content digest.
+#:
+#: WHY A PIN AND NOT THE CHAIN. These files stay OUT of `evidence/history.jsonl`, and the
+#: record's own `chain.why` is the reason: nobody with a clone can recompute them, so a link
+#: for them would be the one unverifiable link in a chain whose value is that every link
+#: verifies. What was missing was narrower - the JSON could be edited and every document
+#: re-rendered from the edit, and nothing would notice. The digest lives here, in source that
+#: the fast lane type-checks and tests, and `samegold check` recomputes it: changing a figure in
+#: the record now means changing this line too, in the same diff, where a reviewer sees it.
+#:
+#: WHEN A NEW RUN IS FETCHED, `scripts/databricks_run.sh fetch` replaces the record and this
+#: pin has to move with it; `samegold check` names the file and prints the digest it measured.
+#: ADR 0016 is the decision and its cost.
+PINNED_DIGESTS = {
+    "evidence/databricks/SG-DBX-01.json": (
+        "c80fe1a079aeaf4d578acf8b432a67c8b045c54ac0c1b2ef43f049bc7811155c"
+    ),
+    "evidence/databricks/dim_customer_scd2.json": (
+        "e406bd7eef39a96e33cbd13ac186f5921809e14bdd137b67df828434a5156cc4"
+    ),
+}
+
+
+def pin_drifts(repo: Path) -> list[str]:
+    """Every pinned Databricks file whose content no longer matches its pin."""
+    out: list[str] = []
+    for name, pinned in PINNED_DIGESTS.items():
+        path = repo / name
+        if not path.exists():
+            out.append(f"{name}: pinned and missing")
+            continue
+        measured = canonical_digest(path)
+        if measured != pinned:
+            out.append(
+                f"{name}: content digest is {measured} and "
+                f"samegold.evidence.databricks_doc.PINNED_DIGESTS says {pinned}"
+            )
+    return out
