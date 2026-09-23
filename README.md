@@ -22,22 +22,35 @@ evidence anyone can recompute.**
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
 ![ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
 
-🧾 bitemporal close · ⚖️ cross-engine parity · 🧬 mutation testing · 💥 crash injection · 🔒 privacy purge · 🔗 hash-chained evidence
-
 </div>
 
 > [!TIP]
 > **In one sentence:** samegold closes a business's monthly revenue on Spark and Delta Lake,
-> keeps every signed-off version when late returns move a month, checks the close against an
-> independent reference that must agree to the cent, and publishes every claim from measurements
-> that are hash-chained and can be recomputed on demand.
+> keeps every version finance signed off, and publishes only claims a machine can re-measure.
+
+## 💡 The problem, in plain words
+
+Every month, finance **closes the books**: it adds up the month's sales, subtracts its returns
+and signs the result off. Customers can return an item up to 45 days after buying it, so returns
+keep arriving after that signature, and each one belongs to the month of the original sale. A
+month that is already closed keeps changing.
+
+That leaves a data team with two bad options. Overwrite the figure, and the number finance signed
+off disappears. Freeze it, and the reported month stops being true. **samegold keeps both figures:** every
+close is an immutable version, and each correction is added beside it as a new one.
+
+**Why the rest of the repository exists.** A revenue figure that is wrong while every check is
+green is an expensive failure, because nobody goes looking for it. So the pipeline is the smaller
+part of the repository, and most of the rest tries to break it: a second implementation written
+separately, generated mutants of its code, crashes injected mid-write and seeds that nobody
+chose. Every published claim is measured again on each run.
 
 ## 🎯 What it does
 
 - 🧾 **Closes the month.** Sales, returns and amendments flow bronze → silver → gold on Delta
   Lake and land in a versioned, immutable monthly revenue close.
-- ⏳ **Keeps history exact.** A return books into the month of the sale, so a month finance has
-  already signed off can move. Every closed version is kept beside the one that replaced it.
+- ⏳ **Keeps history exact.** Every closed version is kept beside the one that replaced it, so the
+  figure finance signed off never disappears.
 - ⚖️ **Checks it against an independent reference.** The Spark and Delta Lake pipeline and an
   independent DuckDB reference must produce one canonical digest, and the Databricks deployment
   is checked against that reference to the cent, version by version.
@@ -227,6 +240,37 @@ that refuses to run a job deployed from a commit that is not `HEAD`.
 to `validate`, starts no compute, pins every action to a commit sha and reads its token from a
 GitHub environment rather than a repository secret; with no `pull_request` trigger, a fork's pull
 request cannot reach it.
+
+## ⚖️ Design decisions and trade-offs
+
+Each decision is written up as an architecture decision record, with the alternatives it
+rejected and the reason.
+
+| Decision | Why | Trade-off accepted | ADR |
+|---|---|---|---|
+| **A second implementation, not more assertions** | Unit tests are blind in the same places as the code they test; an independent computation is not | Two implementations to maintain, and they share an author, so agreement is strong evidence rather than proof | [0001](docs/adr/0001-a-second-implementation-instead-of-more-tests.md) |
+| **Share the contract, duplicate the computation** | Column names, the 45-day window, the timezone and the currency are defined once; every derivation is written twice, so a misunderstanding surfaces as a disagreement | Every business rule exists twice, in DataFrame code and in SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
+| **Adaptive query execution stays on** | The production configuration is the one under test | Parity is checked on a sorted digest, never byte for byte on the files, so every projection must declare a total order | [0005](docs/adr/0005-adaptive-execution-stays-on.md) |
+| **Seeds derive from the commit sha** | A favourable seed cannot be chosen quietly | Each commit changes the synthetic population, so figures move between commits; that is why they are rendered rather than typed | [0007](docs/adr/0007-the-evidence-gate.md) |
+| **Evidence is append-only** | A stale figure is fixed by adding a measurement, so every past one stays inspectable | The history only grows, and the page quotes the latest record, which can predate the latest commit | [0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) |
+| **Cost is measured in files and bytes, not seconds** | The figures come from the per-file statistics in the Delta log, so they are identical on any machine | They say nothing about wall-clock latency | [0008](docs/adr/0008-cost-is-measured-in-files-and-bytes.md) |
+| **Privacy controls run in code** | They execute and are tested on every run, and the exposure check reads the output instead of trusting the masking step | A control in code can be bypassed by a different pipeline; the platform grants are only declared, for a workspace with groups | [0009](docs/adr/0009-governance-in-code.md) |
+| **The Delta lane fails when it cannot verify** | A lane that could not run its checks must not report success | Behind a proxy that blocks Maven Central, the lane fails rather than skipping | [0013](docs/adr/0013-the-delta-lane-fails-when-it-cannot-verify.md) |
+
+## 🧭 Where to look
+
+| To see | Go to |
+|---|---|
+| The Spark and Delta Lake pipeline | `src/samegold/pipelines/` |
+| The independent SQL reference | `src/samegold/oracle/gold_revenue.sql` |
+| The data contract shared by both | `src/samegold/domain/contract.py` |
+| The synthetic data generator and its ledger | `src/samegold/generator/` |
+| The Databricks bundle, pipeline and close job | `databricks/` |
+| Mutation testing | `src/samegold/mutation/` |
+| Crash injection | `src/samegold/faults/` |
+| The evidence chain and the README renderer | `src/samegold/evidence/` |
+| The Spark and Delta test lanes | `tests/spark/` · `tests/delta/` |
+| CI | `.github/workflows/` |
 
 ## 🧰 Tech stack
 

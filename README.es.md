@@ -22,23 +22,37 @@ evidencia que cualquiera puede recalcular.**
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
 ![ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
 
-🧾 cierre bitemporal · ⚖️ paridad entre motores · 🧬 pruebas de mutación · 💥 inyección de fallos · 🔒 purga de datos personales · 🔗 evidencia encadenada por hash
-
 </div>
 
 > [!TIP]
 > **En una frase:** samegold cierra los ingresos mensuales de un negocio sobre Spark y Delta
-> Lake, conserva cada versión ya firmada cuando las devoluciones tardías mueven un mes, contrasta
-> el cierre con una referencia independiente que tiene que coincidir al céntimo, y publica cada
-> claim a partir de mediciones encadenadas por hash que se pueden recalcular a demanda.
+> Lake, conserva cada versión que firmó finanzas y solo publica claims que una máquina puede
+> volver a medir.
+
+## 💡 El problema, en pocas palabras
+
+Cada mes, finanzas **cierra el mes**: suma las ventas, resta las devoluciones y firma el
+resultado. Un cliente puede devolver un artículo hasta 45 días después de comprarlo, así que las
+devoluciones siguen llegando después de esa firma, y cada una pertenece al mes de la venta
+original. Un mes ya cerrado sigue cambiando.
+
+Eso deja a un equipo de datos con dos malas opciones. Si sobrescribe la cifra, desaparece el
+número que firmó finanzas. Si la congela, el mes publicado deja de ser cierto. **samegold conserva
+las dos cifras:** cada cierre es una versión inmutable, y cada corrección se añade a su lado como una
+versión nueva.
+
+**Por qué existe el resto del repositorio.** Una cifra de ingresos que está mal mientras todas las
+comprobaciones están en verde es un fallo caro, porque nadie va a buscarlo. Por eso el pipeline es
+la parte menor del repositorio, y casi todo lo demás intenta romperlo: una segunda implementación
+escrita por separado, mutantes generados de su código, caídas inyectadas en mitad de una escritura
+y semillas que no eligió nadie. Cada claim publicada se vuelve a medir en cada ejecución.
 
 ## 🎯 Qué hace
 
 - 🧾 **Cierra el mes.** Ventas, devoluciones y rectificaciones fluyen por bronze → silver → gold
   sobre Delta Lake y terminan en un cierre mensual versionado e inmutable.
-- ⏳ **Mantiene la historia exacta.** Una devolución se imputa al mes de la venta, así que un mes
-  que finanzas ya ha firmado puede moverse. Cada versión cerrada se conserva junto a la que la
-  sustituyó.
+- ⏳ **Conserva el historial exacto.** Cada versión cerrada se conserva junto a la que la
+  sustituyó, así que la cifra que firmó finanzas nunca desaparece.
 - ⚖️ **Lo contrasta con una referencia independiente.** El pipeline de Spark y Delta Lake y una
   referencia independiente en DuckDB tienen que producir un único digest canónico, y el despliegue
   en Databricks se contrasta con esa referencia al céntimo, versión a versión.
@@ -178,8 +192,8 @@ flowchart TD
     class AGREE,DIGEST,CLAIMS,CHAIN,PAGE,VERIFY proof
 ```
 
-Las claims de abajo se renderizan desde `evidence/history.jsonl`, una cadena de hashes de
-solo adición, a partir del registro más reciente de cada claim. Cuando la población cambia, las
+Las claims de abajo se renderizan desde `evidence/history.jsonl`, una cadena de hashes que
+solo admite añadidos, a partir del registro más reciente de cada claim. Cuando la población cambia, las
 claims se vuelven a ejecutar y se añade un registro nuevo, y los que ya están en la cadena se
 quedan como están: **nunca se edita ni se reemplaza** un registro.
 [ADR 0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) es la
@@ -236,6 +250,37 @@ no es `HEAD`.
 un entorno de GitHub en lugar de un secreto del repositorio; como no tiene disparador
 `pull_request`, el pull request de un fork no puede alcanzarlo.
 
+## ⚖️ Decisiones de diseño y trade-offs
+
+Cada decisión está documentada como un registro de decisión de arquitectura (ADR), con las
+alternativas que descartó y el motivo.
+
+| Decisión | Por qué | Trade-off aceptado | ADR |
+|---|---|---|---|
+| **Una segunda implementación, no más aserciones** | Los tests unitarios están ciegos en los mismos sitios que el código que prueban; un cálculo independiente no | Dos implementaciones que mantener, y comparten autor, así que su acuerdo es evidencia sólida y no una prueba | [0001](docs/adr/0001-a-second-implementation-instead-of-more-tests.md) |
+| **Compartir el contrato, duplicar el cálculo** | Los nombres de columna, la ventana de 45 días, la zona horaria y la moneda se definen una vez; cada derivación se escribe dos veces, así que un malentendido aparece como un desacuerdo | Cada regla de negocio existe dos veces, en código DataFrame y en SQL | [0004](docs/adr/0004-what-is-shared-between-implementations.md) |
+| **La ejecución adaptativa sigue activada** | Lo que se prueba es la configuración de producción | La paridad se comprueba sobre un digest ordenado, nunca byte a byte sobre los ficheros, así que cada proyección tiene que declarar un orden total | [0005](docs/adr/0005-adaptive-execution-stays-on.md) |
+| **Las semillas derivan del sha del commit** | No se puede elegir en silencio una semilla favorable | Cada commit cambia la población sintética, así que las cifras se mueven entre commits; por eso se renderizan en lugar de escribirse a mano | [0007](docs/adr/0007-the-evidence-gate.md) |
+| **La evidencia solo admite añadidos** | Una cifra desfasada se corrige añadiendo una medición, así que todas las anteriores se pueden seguir inspeccionando | El historial solo crece, y la página cita el último registro, que puede ser anterior al último commit | [0010](docs/adr/0010-the-chain-is-append-only-and-the-documents-quote-its-head.md) |
+| **El coste se mide en ficheros y bytes, no en segundos** | Las cifras salen de las estadísticas por fichero del log de Delta, así que son idénticas en cualquier máquina | No dicen nada sobre la latencia real | [0008](docs/adr/0008-cost-is-measured-in-files-and-bytes.md) |
+| **Los controles de privacidad se ejecutan en código** | Se ejecutan y se prueban en cada ejecución, y la comprobación de exposición lee la salida en vez de fiarse del paso de enmascarado | Un control en código se puede eludir con otro pipeline; los permisos de plataforma solo se declaran, para un workspace con grupos | [0009](docs/adr/0009-governance-in-code.md) |
+| **La vía de Delta falla cuando no puede verificar** | Una vía que no pudo ejecutar sus comprobaciones no debe informar de éxito | Detrás de un proxy que bloquea Maven Central, la vía falla en lugar de omitirse | [0013](docs/adr/0013-the-delta-lane-fails-when-it-cannot-verify.md) |
+
+## 🧭 Dónde mirar
+
+| Para ver | Ve a |
+|---|---|
+| El pipeline de Spark y Delta Lake | `src/samegold/pipelines/` |
+| La referencia SQL independiente | `src/samegold/oracle/gold_revenue.sql` |
+| El contrato de datos que comparten las dos | `src/samegold/domain/contract.py` |
+| El generador de datos sintéticos y su libro mayor | `src/samegold/generator/` |
+| El bundle de Databricks, el pipeline y el job de cierre | `databricks/` |
+| Las pruebas de mutación | `src/samegold/mutation/` |
+| La inyección de fallos | `src/samegold/faults/` |
+| La cadena de evidencia y el renderizador del README | `src/samegold/evidence/` |
+| Las vías de test de Spark y Delta | `tests/spark/` · `tests/delta/` |
+| CI | `.github/workflows/` |
+
 ## 🧰 Stack técnico
 
 | Capa | Tecnología |
@@ -244,7 +289,7 @@ un entorno de GitHub en lugar de un secreto del repositorio; como no tiene dispa
 | ☁️ Nube | Databricks Asset Bundles · pipelines de Lakeflow · Jobs con tareas condicionales · Unity Catalog |
 | 🦆 Motor de referencia | DuckDB, que calcula el mismo cierre de forma independiente |
 | 🧪 Verificación | pytest · Hypothesis · mutantes SQL generados con sqlglot · inyección de fallos · intervalos de Wilson al 95% |
-| 🔗 Evidencia | cadena de hashes JSONL de solo adición · semillas derivadas del sha del commit |
+| 🔗 Evidencia | cadena de hashes JSONL que solo admite añadidos · semillas derivadas del sha del commit |
 | 🛠️ Calidad | Python 3.11+ · ruff · mypy strict · GitHub Actions: fast, spark, evidence, databricks |
 
 ## 🗺️ Documentación
