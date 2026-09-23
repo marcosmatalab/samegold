@@ -1,0 +1,44 @@
+name: databricks evidence
+
+# WHAT THE FRONT PAGE'S DATABRICKS BADGE MEASURES, on every push and every pull request.
+#
+# The badge used to point at databricks.yml, which runs only when dispatched by hand and only
+# validates or deploys definitions - it does not start the job - so its colour said nothing about
+# the close in the cloud. This workflow is what the badge points at instead, and it verifies
+# the Databricks evidence that IS committed, offline, with no workspace and no credential:
+#
+#   * the record and the capture beside it match the digests pinned in
+#     samegold.evidence.databricks_doc.PINNED_DIGESTS, and every figure the documents quote from
+#     them is what they say (tests/fast/test_front_page_figures.py);
+#   * every closed version the workspace published is recomputed to the cent by the DuckDB
+#     reference over the population `samegold generate-late` reproduces, and no signed-off
+#     version was rewritten (tests/fast/test_databricks_close_parity.py).
+#
+# Green means the Databricks figures on this repository's pages are the ones the workspace
+# measured and the open-source lane agrees with them. It does not mean the job ran today: that
+# is a statement about a workspace, and the workspace is not reachable from here. ADR 0018.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: the committed Databricks evidence, recomputed offline
+        run: >-
+          pytest -q -p no:cacheprovider
+          tests/fast/test_databricks_close_parity.py
+          tests/fast/test_front_page_figures.py

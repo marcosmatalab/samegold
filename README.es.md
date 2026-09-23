@@ -10,7 +10,7 @@ evidencia que cualquiera puede recalcular.**
 [![fast](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/fast.yml)
 [![spark](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/spark.yml)
 [![evidence](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/evidence.yml)
-[![databricks](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks.yml)
+[![databricks evidence](https://github.com/marcosmatalab/samegold/actions/workflows/databricks-evidence.yml/badge.svg?branch=main)](https://github.com/marcosmatalab/samegold/actions/workflows/databricks-evidence.yml)
 [![release](https://img.shields.io/github/v/release/marcosmatalab/samegold)](https://github.com/marcosmatalab/samegold/releases/latest)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 

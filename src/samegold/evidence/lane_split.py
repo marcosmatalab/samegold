@@ -81,6 +81,8 @@ REPOSITORY_TESTS = {
     "test_front_page_figures.py",
     # Whether the front page's demo block is what the demo prints: the page, not the close.
     "test_demo_block.py",
+    # Whether a badge's workflow measures what the badge is named after: CI paperwork.
+    "test_badges.py",
 }
 DOMAIN_TESTS = {
     "test_databricks_close_parity.py",

@@ -37,6 +37,9 @@ COVERED = {"fast.yml", "spark.yml"}
 NOT_A_GATE = {
     "evidence.yml": "an hour of compute, and it WRITES the evidence it would be checking",
     "databricks.yml": "needs an account and a token, and a run can spend the daily quota",
+    # Not excluded for cost: it runs two fast-lane files, which the preflight already runs
+    # inside `make fast`. It exists so that the Databricks badge names what it measures.
+    "databricks-evidence.yml": "a subset of the fast lane, which the preflight runs whole",
 }
 
 # The tools whose invocations are checks rather than setup. `pip install`, `sudo rm -rf` and

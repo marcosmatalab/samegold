@@ -36,6 +36,13 @@ will see.
   comparison can be byte for byte. `tests/fast/test_demo_block.py` compares the real
   command's stdout with both front pages. The claims keep their commit-derived seeds.
   ADR 0017.
+- **The Databricks badge measures something.** It pointed at `databricks.yml`, which runs only
+  when dispatched by hand and does not start the job, so its colour said nothing about the close.
+  It now points at `databricks-evidence.yml`, which runs on every push and pull request and
+  verifies the committed Databricks evidence offline: the pinned record, the figures that
+  quote it, and every closed version recomputed to the cent on DuckDB.
+  `tests/fast/test_badges.py` fails for a badge whose workflow only runs by hand, and for a
+  Databricks badge whose workflow does not run that verification. ADR 0018.
 
 ## [0.2.0] - 2026-09-22
 

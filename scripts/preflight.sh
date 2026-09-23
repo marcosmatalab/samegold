@@ -24,8 +24,10 @@
 #                   pre-push gate that rewrites the evidence chain is not a gate.
 #   databricks.yml  needs an account, a token and a Free Edition workspace, and a run there
 #                   can spend that account's quota for the day. `make databricks` is that one.
+#   databricks-evidence.yml  two fast-lane test files, run on their own so the Databricks badge
+#                   names what it measures; `make fast` below already runs both.
 #
-# Both of those exclusions are named in tests/fast/test_preflight.py, so a NEW workflow forces
+# All of those exclusions are named in tests/fast/test_preflight.py, so a NEW workflow forces
 # a decision here rather than being silently uncovered.
 
 set -uo pipefail  # not -e: every step runs, and the failures are reported together

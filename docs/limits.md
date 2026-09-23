@@ -460,8 +460,10 @@ checked from a clone, and the workspace is not.
 - The Databricks run records under `evidence/databricks/` are the one thing in this repository
   a reader has to take on trust: they are fetched from a workspace a clone has no credential
   for, and they say so themselves with `"chain": {"chained": false}`.
-- A green `databricks` badge means the bundle resolved and the credentials worked, and nothing
-  about the close. The fields the close depends on are asserted in the fast lane instead.
+- The `databricks evidence` badge verifies the COMMITTED record offline, on every push: the
+  pinned digest, the figures that quote it, and each closed version recomputed on DuckDB. It
+  says nothing about whether the job has run in the workspace since that record was fetched;
+  that is a fact about a workspace this repository cannot reach.
 - The split between platform code and harness code quoted on the front page is an addition
   over a classification, and the classification is a judgement written out in
   `src/samegold/evidence/lane_split.py`.
