@@ -83,6 +83,8 @@ REPOSITORY_TESTS = {
     "test_demo_block.py",
     # Whether a badge's workflow measures what the badge is named after: CI paperwork.
     "test_badges.py",
+    # Whether the evidence job waits for the checks before merging: CI paperwork.
+    "test_evidence_pr_checks.py",
 }
 DOMAIN_TESTS = {
     "test_databricks_close_parity.py",

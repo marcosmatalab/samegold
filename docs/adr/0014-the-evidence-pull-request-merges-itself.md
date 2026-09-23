@@ -1,6 +1,7 @@
 # ADR 0014 - the evidence pull request is merged by the job that opened it
 
-**Status** accepted, 2026-09-22 (superseding the version of this ADR that described `--auto`)
+**Status** accepted, 2026-09-22 (superseding the version of this ADR that described `--auto`);
+amended 2026-09-23: the merge now waits for the repository's own checks on the evidence branch
 
 ## Context
 
@@ -88,12 +89,24 @@ front page is [ADR 0011](0011-the-gate-recomputes-the-record.md), running on the
 produced the record, before the push - which is strictly earlier than any check on the pull
 request could have bitten, and which is why the two decisions were made together.
 
-The merge is not conditional on the pull request's own checks, because they do not run. It is
-conditional on the steps before it in the job, which do: `samegold check`, then
-`samegold verify-latest`. A failure in either fails the job before the branch is pushed.
+The merge is conditional on the steps before it in the job - `samegold check`, then
+`samegold verify-latest`, either of which fails the job before the branch is pushed - AND, since
+23 September 2026, on the repository's own checks passing on the evidence branch.
 
-`fast.yml` then runs on the resulting push to `main`, so a record that got past both gates
-turns the badge red within minutes rather than at the next review.
+That second condition is the amendment, and what it corrects is a sentence that used to stand
+here: that `fast.yml` "then runs on the resulting push to `main`". It did not. The branch, the
+pull request and the merge are all made with GITHUB_TOKEN, and GitHub starts no workflow for a
+push or a pull request made with that token, so no check ever ran on an evidence pull request
+or on the commit it left on `main`. A `workflow_dispatch` made with the same token is the
+documented exception, so the job now runs `gh workflow run fast.yml --ref "$branch"` and the
+same for `databricks-evidence.yml`, waits for both with `gh run watch`, and merges only if both
+are green; a red one leaves the pull request open and fails the job. The cost is the length of
+the job, by the few minutes those two take. `tests/fast/test_evidence_pr_checks.py` holds the
+order.
+
+The same amendment added a `commit` input to the dispatch, so a run can measure a named commit
+- a release's own - after `main` has moved past it. The seeds still derive from that commit's
+sha: the input chooses what is measured, not how.
 
 **What this does not buy: a human reading the diff.** It never did. The honest description of
 the previous design is not "review" but "a branch nobody closed", and this ADR exists because
