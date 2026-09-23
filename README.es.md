@@ -69,19 +69,19 @@ readme` las escribe y `samegold check` hace fallar el build si alguna se aparta 
 
 | | Qué se mide | Resultado | Claim |
 |---|---|---|---|
-| ✅ | Vía rápida, sin JVM y sin credenciales | <!--sg:SG-00.artifact.tests_passed-->737<!--/sg--> tests superados en <!--sg:SG-00.artifact.fast_lane_seconds-->79.5<!--/sg--> s | `SG-00` |
+| ✅ | Vía rápida, sin JVM y sin credenciales | <!--sg:SG-00.artifact.tests_passed-->761<!--/sg--> tests superados en <!--sg:SG-00.artifact.fast_lane_seconds-->59.3<!--/sg--> s | `SG-00` |
 | ⚖️ | La referencia DuckDB y el libro mayor por construcción coinciden en cada cierre | <!--sg:SG-01.rate-->15/15 (95% CI 79.6%-100.0%)<!--/sg--> | `SG-01` |
 | 🔁 | Reentregar todos los ficheros con otra ruta no cambia nada | <!--sg:SG-02.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-02` |
 | 🧬 | Mutantes SQL generados no equivalentes que el arnés mata | <!--sg:SG-03.rate-->67/67 (95% CI 94.6%-100.0%)<!--/sg--> | `SG-03` |
 | ⏳ | Meses cerrados que se movieron tras la firma, con cada versión igual a la referencia | <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> | `SG-04` |
 | 🧮 | Invariantes de dimensión y de conservación, sin oráculo | <!--sg:SG-05.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-05` |
-| 🔗 | Registros de evidencia verificados en la cadena de hashes | <!--sg:SG-06.artifact.records_verified-->251<!--/sg--> | `SG-06` |
+| 🔗 | Registros de evidencia verificados en la cadena de hashes | <!--sg:SG-06.artifact.records_verified-->261<!--/sg--> | `SG-06` |
 | 💥 | Caídas inyectadas que el escritor de silver sobrevive | <!--sg:SG-07.rate-->20/20 (95% CI 83.9%-100.0%)<!--/sg--> | `SG-07` |
 | 🔒 | Identificadores directos fuera de gold, con la purga verificada | <!--sg:SG-08.rate-->6/6 (95% CI 61.0%-100.0%)<!--/sg--> | `SG-08` |
 | 📦 | Ficheros eliminados por la compactación | <!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->% | `SG-09` |
-| 📉 | Reducción de la parte de la tabla que lee una consulta por sku, gracias al clustering | <!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->% | `SG-09` |
+| 📉 | Reducción de la parte de la tabla que lee una consulta por sku, gracias al clustering | <!--sg:SG-09.artifact.share_read_reduction_pct-->76.96<!--/sg-->% | `SG-09` |
 | ☁️ | Eventos que cerró la vía de Databricks, con cada versión igual al céntimo a la vía de código abierto | <!--dbx:rows.bronze_events-->1883<!--/dbx--> eventos | `SG-DBX-01` |
-| 🧱 | Arnés de verificación frente a código de plataforma, en líneas | <!--sg:SG-00.artifact.harness_lines-->23 967<!--/sg--> frente a <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> | `SG-00` |
+| 🧱 | Arnés de verificación frente a código de plataforma, en líneas | <!--sg:SG-00.artifact.harness_lines-->24 884<!--/sg--> frente a <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> | `SG-00` |
 
 ## 🚀 Pruébalo en minutos
 
@@ -208,16 +208,16 @@ dos portadas.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 737/737 (95% CI 99.5%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 251/251 (95% CI 98.5%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, d69164100](https://github.com/marcosmatalab/samegold/actions/runs/35782684308) |
+| `SG-00` what this repository contains, counted | PASS | 761/761 (95% CI 99.5%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 261/261 (95% CI 98.5%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
 
 <!-- samegold:end claims -->
 

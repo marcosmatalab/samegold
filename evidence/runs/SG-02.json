@@ -3,8 +3,8 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
+  "ci_commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35900042512",
   "claim_id": "SG-02",
   "environment": {
     "delta_rs": "1.6.5",
@@ -16,12 +16,12 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "f37f472a57b3d3b03f4e1df3b7ba38c2",
+  "hash": "9a41d6557de446fd81b33432891d7c60",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "78cae1097069e928c1ef414ceaabf6d8",
+  "prev": "3d437d653c3e189ce8f8a0c33baa6a2e",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-      "duration_s": 6.778,
+      "commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+      "duration_s": 4.212,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        15861564610493268611,
-        1308079837314849785,
-        8923012627394385423
+        11356399861264310489,
+        4305884264756017728,
+        1689861471740389349
       ],
-      "started_at": "2026-09-22T20:49:45+00:00",
+      "started_at": "2026-09-23T18:06:14+00:00",
       "tree_dirty": false,
-      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
+      "tree_sha": "df1e2f967def9a2c7d14cace128029e0f360759a"
     }
   }
 }

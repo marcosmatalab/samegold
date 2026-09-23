@@ -1,7 +1,7 @@
 {
   "artifact_digest": null,
   "artifacts": {
-    "adrs": 15,
+    "adrs": 19,
     "demo_closed_at": "2026-02-05",
     "demo_dimension_well_formed": "yes",
     "demo_events": "772",
@@ -12,32 +12,31 @@
     "demo_observed_at": "2026-04-05",
     "demo_revenue_at_close": "150 658,58",
     "demo_revenue_now": "147 227,51",
-    "demo_seconds": "0.2",
     "demo_seed": "3606824677207351751",
     "deselected_in_this_run": "-m 'not evidence_dependent'",
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
-    "fast_lane_repository_tests": 578,
-    "fast_lane_seconds": 79.5,
+    "fast_lane_repository_tests": 618,
+    "fast_lane_seconds": 59.3,
     "fast_lane_unclassified_files": 0,
-    "harness_lines": 23967,
-    "harness_share_pct": 76.0,
-    "line_coverage_pct": 70.2,
-    "markdown_documents": 38,
+    "harness_lines": 24884,
+    "harness_share_pct": 76.7,
+    "line_coverage_pct": 68.54,
+    "markdown_documents": 43,
     "platform_lines": 7567,
-    "platform_share_pct": 24.0,
-    "python_modules": 58,
-    "source_lines": 13555,
-    "test_lines": 14275,
+    "platform_share_pct": 23.3,
+    "python_modules": 59,
+    "source_lines": 13990,
+    "test_lines": 14757,
     "tests_databricks_bundle": 135,
     "tests_delta": 6,
     "tests_failed": 0,
-    "tests_fast": 753,
-    "tests_passed": 737,
+    "tests_fast": 793,
+    "tests_passed": 761,
     "tests_spark": 148
   },
-  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
+  "ci_commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35900042512",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.5",
@@ -49,11 +48,11 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "16042c71609893a46e9119afc92fa709",
+  "hash": "0949e1c06c7c923f9a76926c591e58eb",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "73f6b8067937a8558342d7c0aad9b7b3",
+  "prev": "fce7c5e3e9a2eef97220a750d36d1c5d",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -62,27 +61,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 737,
-      "trials": 737,
+      "successes": 761,
+      "trials": 761,
       "wilson95": [
-        0.994815,
+        0.994977,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-      "duration_s": 83.782,
+      "commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+      "duration_s": 62.462,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        16336010361492796794
+        15672399543995091825
       ],
-      "started_at": "2026-09-22T20:52:40+00:00",
+      "started_at": "2026-09-23T18:08:20+00:00",
       "tree_dirty": false,
-      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
+      "tree_sha": "df1e2f967def9a2c7d14cace128029e0f360759a"
     }
   }
 }

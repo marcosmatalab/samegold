@@ -2,13 +2,13 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "6eb59aadc5250ce632b149c307f03b57",
-      "91b322218f0afdd7475d678fed353d10",
-      "efc51ffd89634f78058a3c16ef258f8a"
+      "333ea111dbf2c9c664d3dd108d35b558",
+      "4a9134dd7165777f4f7750b3422ec0cc",
+      "8a8f51ec78c03c82b4ad3553bb8d3852"
     ]
   },
-  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
+  "ci_commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35900042512",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.5",
@@ -20,11 +20,11 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "2e9bf63489584e2497267647228701e3",
+  "hash": "f4d9453d2c9c8b108ea3f4143c08e419",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "b4d63dbc260d85d81983035651fabd7e",
+  "prev": "5199e29a890dff36159ead44ce058dca",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-      "duration_s": 4.397,
+      "commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+      "duration_s": 2.855,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        8055892599026791019,
-        161298071202462649,
-        11394966353820397489
+        15908205255666751132,
+        9635567716842503377,
+        3701424043181811767
       ],
-      "started_at": "2026-09-22T20:51:06+00:00",
+      "started_at": "2026-09-23T18:07:09+00:00",
       "tree_dirty": false,
-      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
+      "tree_sha": "df1e2f967def9a2c7d14cace128029e0f360759a"
     }
   }
 }

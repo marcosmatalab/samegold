@@ -166,12 +166,12 @@ on any machine:
 - compaction removed **<!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->%**
   of the files;
 - clustering by (month, sku) cut the share of the table a sku predicate has to read by
-  **<!--sg:SG-09.artifact.share_read_reduction_pct-->78.25<!--/sg-->%**, **and by nothing at all**
+  **<!--sg:SG-09.artifact.share_read_reduction_pct-->76.96<!--/sg-->%**, **and by nothing at all**
   at large file sizes, where the two files it produces cover the whole key range. Both are
   published, and the headline is a share rather than a raw byte ratio because Z-ORDER also
   rewrites and recompresses, which a byte ratio would quietly take credit for;
 - deleting one month copied
-  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->10.98<!--/sg--> surviving rows per deleted
+  **<!--sg:SG-09.artifact.rows_copied_per_row_deleted-->11.05<!--/sg--> surviving rows per deleted
   row**, which is the argument for deletion vectors in one number.
 
 ## Two runtimes, one parity matrix
@@ -193,7 +193,7 @@ than into a README nobody re-reads.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->753<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->79.5<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->793<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->59.3<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->148<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

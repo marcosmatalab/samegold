@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "e6b31aaf9a2342a07b8d1dacd4bc95e6",
-        "digest_reversed": "e6b31aaf9a2342a07b8d1dacd4bc95e6",
+        "digest_forward": "e0a6e1005a1fc2f8628f8b981b90aa7b",
+        "digest_reversed": "e0a6e1005a1fc2f8628f8b981b90aa7b",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -231,8 +231,8 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35782684308",
+  "ci_commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/35900042512",
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.5",
@@ -244,12 +244,12 @@
     "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "33efc8b1d4f3a0854408d7f39e52e367",
+  "hash": "e4b5db47f0008eac54214a8675cbb1f4",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "f37f472a57b3d3b03f4e1df3b7ba38c2",
+  "prev": "9a41d6557de446fd81b33432891d7c60",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "d69164100c1eb5cbfa8145f00ff729a563d4cd00",
-      "duration_s": 75.012,
+      "commit_sha": "7b1ef2ed2da08a991be44b4426c83bd3674c4e5d",
+      "duration_s": 51.935,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        12472906455074912195
+        2519843252223444314
       ],
-      "started_at": "2026-09-22T20:51:00+00:00",
+      "started_at": "2026-09-23T18:07:06+00:00",
       "tree_dirty": false,
-      "tree_sha": "ee4b81fcc3356eae0733fcd9eb3126f094fb1f61"
+      "tree_sha": "df1e2f967def9a2c7d14cace128029e0f360759a"
     }
   }
 }
