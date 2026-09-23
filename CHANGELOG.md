@@ -9,7 +9,11 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the vers
 "version" means the state of the repository at a tag, not a package a dependency resolver
 will see.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-09-23
+
+The release in which the front pages stopped being able to say something the repository
+does not check. The short version is
+[`docs/release-notes-v0.3.0.md`](docs/release-notes-v0.3.0.md).
 
 ### Fixed
 
