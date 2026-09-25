@@ -2,7 +2,8 @@
   "fetched_at": "2026-09-05T12:04:29Z",
   "bundle_target": "free",
   "catalog": "samegold",
-  "deployed_from_commit": "b131010988bd6552453501e697e3ad71ad1d08de",
+  "deployed_from_commit": "5e6b2476f762266815ce574ea29d1924f6ba3184",
+  "deployed_from_commit_note": "executed from b131010, the pre-2026-09-26 equivalent of 5e6b247; deployed code identical except one comment (tests/fast/test_databricks_catalog_step.py:229)",
   "tree_dirty": false,
   "databricks_cli": "Databricks CLI v1.14.1",
   "note": "Written by scripts/databricks_run.sh on the machine that ran the deploy. Nothing here was measured inside the workspace; SG-DBX-01.json is. Neither file is part of evidence/history.jsonl - see evidence/databricks/README.md."

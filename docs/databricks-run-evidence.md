@@ -28,7 +28,7 @@ here was typed.
 | task run | `451890332619879` |
 | pipeline | `f640de65-59ba-4dfc-838d-c6a569dad44c` |
 | pipeline update | `0566092c-af8d-4126-967e-d014569442d1` |
-| deployed from commit | `b131010988bd6552453501e697e3ad71ad1d08de`, clean tree |
+| deployed from commit | `5e6b2476f762266815ce574ea29d1924f6ba3184`, clean tree; executed from `b131010`, the pre-2026-09-26 equivalent of `5e6b247`, with identical deployed code except one comment (`tests/fast/test_databricks_catalog_step.py:229`) |
 | catalog | `samegold`, Unity Catalog, Free Edition |
 | final state | <!--dbx:update.last_state-->COMPLETED<!--/dbx--> with <!--dbx:update.error_events-->0<!--/dbx--> error events |
 | the job's branch | <!--dbx:orch.branch-->verify_each_restated_month<!--/dbx-->, because it decided `<!--dbx:orch.decision-->restated<!--/dbx-->` |
