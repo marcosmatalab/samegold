@@ -115,8 +115,8 @@ POPULATION_FACTS = {
 }
 # The sections a record produced by the DEPLOYED notebook does not carry yet.
 #
-# CLOSED by the run from `ad936aa` on 4 September 2026, fetched in `65df0bc`. It held
-# `{"population"}` for one round: the digest was added to `publish_evidence.py` in `57e2a13`
+# CLOSED by the run from `b6621b1` on 4 September 2026, fetched in `6abc51c`. It held
+# `{"population"}` for one round: the digest was added to `publish_evidence.py` in `ec85952`
 # and `databricks bundle run` runs what was DEPLOYED, so between that commit and the deploy
 # there was a window in which the committed record could not answer. Naming the window meant
 # the comparison below was conditional AND the condition was dated - the run that landed the
@@ -436,12 +436,12 @@ def test_the_capture_names_the_run_the_record_names(capture: dict, record: dict)
 def test_the_record_says_which_events_it_read_or_says_it_cannot_yet(record: dict) -> None:
     """The digest is only a tie once a deployed notebook has written one.
 
-    `population` was added to `publish_evidence.py` in `57e2a13`, and `databricks bundle run`
+    `population` was added to `publish_evidence.py` in `ec85952`, and `databricks bundle run`
     runs what was DEPLOYED - so there was a window in which the committed record could not
     answer, and a check that quietly skips through such a window is how a comparison comes not
     to run for nine rounds.
 
-    The window was a CLOSED LIST instead: it held `{"population"}`, the run from `ad936aa`
+    The window was a CLOSED LIST instead: it held `{"population"}`, the run from `b6621b1`
     turned this test red, and emptying it is what made the fingerprint comparison below
     unconditional. The set stays declared and empty, so the next such window has to be named
     the same way rather than absorbed into an `if`.
@@ -492,7 +492,7 @@ def test_both_halves_of_the_comparison_describe_the_same_population(
     assert published, (
         "the record carries no `population` section, so the events behind it cannot be "
         "reproduced and nothing below is a parity result. This stopped being conditional when "
-        "the run from `ad936aa` landed one; if a later record has none, it came from a "
+        "the run from `b6621b1` landed one; if a later record has none, it came from a "
         "deployment older than that."
     )
     ours = population_digest(bronze, str(published["columns"]).split(","))

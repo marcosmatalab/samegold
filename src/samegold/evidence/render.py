@@ -90,7 +90,7 @@ def _value_for(record: dict[str, Any], field: str) -> str:
         # red on half the machines that ran it, and a tolerance would be a typed number under
         # another name.
         #
-        # So the defence is not re-measurement, it is DATING. "62.00% (CI, 7d4f4c3)" stops
+        # So the defence is not re-measurement, it is DATING. "62.00% (CI, ec67b50)" stops
         # being current the moment the commit beside it stops being the head, and a reader can
         # see that without running anything. A bare "62.00%" cannot go stale visibly, which is
         # the original defect with better machinery under it.

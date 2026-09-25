@@ -60,7 +60,7 @@ the two removed lines: gone from main too
 ```
 
 **The conclusion was right and the method was wrong**, and those are separate facts. The
-content is in `main` because of `ad936aa`, and the finding that commit records is
+content is in `main` because of `b6621b1`, and the finding that commit records is
 [the one about a document written and not committed](../../FINDINGS.md) - the entry that says
 the FINDINGS entry closing the stale-deploy finding "was written and **not committed**", so the
 next deploy went out of a tree carrying it and the record said `deploy.tree_dirty: true`.

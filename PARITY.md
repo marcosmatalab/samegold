@@ -137,7 +137,7 @@ The fix is `track_history_column_list=["segment", "country"]` - the same pair th
 compares with `lag()` - which makes a change to `event_ts` or `event_id` alone update the
 current row instead of opening a version.
 
-**IT RAN, the same day, and the divergence is closed.** From commit `8c9faa7` the workspace
+**IT RAN, the same day, and the divergence is closed.** From commit `36b11a6` the workspace
 produced **75 versions, 60 customers, 60 open rows and 15 closed** - the OSS lane's shape
 exactly, in every one of the four numbers. That record is in this repository at
 `evidence/databricks/SG-DBX-01.json`, so this is no longer a claim about a terminal:

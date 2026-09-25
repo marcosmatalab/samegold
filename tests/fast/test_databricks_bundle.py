@@ -1931,12 +1931,12 @@ def test_the_money_columns_are_declared_as_integers() -> None:
 # found in its own linting, its own mutation campaign and its own preflight; here it is again,
 # in the test written to catch the class.
 #
-# `publish_evidence.py` has converted both since `8c9faa7`, and for a while the committed files
-# still carried the strings: the notebook that wrote them was deployed from `4d13a13`, before
+# `publish_evidence.py` has converted both since `36b11a6`, and for a while the committed files
+# still carried the strings: the notebook that wrote them was deployed from `87a8a40`, before
 # the conversion, and `databricks bundle run` runs what was DEPLOYED. That gap is the reason
 # this list existed, and it is why the entries were named rather than tolerated - a run from
 # the fixed notebook had to turn this test red, and it did.
-# CLOSED by the run from `ad936aa` on 4 September 2026, fetched in `65df0bc`: both files now
+# CLOSED by the run from `b6621b1` on 4 September 2026, fetched in `6abc51c`: both files now
 # carry a real `false`. The set is empty and stays declared, because an empty closed list is a
 # stronger statement than no list - it says the exception was retired rather than forgotten,
 # and a NEW string boolean fails against `set()` immediately.
@@ -2049,7 +2049,7 @@ def test_a_boolean_in_the_record_is_a_boolean() -> None:
         if isinstance(value, str) and value.lower() in {"true", "false"}
     }
     # A CLOSED LIST, not a tolerance. The record committed here was produced by a notebook
-    # deployed from `4d13a13`, which is before the conversion above existed - `bundle run` runs
+    # deployed from `87a8a40`, which is before the conversion above existed - `bundle run` runs
     # what was deployed - so it still carries the one field. Listing it by name means two
     # things: a NEW string boolean fails immediately, and the next run from a deployed fix
     # fails too, because this set will no longer match. Emptying it is what that run requires.

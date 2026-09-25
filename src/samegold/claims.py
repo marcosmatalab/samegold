@@ -284,7 +284,7 @@ def _line_coverage(root: Path) -> float | None:
 #: The demo used to draw `seeds_from_commit(1, purpose="demo")`, like the claims do, and its
 #: README block was rendered from SG-00's record. The seed moved on every commit and the record
 #: did not, so the block showed the output of an older commit under a sentence saying it matched
-#: the current one - at 9bd66c1 the page said 772 events and the program printed 802. Deriving
+#: the current one - at cf7bf5a the page said 772 events and the program printed 802. Deriving
 #: seeds from the commit is what stops anyone choosing a favourable population for a CLAIM; the
 #: demo proves nothing, it illustrates, and an illustration that changes on every commit cannot
 #: be quoted. This is the seed the block showed when it was last right.

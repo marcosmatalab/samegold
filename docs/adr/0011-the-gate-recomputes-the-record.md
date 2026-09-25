@@ -6,7 +6,7 @@
 
 ADR 0007 built the evidence gate and ADR 0010 made the chain append-only. Between them they
 answer four attacks, and an adversarial review on 20 September 2026 measured all four holding
-against a clean clone of `9e52f15`:
+against a clean clone of `0354a58`:
 
 | attack | what the gate said |
 |---|---|

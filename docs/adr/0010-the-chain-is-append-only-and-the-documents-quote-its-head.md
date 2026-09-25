@@ -1,6 +1,8 @@
 # ADR 0010 - the chain is append-only, and the documents quote its head
 
-**Status** accepted, 2026-09-02
+**Status** accepted, 2026-09-02; the chain restarted on 2026-09-26: the repository history
+was rewritten and earlier records named commits that no longer exist. Earlier versions of
+`evidence/history.jsonl` remain in its git history.
 
 ## Context
 

@@ -5,9 +5,9 @@
 ## Context
 
 The README's demo block said it "always matches what the program prints on the current commit".
-At `9bd66c1` the program printed 802 events, 292 files, 157 581,20 EUR and -3,03 %; the block
+At `cf7bf5a` the program printed 802 events, 292 files, 157 581,20 EUR and -3,03 %; the block
 showed 772 events, 150 658,58 EUR and -2,28 %, which is the output for the seed of commit
-`d69164100`.
+`0305621dc`.
 
 Two mechanisms were fighting. The demo drew its seed from the commit sha, like every claim, so
 its output moved on every commit. The block was rendered from SG-00's record, which is written by

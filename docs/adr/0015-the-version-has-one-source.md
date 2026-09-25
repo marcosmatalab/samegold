@@ -21,7 +21,7 @@ read from the installed distribution with `importlib.metadata`, so it cannot dis
 heading of `CHANGELOG.md`, when the module assigns a literal instead of reading the metadata,
 and when the installed distribution is not the declared version.
 
-**Tags that already exist are not rewritten.** `v0.1.0` and `v0.2.0` keep the metadata they
+**Tags that already exist keep their metadata.** `v0.1.0` and `v0.2.0` keep the metadata they
 shipped with; the next release is the first whose package reports its own number, and it is
 `0.3.0`.
 

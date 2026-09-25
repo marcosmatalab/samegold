@@ -1,9 +1,9 @@
 """What the front page says `make demo` prints is, byte for byte, what it prints on this commit.
 
 WHAT THIS EXISTS BECAUSE OF. The README said its demo block "always matches what the program
-prints on the current commit". At `9bd66c1` the program printed 802 events, 292 files,
+prints on the current commit". At `cf7bf5a` the program printed 802 events, 292 files,
 157 581,20 EUR and -3,03 %, and the block showed 772 events, 150 658,58 EUR and -2,28 % - the
-output for the seed of commit `d69164100`, copied into the evidence and from there onto the
+output for the seed of commit `0305621dc`, copied into the evidence and from there onto the
 page. The demo's seed was derived from the commit sha, so the block was stale on every commit
 after the one it was rendered on, and nothing compared the two.
 

@@ -1,7 +1,7 @@
 # Changelog
 
 What each release changed, and why. Not a history of versions that never existed: this file
-starts at the first tag, and the eighty-nine commits before it are in `git log` and in
+starts at the first tag, and the commits before it are in `git log` and in
 [`FINDINGS.md`](FINDINGS.md), which is where the interesting part of them lives.
 
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the versions are
@@ -11,8 +11,12 @@ will see.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-26
+
 ### Changed
 
+- **Evidence chain restarted on 2026-09-26.** The repository history was rewritten and
+  earlier records named commits that no longer exist.
 - **Evidence pull requests wait for the repository's own checks before they merge.**
   `evidence.yml` opens its pull request and merges it in the same step, and both are made
   with GITHUB_TOKEN, for which GitHub starts no workflow - so no check had ever run on an
@@ -53,7 +57,7 @@ does not check. The short version is
   front page is reported with its line. `tests/fast/test_front_page_figures.py` edits each
   figure by hand and requires the check to name it. ADR 0016.
 - **The demo block is what the demo prints.** The README's block showed the output of commit
-  `d69164100` - 772 events, -2,28 % - while `make demo` at `9bd66c1` printed 802 events and
+  `0305621dc` - 772 events, -2,28 % - while `make demo` at `cf7bf5a` printed 802 events and
   -3,03 %: the demo's seed came from the commit sha and the block from an older evidence
   record. The demo now uses a fixed seed, `samegold readme` renders the block by running it,
   `samegold check` runs it again and compares, and the run's duration goes to stderr so the

@@ -1,7 +1,7 @@
 # Three runs, predicted before they ran
 
 Written on 5 September 2026, before any of the three was launched, against the record from
-`ad936aa` in `evidence/databricks/SG-DBX-01.json`. It exists to be **scored**, the way the
+`b6621b1` in `evidence/databricks/SG-DBX-01.json`. It exists to be **scored**, the way the
 prediction in `docs/databricks-run.md` was scored and lost: a list written afterwards is a
 description, and a description cannot be wrong.
 
@@ -201,7 +201,7 @@ streaming tables are incremental, so the counts are per update. This update inge
 Either is a fact about how Lakeflow reports an empty update, which is worth learning and is not
 worth guessing at in advance. What would be a defect is a third outcome: 573 again, or 1300,
 which would mean the query lost its scope to the last update and is reporting the pipeline's
-whole history the way it did before `57e2a13`.
+whole history the way it did before `ec85952`.
 
 ### Where this run's record goes
 

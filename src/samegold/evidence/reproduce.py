@@ -1,6 +1,6 @@
 """The gate that recomputes a published figure instead of validating its paperwork.
 
-WHY THIS EXISTS, measured on 20 September 2026 against HEAD ``9e52f15``. The chain had four
+WHY THIS EXISTS, measured on 20 September 2026 against HEAD ``0354a58``. The chain had four
 defences and an adversarial review walked past all four with fifteen lines of Python:
 
     latest = ...                                   # the REAL SG-03 record

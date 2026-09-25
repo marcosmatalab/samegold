@@ -13,8 +13,8 @@ person can look at it before it becomes the number on the front page.
 Measured over four fires of that cron: run 33815591122 (3 September) was merged, and runs
 34106077889, 34830672517 and 35586535706 were not. One of four. The cost was not theoretical -
 two of those branches were **ahead 1, behind 0** of `main`, green runs over that very HEAD
-carrying the correction that moved `SG-00` from `local run, not reproduced in CI, 98c980b44` to
-`CI, 9e52f158e`. The front page of a repository whose thesis is that unregenerated documents
+carrying the correction that moved `SG-00` from `local run, not reproduced in CI, aaa3c1fac` to
+`CI, 0354a5832`. The front page of a repository whose thesis is that unregenerated documents
 rot named a commit eighteen behind HEAD, while the regeneration sat in a branch.
 
 Opening the pull request was never the hard part. Closing it was.

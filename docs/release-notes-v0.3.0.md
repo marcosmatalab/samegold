@@ -2,7 +2,7 @@
 
 The release in which the front pages stopped being able to say something the repository does
 not check. Four defects, found on 23 September 2026 by installing and running a clean clone of
-`9bd66c1` end to end, each fixed at its cause and each held shut by a test that failed before
+`cf7bf5a` end to end, each fixed at its cause and each held shut by a test that failed before
 the fix.
 
 [v0.1.0](https://github.com/marcosmatalab/samegold/blob/v0.3.0/docs/release-notes-v0.1.0.md) is
