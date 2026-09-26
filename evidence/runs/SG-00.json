@@ -1,0 +1,87 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "adrs": 19,
+    "demo_closed_at": "2026-02-05",
+    "demo_dimension_well_formed": "yes",
+    "demo_events": "772",
+    "demo_files": "301",
+    "demo_month": "2026-01",
+    "demo_move": "-3 431,07",
+    "demo_move_pct": "-2.28",
+    "demo_observed_at": "2026-04-05",
+    "demo_revenue_at_close": "150 658,58",
+    "demo_revenue_now": "147 227,51",
+    "demo_seed": "3606824677207351751",
+    "deselected_in_this_run": "-m 'not evidence_dependent'",
+    "fast_lane_domain_tests": 175,
+    "fast_lane_green": true,
+    "fast_lane_repository_tests": 613,
+    "fast_lane_seconds": 47.2,
+    "fast_lane_unclassified_files": 0,
+    "harness_lines": 24610,
+    "harness_share_pct": 76.5,
+    "line_coverage_pct": 68.31,
+    "markdown_documents": 43,
+    "platform_lines": 7567,
+    "platform_share_pct": 23.5,
+    "python_modules": 59,
+    "source_lines": 13909,
+    "test_lines": 14564,
+    "tests_databricks_bundle": 135,
+    "tests_delta": 6,
+    "tests_failed": 0,
+    "tests_fast": 788,
+    "tests_passed": 757,
+    "tests_spark": 148
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-00",
+  "environment": {
+    "delta_rs": "1.6.6",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.12.3",
+    "sqlglot": "30.19.0"
+  },
+  "hash": "84fc99ce88a7ce0832d09bb882038e2c",
+  "not_claimed": [
+    "that line counts measure anything about quality"
+  ],
+  "prev": "bb44ae8165a5a4b1e3a5bc9dd7816bab",
+  "runtime": "oss-local",
+  "title": "what this repository contains, counted",
+  "verdict": {
+    "claim_id": "SG-00",
+    "note": "fast lane green",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 757,
+      "trials": 757,
+      "wilson95": [
+        0.994951,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
+      "duration_s": 49.343,
+      "n": 1,
+      "profile": "n/a",
+      "runtime": "oss-local",
+      "seed_purpose": "facts",
+      "seed_source": "commit",
+      "seeds": [
+        1906356991667535345
+      ],
+      "started_at": "2026-09-26T00:00:57+00:00",
+      "tree_dirty": false,
+      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+    }
+  }
+}

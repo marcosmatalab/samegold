@@ -1,0 +1,76 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "checks": [
+      "masked dimension passes",
+      "no expired row survives",
+      "no purged identifier is left in the transaction log",
+      "purge deleted rows",
+      "purge vacuumed files",
+      "raw dimension is refused"
+    ],
+    "checks_failed": [],
+    "dimension_rows": 251,
+    "identifiers_left_in_the_log": [],
+    "leaks_in_masked_dimension": 0,
+    "leaks_in_raw_dimension": 1,
+    "purge": {
+      "cutoff": "2026-02-03",
+      "files_removed_by_vacuum": 1,
+      "note": "the DELETE alone would have left the rows readable through time travel; the vacuum is what makes the purge a purge",
+      "rows_deleted": 242,
+      "version_after": 3,
+      "version_before": 0
+    }
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-08",
+  "environment": {
+    "delta_rs": "1.6.6",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.12.3",
+    "sqlglot": "30.19.0"
+  },
+  "hash": "b3442bfd9d525c62ae206f377dfef38a",
+  "not_claimed": [
+    "that these controls are enforced by a platform: they run in code here, and the Databricks lane declares the equivalent row filter and column mask in SQL for a workspace that has account groups. Free Edition does not",
+    "that the generated data contains real personal data: it does not, which is why the check looks for the SHAPE of an identifier rather than for a real one"
+  ],
+  "prev": "2f42ff0a9091ecefe7695d338a82a585",
+  "runtime": "oss-local",
+  "title": "no direct identifier reaches gold, and a purge really purges",
+  "verdict": {
+    "claim_id": "SG-08",
+    "note": "masking, exposure check and purge",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 6,
+      "trials": 6,
+      "wilson95": [
+        0.609666,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
+      "duration_s": 0.351,
+      "n": 1,
+      "profile": "ci",
+      "runtime": "oss-local",
+      "seed_purpose": "privacy",
+      "seed_source": "commit",
+      "seeds": [
+        2956540083824797912
+      ],
+      "started_at": "2026-09-26T00:00:01+00:00",
+      "tree_dirty": false,
+      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+    }
+  }
+}

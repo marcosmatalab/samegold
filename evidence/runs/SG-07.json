@@ -1,0 +1,101 @@
+{
+  "artifact_digest": "3d1c1c7abd980322f5d4409d710235e1",
+  "artifacts": {
+    "batches_available": 7,
+    "clean_digest": {
+      "content": "acea4f60fa199e4c0d835c1f10ab6569",
+      "multiset": "a47edbc899e69c57c895e7b5eb7c74f6"
+    },
+    "divergence_rate_upper95_per_point": {
+      "after_batch_write_before_commit": 0.299573,
+      "before_batch_write": 0.299573
+    },
+    "divergence_rate_upper95_per_run": 0.149787,
+    "divergences": [],
+    "duration_s": 398.45,
+    "injected_runs": 20,
+    "missed_injections": [],
+    "negative_control": {
+      "detected_by": [
+        "multiset"
+      ],
+      "digest": {
+        "content": "acea4f60fa199e4c0d835c1f10ab6569",
+        "multiset": "801d15a0d22cc2d1d6655f51f746bfde"
+      },
+      "note": "the content digest deduplicates by event_id and is blind to double writes; the multiset digest is the one that has to catch this",
+      "status": "detected",
+      "writer": "append (non-idempotent on replay)"
+    },
+    "per_point": {
+      "after_batch_write_before_commit": {
+        "attempts": 10,
+        "converged": 10,
+        "injected": 10
+      },
+      "before_batch_write": {
+        "attempts": 10,
+        "converged": 10,
+        "injected": 10
+      }
+    },
+    "points_covered": 2,
+    "points_total": 2,
+    "reachable_points_not_covered": [
+      "mid_merge",
+      "after_gold_before_close_marker"
+    ],
+    "reachable_points_total": 4,
+    "runs": 20
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-07",
+  "environment": {
+    "delta_rs": "1.6.6",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.12.3",
+    "sqlglot": "30.19.0"
+  },
+  "hash": "48d635e0dc39fd6bffa31fcb2b225904",
+  "not_claimed": [
+    "crash safety of the engine: the reachable points are the ones the writer owns, and the points inside a Delta commit or a state-store checkpoint are listed in faults/points.py as not covered",
+    "anything about Databricks: serverless gives you no process to kill"
+  ],
+  "prev": "d792f2128f7156a41236897f476ff7ef",
+  "runtime": "oss-local",
+  "title": "the silver writer survives a crash at each of its structural points",
+  "verdict": {
+    "claim_id": "SG-07",
+    "note": "negative control detected, no divergences",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 20,
+      "trials": 20,
+      "wilson95": [
+        0.838875,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
+      "duration_s": 398.491,
+      "n": 1,
+      "profile": "fast",
+      "runtime": "oss-local",
+      "seed_purpose": "faults",
+      "seed_source": "commit",
+      "seeds": [
+        13723333913623537523
+      ],
+      "started_at": "2026-09-26T00:07:21+00:00",
+      "tree_dirty": false,
+      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+    }
+  }
+}

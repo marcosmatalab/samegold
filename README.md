@@ -72,19 +72,19 @@ writes them and `samegold check` fails the build if one drifts from its record.
 
 | | What is measured | Result | Claim |
 |---|---|---|---|
-| ✅ | Fast lane, no JVM and no credentials | <!--sg:SG-00.artifact.tests_passed-->761<!--/sg--> tests pass in <!--sg:SG-00.artifact.fast_lane_seconds-->59.3<!--/sg--> s | `SG-00` |
+| ✅ | Fast lane, no JVM and no credentials | <!--sg:SG-00.artifact.tests_passed-->757<!--/sg--> tests pass in <!--sg:SG-00.artifact.fast_lane_seconds-->47.2<!--/sg--> s | `SG-00` |
 | ⚖️ | DuckDB reference and by-construction ledger agree at every close | <!--sg:SG-01.rate-->15/15 (95% CI 79.6%-100.0%)<!--/sg--> | `SG-01` |
 | 🔁 | Re-delivering every file under a new path changes nothing | <!--sg:SG-02.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-02` |
 | 🧬 | Non-equivalent generated SQL mutants killed | <!--sg:SG-03.rate-->67/67 (95% CI 94.6%-100.0%)<!--/sg--> | `SG-03` |
 | ⏳ | Closed months that moved after sign-off, every version matching the reference | <!--sg:SG-04.rate-->2/2 (95% CI 34.2%-100.0%)<!--/sg--> | `SG-04` |
 | 🧮 | Dimension and conservation invariants, no oracle needed | <!--sg:SG-05.rate-->3/3 (95% CI 43.9%-100.0%)<!--/sg--> | `SG-05` |
-| 🔗 | Evidence records verified in the hash chain | <!--sg:SG-06.artifact.records_verified-->261<!--/sg--> | `SG-06` |
+| 🔗 | Evidence records verified in the hash chain | <!--sg:SG-06.artifact.records_verified-->8<!--/sg--> | `SG-06` |
 | 💥 | Injected crashes the silver writer survives | <!--sg:SG-07.rate-->20/20 (95% CI 83.9%-100.0%)<!--/sg--> | `SG-07` |
 | 🔒 | Direct identifiers kept out of gold, purge verified | <!--sg:SG-08.rate-->6/6 (95% CI 61.0%-100.0%)<!--/sg--> | `SG-08` |
 | 📦 | Files removed by compaction | <!--sg:SG-09.artifact.files_removed_by_compaction_pct-->92.5<!--/sg-->% | `SG-09` |
-| 📉 | Cut in the share of the table a sku query reads, from clustering | <!--sg:SG-09.artifact.share_read_reduction_pct-->76.96<!--/sg-->% | `SG-09` |
+| 📉 | Cut in the share of the table a sku query reads, from clustering | <!--sg:SG-09.artifact.share_read_reduction_pct-->78.23<!--/sg-->% | `SG-09` |
 | ☁️ | Events the Databricks lane closed, every version matching the open-source lane to the cent | <!--dbx:rows.bronze_events-->1883<!--/dbx--> events | `SG-DBX-01` |
-| 🧱 | Verification harness against platform code, in lines | <!--sg:SG-00.artifact.harness_lines-->24 884<!--/sg--> against <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> | `SG-00` |
+| 🧱 | Verification harness against platform code, in lines | <!--sg:SG-00.artifact.harness_lines-->24 610<!--/sg--> against <!--sg:SG-00.artifact.platform_lines-->7 567<!--/sg--> | `SG-00` |
 
 ## 🚀 Try it in minutes
 
@@ -202,16 +202,16 @@ the full policy.
 
 | claim | result | experiment | runtime | provenance |
 |---|---|---|---|---|
-| `SG-00` what this repository contains, counted | PASS | 761/761 (95% CI 99.5%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 261/261 (95% CI 98.5%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
-| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | [CI, 7b1ef2ed2](https://github.com/marcosmatalab/samegold/actions/runs/35900042512) |
+| `SG-00` what this repository contains, counted | PASS | 757/757 (95% CI 99.5%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-01` two implementations agree on the close | PASS | 15/15 (95% CI 79.6%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-02` re-delivery under a new path is a no-op | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-03` mutation campaign | PASS | 67/67 (95% CI 94.6%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-04` a closed month moves after it is closed | PASS | 2/2 (95% CI 34.2%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-05` dimension and conservation invariants hold without an oracle | PASS | 3/3 (95% CI 43.9%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-06` the evidence chain verifies and every seed derives from its commit | PASS | 8/8 (95% CI 67.6%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-07` the silver writer survives a crash at each of its structural points | PASS | 20/20 (95% CI 83.9%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-08` no direct identifier reaches gold, and a purge really purges | PASS | 6/6 (95% CI 61.0%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
+| `SG-09` what layout costs, in files and bytes | PASS | 5/5 (95% CI 56.6%-100.0%) | oss-local | local run, not reproduced in CI, 60656e0f1 |
 
 <!-- samegold:end claims -->
 

@@ -1,0 +1,81 @@
+{
+  "artifact_digest": null,
+  "artifacts": {
+    "measured_over": "business_revenue",
+    "months_that_moved": [
+      {
+        "accounting_month": "2026-01",
+        "delta_cents": -3977341,
+        "delta_pct": -6.1714,
+        "final_net_cents": 60470366,
+        "first_close_net_cents": 64447707,
+        "versions": 3
+      },
+      {
+        "accounting_month": "2026-02",
+        "delta_cents": -934364,
+        "delta_pct": -3.4309,
+        "final_net_cents": 26299536,
+        "first_close_net_cents": 27233900,
+        "versions": 3
+      }
+    ],
+    "worst_delta_eur": "39 773,41",
+    "worst_final_eur": "604 703,66",
+    "worst_first_close_eur": "644 477,07",
+    "worst_month": "2026-01",
+    "worst_move_pct": 6.1714,
+    "worst_move_pct_including_boundary_fixtures": 6.0539,
+    "worst_versions": 3
+  },
+  "ci_commit_sha": null,
+  "ci_run_url": null,
+  "claim_id": "SG-04",
+  "environment": {
+    "delta_rs": "1.6.6",
+    "delta_spark": "4.4.0",
+    "duckdb": "1.5.5",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "pyarrow": "25.0.1",
+    "pyspark": "4.2.0",
+    "python": "3.12.3",
+    "sqlglot": "30.19.0"
+  },
+  "hash": "320cbf3374f6e731fe68c2dc831fc593",
+  "not_claimed": [
+    "that these percentages describe real retail: they describe this simulation, whose return rate is deliberately higher than a real one",
+    "that they describe the close. They describe the simulated shop: the boundary fixtures, which sit on the contract's bounds by construction and are therefore the largest lines it admits, are held out of this measurement and are included in every claim that compares implementations"
+  ],
+  "prev": "c699ec0d508c83da70dc4c42796a4a5b",
+  "runtime": "oss-local",
+  "title": "a closed month moves after it is closed",
+  "verdict": {
+    "claim_id": "SG-04",
+    "note": "largest move 6.17% of the first close",
+    "outcome": "pass",
+    "rate": {
+      "point": 1.0,
+      "successes": 2,
+      "trials": 2,
+      "wilson95": [
+        0.34238,
+        1.0
+      ]
+    },
+    "runs": {
+      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
+      "duration_s": 0.222,
+      "n": 1,
+      "profile": "ci",
+      "runtime": "oss-local",
+      "seed_purpose": "restatement",
+      "seed_source": "commit",
+      "seeds": [
+        16956901219873792219
+      ],
+      "started_at": "2026-09-25T23:59:57+00:00",
+      "tree_dirty": false,
+      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+    }
+  }
+}
