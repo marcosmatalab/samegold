@@ -17,11 +17,11 @@
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
     "fast_lane_repository_tests": 613,
-    "fast_lane_seconds": 47.2,
+    "fast_lane_seconds": 79.3,
     "fast_lane_unclassified_files": 0,
     "harness_lines": 24610,
     "harness_share_pct": 76.5,
-    "line_coverage_pct": 68.31,
+    "line_coverage_pct": 68.52,
     "markdown_documents": 43,
     "platform_lines": 7567,
     "platform_share_pct": 23.5,
@@ -32,27 +32,27 @@
     "tests_delta": 6,
     "tests_failed": 0,
     "tests_fast": 788,
-    "tests_passed": 757,
+    "tests_passed": 758,
     "tests_spark": 148
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36259852008",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.12.3",
+    "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "84fc99ce88a7ce0832d09bb882038e2c",
+  "hash": "e69cafac1475e15aba729b165905552d",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "bb44ae8165a5a4b1e3a5bc9dd7816bab",
+  "prev": "c5ae740e78c11ea7929d97ecf5073f82",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -61,27 +61,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 757,
-      "trials": 757,
+      "successes": 758,
+      "trials": 758,
       "wilson95": [
-        0.994951,
+        0.994958,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
-      "duration_s": 49.343,
+      "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
+      "duration_s": 83.314,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        1906356991667535345
+        5902234958721304752
       ],
-      "started_at": "2026-09-26T00:00:57+00:00",
+      "started_at": "2026-09-26T17:44:21+00:00",
       "tree_dirty": false,
-      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+      "tree_sha": "f426550767b9481599add6c0ae378c5e48036993"
     }
   }
 }
