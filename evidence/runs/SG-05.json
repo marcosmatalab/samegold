@@ -2,29 +2,29 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "16174fa43262fc7ebd0f435fae4c0202",
-      "4713853cae6fdaf4eb78d88fab3f508f",
-      "00174f1f5a93a9271c38e392f2317321"
+      "47325bec00251dbb4bfef659de09ee86",
+      "87dce845235497c833244781c3b10bb8",
+      "43301a3b07177f8aa3bb5732e6eb8580"
     ]
   },
-  "ci_commit_sha": null,
-  "ci_run_url": null,
+  "ci_commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36259852008",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.5",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
-    "python": "3.12.3",
+    "python": "3.11.16",
     "sqlglot": "30.19.0"
   },
-  "hash": "2f42ff0a9091ecefe7695d338a82a585",
+  "hash": "a48ef3478d2d5c88c0b551db7ef5e73b",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "320cbf3374f6e731fe68c2dc831fc593",
+  "prev": "f9bd15a17e75435558a884aad6875f99",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "60656e0f195b92268578dbd579071650b5e2c02a",
-      "duration_s": 2.825,
+      "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
+      "duration_s": 4.454,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        2281174030041208970,
-        8034702934146223295,
-        12159717049720755117
+        3181185964818182584,
+        843615919530728461,
+        16404482623252011988
       ],
-      "started_at": "2026-09-26T00:00:00+00:00",
+      "started_at": "2026-09-26T17:42:48+00:00",
       "tree_dirty": false,
-      "tree_sha": "d65bb74024cc76875936d4dbe065a4e04786f3f0"
+      "tree_sha": "f426550767b9481599add6c0ae378c5e48036993"
     }
   }
 }
