@@ -2,13 +2,13 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "chain_head": "e69cafac1475e15aba729b165905552d",
-    "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-    "records_verified": 18,
+    "chain_head": "40c6a8d62d091aaa0435f7f3128379aa",
+    "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+    "records_verified": 28,
     "seed_source": "commit"
   },
-  "ci_commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36259852008",
+  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
   "claim_id": "SG-06",
   "environment": {
     "delta_rs": "1.6.6",
@@ -18,42 +18,42 @@
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.19.0"
+    "sqlglot": "30.20.0"
   },
-  "hash": "faf7bcc9dac508bb0921a93df9488d78",
+  "hash": "06ced1eff1c6a86ea3c91327106ea583",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "e69cafac1475e15aba729b165905552d",
+  "prev": "40c6a8d62d091aaa0435f7f3128379aa",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "18 records verified against commit 0e65f43d7249",
+    "note": "28 records verified against commit 6a49e6fdf23d",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 18,
-      "trials": 18,
+      "successes": 28,
+      "trials": 28,
       "wilson95": [
-        0.824121,
+        0.879357,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-      "duration_s": 0.043,
+      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+      "duration_s": 0.047,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        5675946245300899075
+        6598313923122891371
       ],
-      "started_at": "2026-09-26T17:44:21+00:00",
+      "started_at": "2026-09-28T11:03:51+00:00",
       "tree_dirty": false,
-      "tree_sha": "f426550767b9481599add6c0ae378c5e48036993"
+      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
     }
   }
 }

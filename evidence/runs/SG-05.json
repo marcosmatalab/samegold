@@ -2,13 +2,13 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "47325bec00251dbb4bfef659de09ee86",
-      "87dce845235497c833244781c3b10bb8",
-      "43301a3b07177f8aa3bb5732e6eb8580"
+      "319eb35675a68ef2758072070b64a375",
+      "6a17349074de3f274ab41019d00277b2",
+      "7093087b7d0393235ac0385cf6fd383e"
     ]
   },
-  "ci_commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36259852008",
+  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.6",
@@ -18,13 +18,13 @@
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.19.0"
+    "sqlglot": "30.20.0"
   },
-  "hash": "a48ef3478d2d5c88c0b551db7ef5e73b",
+  "hash": "b1c4a53e6e497f348598178a0462bc89",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "f9bd15a17e75435558a884aad6875f99",
+  "prev": "7cace72ce5b3dd43b7df66fcb032bb92",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-      "duration_s": 4.454,
+      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+      "duration_s": 3.538,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        3181185964818182584,
-        843615919530728461,
-        16404482623252011988
+        16767584993082039021,
+        9051911262644022699,
+        10222770914581811030
       ],
-      "started_at": "2026-09-26T17:42:48+00:00",
+      "started_at": "2026-09-28T11:02:25+00:00",
       "tree_dirty": false,
-      "tree_sha": "f426550767b9481599add6c0ae378c5e48036993"
+      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
     }
   }
 }
