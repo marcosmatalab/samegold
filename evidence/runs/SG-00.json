@@ -17,7 +17,7 @@
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
     "fast_lane_repository_tests": 613,
-    "fast_lane_seconds": 79.3,
+    "fast_lane_seconds": 72.0,
     "fast_lane_unclassified_files": 0,
     "harness_lines": 24610,
     "harness_share_pct": 76.5,
@@ -35,8 +35,8 @@
     "tests_passed": 758,
     "tests_spark": 148
   },
-  "ci_commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36259852008",
+  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.6",
@@ -46,13 +46,13 @@
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.19.0"
+    "sqlglot": "30.20.0"
   },
-  "hash": "e69cafac1475e15aba729b165905552d",
+  "hash": "40c6a8d62d091aaa0435f7f3128379aa",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "c5ae740e78c11ea7929d97ecf5073f82",
+  "prev": "b6ad1eb93f90dee80bfd8da7aa951c8a",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -69,19 +69,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "0e65f43d7249ea88a3a2976d3b99ad2cb9809117",
-      "duration_s": 83.314,
+      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
+      "duration_s": 75.684,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        5902234958721304752
+        17534000652793496604
       ],
-      "started_at": "2026-09-26T17:44:21+00:00",
+      "started_at": "2026-09-28T11:03:51+00:00",
       "tree_dirty": false,
-      "tree_sha": "f426550767b9481599add6c0ae378c5e48036993"
+      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
     }
   }
 }
