@@ -2,58 +2,58 @@
   "artifact_digest": null,
   "artifacts": {
     "chain_breaks": [],
-    "chain_head": "40c6a8d62d091aaa0435f7f3128379aa",
-    "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-    "records_verified": 28,
+    "chain_head": "4feaa41107c3a051d2e8694c81fb8b83",
+    "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+    "records_verified": 38,
     "seed_source": "commit"
   },
-  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
+  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
   "claim_id": "SG-06",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
-    "duckdb": "1.5.5",
+    "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.20.0"
+    "sqlglot": "30.21.0"
   },
-  "hash": "06ced1eff1c6a86ea3c91327106ea583",
+  "hash": "b2f64f526d5425f6416d3a248962e1e7",
   "not_claimed": [
     "that a record marked as produced in CI really was: nothing offline can check that a run URL exists. The gate checks the shape and the commit; the renderer prints anything without one as a local run"
   ],
-  "prev": "40c6a8d62d091aaa0435f7f3128379aa",
+  "prev": "4feaa41107c3a051d2e8694c81fb8b83",
   "runtime": "oss-local",
   "title": "the evidence chain verifies and every seed derives from its commit",
   "verdict": {
     "claim_id": "SG-06",
-    "note": "28 records verified against commit 6a49e6fdf23d",
+    "note": "38 records verified against commit 49e2c17ebf0a",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 28,
-      "trials": 28,
+      "successes": 38,
+      "trials": 38,
       "wilson95": [
-        0.879357,
+        0.90819,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-      "duration_s": 0.047,
+      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+      "duration_s": 0.074,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "provenance",
       "seed_source": "commit",
       "seeds": [
-        6598313923122891371
+        3241444495686544898
       ],
-      "started_at": "2026-09-28T11:03:51+00:00",
+      "started_at": "2026-10-05T11:39:52+00:00",
       "tree_dirty": false,
-      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
+      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
     }
   }
 }

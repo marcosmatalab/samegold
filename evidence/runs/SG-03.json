@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "5f0bc481a0850bea62d8acbde5cb769d",
-        "digest_reversed": "5f0bc481a0850bea62d8acbde5cb769d",
+        "digest_forward": "0fb5e31d9171d392622592e36dcecff7",
+        "digest_reversed": "0fb5e31d9171d392622592e36dcecff7",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -230,25 +230,25 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
+  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
-    "duckdb": "1.5.5",
+    "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.20.0"
+    "sqlglot": "30.21.0"
   },
-  "hash": "5491dc84d6c6c7ed2ed4ce46a64538a4",
+  "hash": "ad19d1c848bda74c713eb7452e87dfb6",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "a72b8b62f78f57c508c5418f39dc89e8",
+  "prev": "6dca0291d4628a2e0adcd0e2a6fdc626",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -265,19 +265,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-      "duration_s": 64.617,
+      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+      "duration_s": 77.305,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        17923070124661582564
+        13133805647151085685
       ],
-      "started_at": "2026-09-28T11:02:21+00:00",
+      "started_at": "2026-10-05T11:38:14+00:00",
       "tree_dirty": false,
-      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
+      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
     }
   }
 }

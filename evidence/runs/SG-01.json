@@ -4,25 +4,25 @@
     "closes_per_run": 5,
     "comparisons": 15
   },
-  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
+  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
   "claim_id": "SG-01",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
-    "duckdb": "1.5.5",
+    "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.20.0"
+    "sqlglot": "30.21.0"
   },
-  "hash": "c00ab194b5094a8320b7197aa055b6a7",
+  "hash": "d41ccf9642e1ce78131dd11dac859cce",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "84f46f690c8e00c6036e772eb0311d87",
+  "prev": "abba2748b6db46289b703239d558c859",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -39,21 +39,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-      "duration_s": 2.769,
+      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+      "duration_s": 3.341,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        5067653898459354960,
-        8706282935556568413,
-        650385888804132174
+        13043448049566267776,
+        1094054484008110961,
+        11389435658751640433
       ],
-      "started_at": "2026-09-28T11:01:11+00:00",
+      "started_at": "2026-10-05T11:36:50+00:00",
       "tree_dirty": false,
-      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
+      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
     }
   }
 }
