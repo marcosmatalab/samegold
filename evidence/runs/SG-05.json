@@ -2,29 +2,29 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "319eb35675a68ef2758072070b64a375",
-      "6a17349074de3f274ab41019d00277b2",
-      "7093087b7d0393235ac0385cf6fd383e"
+      "0957246d93aacf8d793b051e66952ae7",
+      "32ab5d14e0ce4ab821de16898e79d039",
+      "3cfcd2217d219f5bd0c634bf4c09ee86"
     ]
   },
-  "ci_commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/36413011322",
+  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
   "claim_id": "SG-05",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
-    "duckdb": "1.5.5",
+    "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
     "pyarrow": "25.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.16",
-    "sqlglot": "30.20.0"
+    "sqlglot": "30.21.0"
   },
-  "hash": "b1c4a53e6e497f348598178a0462bc89",
+  "hash": "51a5b796b9d4efaabdf0805ada6f050b",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "7cace72ce5b3dd43b7df66fcb032bb92",
+  "prev": "4c5d25c45478ec47acb28cba3851d07c",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "6a49e6fdf23dc6a6e048a6c646040d3f2a1fff61",
-      "duration_s": 3.538,
+      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
+      "duration_s": 4.357,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        16767584993082039021,
-        9051911262644022699,
-        10222770914581811030
+        9854686464564653421,
+        17084761331608950341,
+        15572447278309331775
       ],
-      "started_at": "2026-09-28T11:02:25+00:00",
+      "started_at": "2026-10-05T11:38:20+00:00",
       "tree_dirty": false,
-      "tree_sha": "e94ec84f5bb07c80c8652ea1b2ff8a100b66a1a7"
+      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
     }
   }
 }
