@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "0fb5e31d9171d392622592e36dcecff7",
-        "digest_reversed": "0fb5e31d9171d392622592e36dcecff7",
+        "digest_forward": "7fe99e630b2a1e0acb2d3e88a18c40f8",
+        "digest_reversed": "7fe99e630b2a1e0acb2d3e88a18c40f8",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -91,7 +91,7 @@
     },
     "marginal": {
       "invariants": 0,
-      "ledger": 62,
+      "ledger": 63,
       "runtime": 0
     },
     "matrix": {
@@ -134,7 +134,7 @@
       "mutants_total": 94,
       "per_witness": {
         "invariants": {
-          "killed": 5,
+          "killed": 4,
           "marginal": []
         },
         "ledger": {
@@ -157,6 +157,7 @@
             "SQL-022",
             "SQL-024",
             "SQL-025",
+            "SQL-026",
             "SQL-027",
             "SQL-028",
             "SQL-029",
@@ -224,31 +225,31 @@
     ],
     "mutants_total": 94,
     "per_witness": {
-      "invariants": 5,
+      "invariants": 4,
       "ledger": 67,
       "runtime": 0
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
+  "ci_commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/38247082640",
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
-    "pyarrow": "25.0.1",
+    "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
-    "python": "3.11.16",
-    "sqlglot": "30.21.0"
+    "python": "3.11.17",
+    "sqlglot": "30.22.0"
   },
-  "hash": "ad19d1c848bda74c713eb7452e87dfb6",
+  "hash": "83126adb2db2e7f6fae2948e933a3896",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "6dca0291d4628a2e0adcd0e2a6fdc626",
+  "prev": "07d1ca7ef71997ef2767e80a9a600594",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -265,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
-      "duration_s": 77.305,
+      "commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
+      "duration_s": 76.288,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        13133805647151085685
+        4884470253168524115
       ],
-      "started_at": "2026-10-05T11:38:14+00:00",
+      "started_at": "2026-10-12T12:09:50+00:00",
       "tree_dirty": false,
-      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
+      "tree_sha": "c31ba6c625ce8f78f2d693034fd3eda1a60bbcff"
     }
   }
 }

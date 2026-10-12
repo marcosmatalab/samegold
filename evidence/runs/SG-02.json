@@ -3,25 +3,25 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/37303961127",
+  "ci_commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/38247082640",
   "claim_id": "SG-02",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
-    "pyarrow": "25.0.1",
+    "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
-    "python": "3.11.16",
-    "sqlglot": "30.21.0"
+    "python": "3.11.17",
+    "sqlglot": "30.22.0"
   },
-  "hash": "6dca0291d4628a2e0adcd0e2a6fdc626",
+  "hash": "07d1ca7ef71997ef2767e80a9a600594",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "d41ccf9642e1ce78131dd11dac859cce",
+  "prev": "6be7c7384815e0b20a3f03033a968d5e",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "49e2c17ebf0ac4511b343ef5e0150213e322c9c1",
-      "duration_s": 6.577,
+      "commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
+      "duration_s": 6.759,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        2018786162848971297,
-        5493831408350220682,
-        16415747058640878462
+        15656736431703683522,
+        18348742726299557186,
+        3685811262911634410
       ],
-      "started_at": "2026-10-05T11:36:57+00:00",
+      "started_at": "2026-10-12T12:08:34+00:00",
       "tree_dirty": false,
-      "tree_sha": "4e03873be610b8d4daa9fd3d9b018ed89680d9df"
+      "tree_sha": "c31ba6c625ce8f78f2d693034fd3eda1a60bbcff"
     }
   }
 }
