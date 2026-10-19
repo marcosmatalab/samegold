@@ -17,11 +17,11 @@
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
     "fast_lane_repository_tests": 613,
-    "fast_lane_seconds": 82.0,
+    "fast_lane_seconds": 77.5,
     "fast_lane_unclassified_files": 0,
     "harness_lines": 24610,
     "harness_share_pct": 76.5,
-    "line_coverage_pct": 68.52,
+    "line_coverage_pct": 68.47,
     "markdown_documents": 43,
     "platform_lines": 7567,
     "platform_share_pct": 23.5,
@@ -32,11 +32,11 @@
     "tests_delta": 6,
     "tests_failed": 0,
     "tests_fast": 788,
-    "tests_passed": 758,
+    "tests_passed": 757,
     "tests_spark": 148
   },
-  "ci_commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/38247082640",
+  "ci_commit_sha": "f8f01db71e8625fc4fe6d10d9809bf96be11894f",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/39234286870",
   "claim_id": "SG-00",
   "environment": {
     "delta_rs": "1.6.6",
@@ -46,13 +46,13 @@
     "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
     "python": "3.11.17",
-    "sqlglot": "30.22.0"
+    "sqlglot": "30.23.0"
   },
-  "hash": "3ca244029637a82dd9bc461862e42f55",
+  "hash": "3d741fcfcbb9e3efc6f615991dcf718b",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "c376e43a9980fdb3b47172a49ae2da6c",
+  "prev": "cf0aa152b298b081ab81b1dd9face34a",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -61,27 +61,27 @@
     "outcome": "pass",
     "rate": {
       "point": 1.0,
-      "successes": 758,
-      "trials": 758,
+      "successes": 757,
+      "trials": 757,
       "wilson95": [
-        0.994958,
+        0.994951,
         1.0
       ]
     },
     "runs": {
-      "commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
-      "duration_s": 86.776,
+      "commit_sha": "f8f01db71e8625fc4fe6d10d9809bf96be11894f",
+      "duration_s": 81.483,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        18013450985476238851
+        13044742883420291190
       ],
-      "started_at": "2026-10-12T12:11:33+00:00",
+      "started_at": "2026-10-19T10:04:10+00:00",
       "tree_dirty": false,
-      "tree_sha": "c31ba6c625ce8f78f2d693034fd3eda1a60bbcff"
+      "tree_sha": "fe9afd62aaddbd1e453c3ab4dacaef2dbfda54c8"
     }
   }
 }
