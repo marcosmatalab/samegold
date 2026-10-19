@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "7fe99e630b2a1e0acb2d3e88a18c40f8",
-        "digest_reversed": "7fe99e630b2a1e0acb2d3e88a18c40f8",
+        "digest_forward": "12d74b21f83dcb6a0a6ab488854a8aed",
+        "digest_reversed": "12d74b21f83dcb6a0a6ab488854a8aed",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -231,8 +231,8 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/38247082640",
+  "ci_commit_sha": "f8f01db71e8625fc4fe6d10d9809bf96be11894f",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/39234286870",
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.6",
@@ -242,14 +242,14 @@
     "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
     "python": "3.11.17",
-    "sqlglot": "30.22.0"
+    "sqlglot": "30.23.0"
   },
-  "hash": "83126adb2db2e7f6fae2948e933a3896",
+  "hash": "29fcefc6aff0c8b29710bdc6ce371756",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "07d1ca7ef71997ef2767e80a9a600594",
+  "prev": "6c8b476d88ef87d6c4c4b21a66a67cb2",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "6311efb93bc3133887d5d4ffc6d957774956ec7c",
-      "duration_s": 76.288,
+      "commit_sha": "f8f01db71e8625fc4fe6d10d9809bf96be11894f",
+      "duration_s": 74.773,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        4884470253168524115
+        7273019908456449598
       ],
-      "started_at": "2026-10-12T12:09:50+00:00",
+      "started_at": "2026-10-19T10:02:33+00:00",
       "tree_dirty": false,
-      "tree_sha": "c31ba6c625ce8f78f2d693034fd3eda1a60bbcff"
+      "tree_sha": "fe9afd62aaddbd1e453c3ab4dacaef2dbfda54c8"
     }
   }
 }
