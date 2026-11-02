@@ -193,7 +193,7 @@ than into a README nobody re-reads.
 
 | lane | status |
 |---|---|
-| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->788<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->80.2<!--/sg--> s |
+| fast lane: generator, reference, digests, invariants, mutation, governance, evidence gate | done, <!--sg:SG-00.artifact.tests_fast-->788<!--/sg--> tests, <!--sg:SG-00.artifact.fast_lane_seconds-->71.1<!--/sg--> s |
 | Spark lane without Delta | done, <!--sg:SG-00.artifact.tests_spark-->148<!--/sg--> tests: both engines agree on the versioned close |
 | crash campaign, silver stage | done, with a negative control that a non-idempotent writer fails |
 | cost lab on real Delta tables (delta-rs) | done, four experiments, one of them a negative result |

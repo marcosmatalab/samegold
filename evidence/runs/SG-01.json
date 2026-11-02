@@ -4,25 +4,25 @@
     "closes_per_run": 5,
     "comparisons": 15
   },
-  "ci_commit_sha": "b7f5f4e4aacf1afd6de6ebe0f7e24eef300537fd",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/40305854171",
+  "ci_commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/41445787628",
   "claim_id": "SG-01",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
     "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
     "python": "3.11.17",
-    "sqlglot": "30.24.0"
+    "sqlglot": "30.27.0"
   },
-  "hash": "7f67609f6e308bfa39485f5f23b5e843",
+  "hash": "e9c420f986ca95c22025ae50a55efaed",
   "not_claimed": [
     "that either implementation is correct: they share an author and a contract",
     "that agreement transfers to the Spark implementation (see SG-07)"
   ],
-  "prev": "f03f6ad03a279e1f77ee0b848fdfc8f3",
+  "prev": "bc0892838e3aee30475eb3bfb6dd388e",
   "runtime": "oss-local",
   "title": "two implementations agree on the close",
   "verdict": {
@@ -39,21 +39,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "b7f5f4e4aacf1afd6de6ebe0f7e24eef300537fd",
-      "duration_s": 3.457,
+      "commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
+      "duration_s": 2.663,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "witness",
       "seed_source": "commit",
       "seeds": [
-        11584693649522823716,
-        6009870243678685709,
-        2615735044863293337
+        5388381537098351870,
+        10562949943104447220,
+        10143761093048934724
       ],
-      "started_at": "2026-10-26T10:15:31+00:00",
+      "started_at": "2026-11-02T12:34:59+00:00",
       "tree_dirty": false,
-      "tree_sha": "16769f227367cec854a32cfeb8d7122a17516aeb"
+      "tree_sha": "b6071b4361e19fe558b973f34d843f088eec832c"
     }
   }
 }
