@@ -14,18 +14,18 @@
     "measurements": {
       "COST-01": {
         "after": {
-          "bytes_not_skippable": 2250274,
-          "bytes_total": 2250274,
+          "bytes_not_skippable": 2235745,
+          "bytes_total": 2235745,
           "files_not_skippable": 3,
           "files_total": 3
         },
         "before": {
-          "bytes_not_skippable": 5640014,
-          "bytes_total": 5640014,
+          "bytes_not_skippable": 5635536,
+          "bytes_total": 5635536,
           "files_not_skippable": 40,
           "files_total": 40
         },
-        "bytes_not_skippable_change_pct": -60.1,
+        "bytes_not_skippable_change_pct": -60.33,
         "files_removed_pct": 92.5,
         "optimize": {
           "numFilesAdded": 3,
@@ -35,8 +35,8 @@
       "COST-02": {
         "large_files": {
           "clustered": {
-            "bytes_not_skippable": 2736913,
-            "bytes_total": 2736913,
+            "bytes_not_skippable": 2737398,
+            "bytes_total": 2737398,
             "files_not_skippable": 2,
             "files_total": 2
           },
@@ -44,16 +44,16 @@
           "share_unclustered": 1.0,
           "target_size_bytes": 2000000,
           "unclustered": {
-            "bytes_not_skippable": 2240097,
-            "bytes_total": 2240097,
+            "bytes_not_skippable": 2232525,
+            "bytes_total": 2232525,
             "files_not_skippable": 3,
             "files_total": 3
           }
         },
         "small_files": {
           "clustered": {
-            "bytes_not_skippable": 844950,
-            "bytes_total": 3884653,
+            "bytes_not_skippable": 844736,
+            "bytes_total": 3883609,
             "files_not_skippable": 17,
             "files_total": 79
           },
@@ -61,8 +61,8 @@
           "share_unclustered": 1.0,
           "target_size_bytes": 125000,
           "unclustered": {
-            "bytes_not_skippable": 5640014,
-            "bytes_total": 5640014,
+            "bytes_not_skippable": 5635536,
+            "bytes_total": 5635536,
             "files_not_skippable": 40,
             "files_total": 40
           }
@@ -70,30 +70,30 @@
       },
       "COST-03": {
         "clustered_month_predicate": {
-          "bytes_not_skippable": 1685174,
-          "bytes_total": 2736913,
+          "bytes_not_skippable": 1685367,
+          "bytes_total": 2737398,
           "files_not_skippable": 1,
           "files_total": 2
         },
         "clustered_sku_predicate": {
-          "bytes_not_skippable": 2736913,
-          "bytes_total": 2736913,
+          "bytes_not_skippable": 2737398,
+          "bytes_total": 2737398,
           "files_not_skippable": 2,
           "files_total": 2
         },
         "partitioned_files_for_month": 1,
         "partitioned_files_total": 12,
         "partitioned_sku_predicate": {
-          "bytes_not_skippable": 5043056,
-          "bytes_total": 5043056,
+          "bytes_not_skippable": 5042187,
+          "bytes_total": 5042187,
           "files_not_skippable": 12,
           "files_total": 12
         }
       },
       "COST-04": {
         "num_added_files": 1,
-        "num_copied_rows": 366648,
-        "num_deleted_rows": 33352,
+        "num_copied_rows": 366630,
+        "num_deleted_rows": 33370,
         "num_removed_files": 3,
         "rows_copied_per_row_deleted": 10.99
       },
@@ -143,27 +143,27 @@
       78.25
     ]
   },
-  "ci_commit_sha": "b7f5f4e4aacf1afd6de6ebe0f7e24eef300537fd",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/40305854171",
+  "ci_commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/41445787628",
   "claim_id": "SG-09",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
     "pyarrow": "26.0.0",
     "pyspark": "4.2.0",
     "python": "3.11.17",
-    "sqlglot": "30.24.0"
+    "sqlglot": "30.27.0"
   },
-  "hash": "0d19d1d1b96d7ef45d020420809ad260",
+  "hash": "214f9a4f2915ed48512925bca644332d",
   "not_claimed": [
     "anything about query latency: no timing is measured, on purpose",
     "anything about DBU cost: system.billing needs an account console that Free Edition does not have, and wall time is not a substitute",
     "that clustering always helps: at large file sizes it did nothing here, and the measurement that says so is a passing check rather than a footnote",
     "that the byte counts are bit-for-bit reproducible: the parquet writer varies by about a tenth of a per cent between runs, and the range is published"
   ],
-  "prev": "64aab8b2d4a72ced48863b51f6e0cf21",
+  "prev": "8571e537a809c9afa78d9dcfdb0ea4af",
   "runtime": "oss-local",
   "title": "what layout costs, in files and bytes",
   "verdict": {
@@ -180,19 +180,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "b7f5f4e4aacf1afd6de6ebe0f7e24eef300537fd",
-      "duration_s": 9.974,
+      "commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
+      "duration_s": 9.338,
       "n": 1,
       "profile": "lab",
       "runtime": "oss-local",
       "seed_purpose": "cost",
       "seed_source": "commit",
       "seeds": [
-        3137789567536846896
+        8064817582479133664
       ],
-      "started_at": "2026-10-26T10:17:12+00:00",
+      "started_at": "2026-11-02T12:36:21+00:00",
       "tree_dirty": false,
-      "tree_sha": "16769f227367cec854a32cfeb8d7122a17516aeb"
+      "tree_sha": "b6071b4361e19fe558b973f34d843f088eec832c"
     }
   }
 }
