@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "3a72feb33d1c80fc227271084bcd8d7e",
-        "digest_reversed": "3a72feb33d1c80fc227271084bcd8d7e",
+        "digest_forward": "b26f9abe59c62b66ae6f13d6a88f19a1",
+        "digest_reversed": "b26f9abe59c62b66ae6f13d6a88f19a1",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -231,25 +231,25 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/41445787628",
+  "ci_commit_sha": "877b471b9a33b45224a0c3ddf43a5d8626b1eb21",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/42621521726",
   "claim_id": "SG-03",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
     "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
-    "pyarrow": "26.0.0",
+    "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
-    "python": "3.11.17",
-    "sqlglot": "30.27.0"
+    "python": "3.11.18",
+    "sqlglot": "30.30.0"
   },
-  "hash": "2bf668a7d174ad69c9154732742778f9",
+  "hash": "05711e7e43b887d4fc35a82ab8bef657",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "a066bee75a68d44c842123c792273552",
+  "prev": "0ae0e129aeb4c19bc0e0fb11a8ab93de",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
-      "duration_s": 63.211,
+      "commit_sha": "877b471b9a33b45224a0c3ddf43a5d8626b1eb21",
+      "duration_s": 59.152,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        4374950381751075721
+        1618933427925396464
       ],
-      "started_at": "2026-11-02T12:36:07+00:00",
+      "started_at": "2026-11-09T13:00:58+00:00",
       "tree_dirty": false,
-      "tree_sha": "b6071b4361e19fe558b973f34d843f088eec832c"
+      "tree_sha": "d25b47375a74aa8455cc5f061c964ef8a84ba990"
     }
   }
 }
