@@ -1,10 +1,10 @@
 {
   "artifact_digest": "b66102533a931e7f1f3420f8a47e01fc",
   "artifacts": {
-    "batches_available": 7,
+    "batches_available": 8,
     "clean_digest": {
-      "content": "8dfa46a5958d1c8669b18e3847cf8f91",
-      "multiset": "906e24693a7e3965bacc23995881e655"
+      "content": "465af2ebcba4c5ae52cd3d6d7499b8bc",
+      "multiset": "e16598941789d36e791477ea74210b95"
     },
     "divergence_rate_upper95_per_point": {
       "after_batch_write_before_commit": 0.299573,
@@ -12,7 +12,7 @@
     },
     "divergence_rate_upper95_per_run": 0.149787,
     "divergences": [],
-    "duration_s": 752.93,
+    "duration_s": 752.05,
     "injected_runs": 20,
     "missed_injections": [],
     "negative_control": {
@@ -20,8 +20,8 @@
         "multiset"
       ],
       "digest": {
-        "content": "8dfa46a5958d1c8669b18e3847cf8f91",
-        "multiset": "1769b5a058990f25d40123ba00a88366"
+        "content": "465af2ebcba4c5ae52cd3d6d7499b8bc",
+        "multiset": "886995576e29a8688c0528f40421c6a9"
       },
       "note": "the content digest deduplicates by event_id and is blind to double writes; the multiset digest is the one that has to catch this",
       "status": "detected",
@@ -48,25 +48,25 @@
     "reachable_points_total": 4,
     "runs": 20
   },
-  "ci_commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/41445787628",
+  "ci_commit_sha": "877b471b9a33b45224a0c3ddf43a5d8626b1eb21",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/42621521726",
   "claim_id": "SG-07",
   "environment": {
     "delta_rs": "1.6.6",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
     "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
-    "pyarrow": "26.0.0",
+    "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
-    "python": "3.11.17",
-    "sqlglot": "30.27.0"
+    "python": "3.11.18",
+    "sqlglot": "30.30.0"
   },
-  "hash": "9d3149f0d5e73bc49142b8288ab10098",
+  "hash": "504296111ea803c0236cb7460354d55f",
   "not_claimed": [
     "crash safety of the engine: the reachable points are the ones the writer owns, and the points inside a Delta commit or a state-store checkpoint are listed in faults/points.py as not covered",
     "anything about Databricks: serverless gives you no process to kill"
   ],
-  "prev": "761ebc215a9b4c984772c0bd5b4a9071",
+  "prev": "45bad6688317f0f9de6fffd37d71849e",
   "runtime": "oss-local",
   "title": "the silver writer survives a crash at each of its structural points",
   "verdict": {
@@ -83,19 +83,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "e72a5b49d6fd202b2785b4a9a81ea2de780b587e",
-      "duration_s": 752.976,
+      "commit_sha": "877b471b9a33b45224a0c3ddf43a5d8626b1eb21",
+      "duration_s": 752.083,
       "n": 1,
       "profile": "fast",
       "runtime": "oss-local",
       "seed_purpose": "faults",
       "seed_source": "commit",
       "seeds": [
-        10808526109599459254
+        4746380624560414188
       ],
-      "started_at": "2026-11-02T12:50:11+00:00",
+      "started_at": "2026-11-09T13:14:58+00:00",
       "tree_dirty": false,
-      "tree_sha": "b6071b4361e19fe558b973f34d843f088eec832c"
+      "tree_sha": "d25b47375a74aa8455cc5f061c964ef8a84ba990"
     }
   }
 }
