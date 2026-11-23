@@ -3,25 +3,25 @@
   "artifacts": {
     "files_duplicated": "all"
   },
-  "ci_commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/43870524295",
+  "ci_commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/45198779596",
   "claim_id": "SG-02",
   "environment": {
-    "delta_rs": "1.6.6",
+    "delta_rs": "1.7.0",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
     "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.18",
-    "sqlglot": "30.31.0"
+    "sqlglot": "30.33.0"
   },
-  "hash": "6930f11f646c6a42da4444ebdcde9a33",
+  "hash": "1fd224de94118237227b216a7e4e4065",
   "not_claimed": [
     "exactly-once processing: this is at-least-once plus content-keyed dedup",
     "that a duplicate arriving beyond the streaming watermark is caught; that is measured separately in SG-07 on the Spark lane, where the state can expire"
   ],
-  "prev": "c16e83539c97b4687da05d33edb8f0b8",
+  "prev": "f2a795fc4d9a17164fac8821742de763",
   "runtime": "oss-local",
   "title": "re-delivery under a new path is a no-op",
   "verdict": {
@@ -38,21 +38,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-      "duration_s": 4.847,
+      "commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+      "duration_s": 4.753,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "redelivery",
       "seed_source": "commit",
       "seeds": [
-        14353479354122356088,
-        10908691918790357324,
-        17591946022664263554
+        4688555763087066340,
+        15169381547955945964,
+        7710230704216851128
       ],
-      "started_at": "2026-11-16T12:53:24+00:00",
+      "started_at": "2026-11-23T14:52:36+00:00",
       "tree_dirty": false,
-      "tree_sha": "e964a50e8759b12d21c826b3dc2ff288c29c852e"
+      "tree_sha": "db386b09ba83606c309bb595d38e9a9ad5091b4e"
     }
   }
 }

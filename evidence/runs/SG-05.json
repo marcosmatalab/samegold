@@ -2,29 +2,29 @@
   "artifact_digest": null,
   "artifacts": {
     "scd2_digests": [
-      "2e5d5072926fcad021a8dc664495092d",
-      "d10ae343e0b56e59135f44c38f36f56a",
-      "23374632b46adf57b132359ab7bd072f"
+      "0a7c0107da5bec0b3537f6689b0e1214",
+      "0c453f3c3a7dbb7d33d254982a492288",
+      "9bbda09dc474e1593ccab0b05e71f744"
     ]
   },
-  "ci_commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/43870524295",
+  "ci_commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/45198779596",
   "claim_id": "SG-05",
   "environment": {
-    "delta_rs": "1.6.6",
+    "delta_rs": "1.7.0",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
     "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.18",
-    "sqlglot": "30.31.0"
+    "sqlglot": "30.33.0"
   },
-  "hash": "3aa62902aadd2d539257fdf5e6262616",
+  "hash": "b1fdf26e6450d98efb636bc3e8e67203",
   "not_claimed": [
     "that the dimension carries the right attribute values: an invariant sees shape, not truth"
   ],
-  "prev": "797c004a631e745a6d7c4775be3fa7d8",
+  "prev": "9d5d84d383676f3a2c5d4c9aece50944",
   "runtime": "oss-local",
   "title": "dimension and conservation invariants hold without an oracle",
   "verdict": {
@@ -41,21 +41,21 @@
       ]
     },
     "runs": {
-      "commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-      "duration_s": 3.256,
+      "commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+      "duration_s": 3.211,
       "n": 3,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "invariants",
       "seed_source": "commit",
       "seeds": [
-        8067046375263419469,
-        11664003457370539608,
-        17424841422866044797
+        1968401826918384324,
+        1103322447512262139,
+        17558718671356354152
       ],
-      "started_at": "2026-11-16T12:54:24+00:00",
+      "started_at": "2026-11-23T14:53:35+00:00",
       "tree_dirty": false,
-      "tree_sha": "e964a50e8759b12d21c826b3dc2ff288c29c852e"
+      "tree_sha": "db386b09ba83606c309bb595d38e9a9ad5091b4e"
     }
   }
 }
