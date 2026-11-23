@@ -65,8 +65,8 @@
       },
       {
         "assumption": "comparison-is-order-free",
-        "digest_forward": "553640293f3324d64fbd79e1996df4c6",
-        "digest_reversed": "553640293f3324d64fbd79e1996df4c6",
+        "digest_forward": "7618ff0ff1f7a96a3e9a84085add2c4f",
+        "digest_reversed": "7618ff0ff1f7a96a3e9a84085add2c4f",
         "order_flip_mutants_run": [
           "SQL-011"
         ],
@@ -231,25 +231,25 @@
     },
     "strict_score": 0.7128
   },
-  "ci_commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/43870524295",
+  "ci_commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/45198779596",
   "claim_id": "SG-03",
   "environment": {
-    "delta_rs": "1.6.6",
+    "delta_rs": "1.7.0",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
     "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.18",
-    "sqlglot": "30.31.0"
+    "sqlglot": "30.33.0"
   },
-  "hash": "eb48633a1626a19d5e10170b7479290b",
+  "hash": "01e428e3ef5d3f80cf7705072d9d3236",
   "not_claimed": [
     "that a high score means the pipeline is correct: mutants are a lower bound on the faults a suite can see, never a proof of absence",
     "that the equivalence classification is above suspicion: the strict score, which refuses it entirely, is published next to it"
   ],
-  "prev": "6930f11f646c6a42da4444ebdcde9a33",
+  "prev": "1fd224de94118237227b216a7e4e4065",
   "runtime": "oss-local",
   "title": "mutation campaign",
   "verdict": {
@@ -266,19 +266,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-      "duration_s": 56.336,
+      "commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+      "duration_s": 54.599,
       "n": 1,
       "profile": "ci",
       "runtime": "oss-local",
       "seed_purpose": "mutation",
       "seed_source": "commit",
       "seeds": [
-        7734641133392122291
+        175186019846868153
       ],
-      "started_at": "2026-11-16T12:54:20+00:00",
+      "started_at": "2026-11-23T14:53:31+00:00",
       "tree_dirty": false,
-      "tree_sha": "e964a50e8759b12d21c826b3dc2ff288c29c852e"
+      "tree_sha": "db386b09ba83606c309bb595d38e9a9ad5091b4e"
     }
   }
 }

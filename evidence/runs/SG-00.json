@@ -17,7 +17,7 @@
     "fast_lane_domain_tests": 175,
     "fast_lane_green": true,
     "fast_lane_repository_tests": 613,
-    "fast_lane_seconds": 61.3,
+    "fast_lane_seconds": 53.3,
     "fast_lane_unclassified_files": 0,
     "harness_lines": 24610,
     "harness_share_pct": 76.5,
@@ -35,24 +35,24 @@
     "tests_passed": 758,
     "tests_spark": 148
   },
-  "ci_commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/43870524295",
+  "ci_commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/45198779596",
   "claim_id": "SG-00",
   "environment": {
-    "delta_rs": "1.6.6",
+    "delta_rs": "1.7.0",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
     "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.18",
-    "sqlglot": "30.31.0"
+    "sqlglot": "30.33.0"
   },
-  "hash": "45b8e40da183eab7608ada52da2e5b92",
+  "hash": "1cb2f6bc4e5a5386d6c2b19eb5f1cfe6",
   "not_claimed": [
     "that line counts measure anything about quality"
   ],
-  "prev": "29a11d58cb04ab9c5df473512ecad683",
+  "prev": "9edf8b737babbf793ebe3ff440ff91d9",
   "runtime": "oss-local",
   "title": "what this repository contains, counted",
   "verdict": {
@@ -69,19 +69,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-      "duration_s": 64.886,
+      "commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+      "duration_s": 56.254,
       "n": 1,
       "profile": "n/a",
       "runtime": "oss-local",
       "seed_purpose": "facts",
       "seed_source": "commit",
       "seeds": [
-        4701592373307927560
+        1099640116274564174
       ],
-      "started_at": "2026-11-16T12:55:37+00:00",
+      "started_at": "2026-11-23T14:54:37+00:00",
       "tree_dirty": false,
-      "tree_sha": "e964a50e8759b12d21c826b3dc2ff288c29c852e"
+      "tree_sha": "db386b09ba83606c309bb595d38e9a9ad5091b4e"
     }
   }
 }

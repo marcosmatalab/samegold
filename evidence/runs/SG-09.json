@@ -14,18 +14,18 @@
     "measurements": {
       "COST-01": {
         "after": {
-          "bytes_not_skippable": 2235033,
-          "bytes_total": 2235033,
+          "bytes_not_skippable": 2291590,
+          "bytes_total": 2291590,
           "files_not_skippable": 3,
           "files_total": 3
         },
         "before": {
-          "bytes_not_skippable": 5632454,
-          "bytes_total": 5632454,
+          "bytes_not_skippable": 5636892,
+          "bytes_total": 5636892,
           "files_not_skippable": 40,
           "files_total": 40
         },
-        "bytes_not_skippable_change_pct": -60.32,
+        "bytes_not_skippable_change_pct": -59.35,
         "files_removed_pct": 92.5,
         "optimize": {
           "numFilesAdded": 3,
@@ -35,8 +35,8 @@
       "COST-02": {
         "large_files": {
           "clustered": {
-            "bytes_not_skippable": 2736781,
-            "bytes_total": 2736781,
+            "bytes_not_skippable": 2747835,
+            "bytes_total": 2747835,
             "files_not_skippable": 2,
             "files_total": 2
           },
@@ -44,25 +44,25 @@
           "share_unclustered": 1.0,
           "target_size_bytes": 2000000,
           "unclustered": {
-            "bytes_not_skippable": 2249148,
-            "bytes_total": 2249148,
+            "bytes_not_skippable": 2281646,
+            "bytes_total": 2281646,
             "files_not_skippable": 3,
             "files_total": 3
           }
         },
         "small_files": {
           "clustered": {
-            "bytes_not_skippable": 845081,
-            "bytes_total": 3884902,
-            "files_not_skippable": 17,
-            "files_total": 79
+            "bytes_not_skippable": 1907536,
+            "bytes_total": 3591978,
+            "files_not_skippable": 10,
+            "files_total": 22
           },
-          "share_clustered": 0.2175,
+          "share_clustered": 0.5311,
           "share_unclustered": 1.0,
           "target_size_bytes": 125000,
           "unclustered": {
-            "bytes_not_skippable": 5632454,
-            "bytes_total": 5632454,
+            "bytes_not_skippable": 5636892,
+            "bytes_total": 5636892,
             "files_not_skippable": 40,
             "files_total": 40
           }
@@ -70,32 +70,32 @@
       },
       "COST-03": {
         "clustered_month_predicate": {
-          "bytes_not_skippable": 1685132,
-          "bytes_total": 2736781,
+          "bytes_not_skippable": 1786488,
+          "bytes_total": 2747835,
           "files_not_skippable": 1,
           "files_total": 2
         },
         "clustered_sku_predicate": {
-          "bytes_not_skippable": 2736781,
-          "bytes_total": 2736781,
+          "bytes_not_skippable": 2747835,
+          "bytes_total": 2747835,
           "files_not_skippable": 2,
           "files_total": 2
         },
         "partitioned_files_for_month": 1,
         "partitioned_files_total": 12,
         "partitioned_sku_predicate": {
-          "bytes_not_skippable": 5043488,
-          "bytes_total": 5043488,
+          "bytes_not_skippable": 5030384,
+          "bytes_total": 5030384,
           "files_not_skippable": 12,
           "files_total": 12
         }
       },
       "COST-04": {
         "num_added_files": 1,
-        "num_copied_rows": 366894,
-        "num_deleted_rows": 33106,
+        "num_copied_rows": 366440,
+        "num_deleted_rows": 33560,
         "num_removed_files": 3,
-        "rows_copied_per_row_deleted": 11.08
+        "rows_copied_per_row_deleted": 10.92
       },
       "experiments": [
         {
@@ -136,39 +136,39 @@
       "sku_probed": "SKU-00042"
     },
     "repetitions": 2,
-    "rows_copied_per_row_deleted": 11.08,
-    "share_read_reduction_pct": 78.24,
+    "rows_copied_per_row_deleted": 10.92,
+    "share_read_reduction_pct": 46.89,
     "share_read_reduction_pct_range": [
-      78.24,
-      78.25
+      46.89,
+      52.97
     ]
   },
-  "ci_commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/43870524295",
+  "ci_commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+  "ci_run_url": "https://github.com/marcosmatalab/samegold/actions/runs/45198779596",
   "claim_id": "SG-09",
   "environment": {
-    "delta_rs": "1.6.6",
+    "delta_rs": "1.7.0",
     "delta_spark": "4.4.0",
     "duckdb": "1.5.6",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43",
     "pyarrow": "26.0.1",
     "pyspark": "4.2.0",
     "python": "3.11.18",
-    "sqlglot": "30.31.0"
+    "sqlglot": "30.33.0"
   },
-  "hash": "29a11d58cb04ab9c5df473512ecad683",
+  "hash": "9edf8b737babbf793ebe3ff440ff91d9",
   "not_claimed": [
     "anything about query latency: no timing is measured, on purpose",
     "anything about DBU cost: system.billing needs an account console that Free Edition does not have, and wall time is not a substitute",
     "that clustering always helps: at large file sizes it did nothing here, and the measurement that says so is a passing check rather than a footnote",
     "that the byte counts are bit-for-bit reproducible: the parquet writer varies by about a tenth of a per cent between runs, and the range is published"
   ],
-  "prev": "e83e10f2ee6c07e36a7f6a06c7a6da67",
+  "prev": "ee8378019a570123bfd00b2a2b551646",
   "runtime": "oss-local",
   "title": "what layout costs, in files and bytes",
   "verdict": {
     "claim_id": "SG-09",
-    "note": "clustering cut the share read by 78.24%",
+    "note": "clustering cut the share read by 46.89%",
     "outcome": "pass",
     "rate": {
       "point": 1.0,
@@ -180,19 +180,19 @@
       ]
     },
     "runs": {
-      "commit_sha": "fc7c10d44a2b171cae14afb3d63456710fb17f71",
-      "duration_s": 7.021,
+      "commit_sha": "ef43668f45e4ae31e60139e3356ce54dbb7f92cb",
+      "duration_s": 5.85,
       "n": 1,
       "profile": "lab",
       "runtime": "oss-local",
       "seed_purpose": "cost",
       "seed_source": "commit",
       "seeds": [
-        3385297069795862687
+        1017146814627032296
       ],
-      "started_at": "2026-11-16T12:54:32+00:00",
+      "started_at": "2026-11-23T14:53:41+00:00",
       "tree_dirty": false,
-      "tree_sha": "e964a50e8759b12d21c826b3dc2ff288c29c852e"
+      "tree_sha": "db386b09ba83606c309bb595d38e9a9ad5091b4e"
     }
   }
 }
